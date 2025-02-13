@@ -10,8 +10,6 @@ import io
 
 # =============================================================================
 # ESTADOS DEL CONVERSATION HANDLER
-# Se definen los estados en orden de flujo.
-# (Se añadieron estados nuevos para la funcionalidad de “Atrás”)
 # =============================================================================
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, 
  REPAIR_CATEGORY, REPAIR_DETAIL, TAPA_MEDIDAS, 
@@ -20,7 +18,7 @@ import io
 
 # =============================================================================
 # DICTIONARIO PARA NAVEGACIÓN “ATRÁS”
-# Cada estado (excepto CODE) tiene un estado anterior asignado.
+# Cada estado (excepto CODE) tiene asignado su estado anterior.
 # =============================================================================
 BACK_MAP = {
     ORDER: CODE,
@@ -66,7 +64,7 @@ Categoría de reparación: {data.get('repair_category', 'N/A')}
 Detalle de reparación: {data.get('repair_detail', 'N/A')}
 Tipo de tapa y medidas: {data.get('tapa_medidas', 'N/A')}
 Observaciones: {data.get('notices', 'N/A')}
-Encargado y teléfono: {data.get('contact', 'N/A')}
+Nombre y teléfono del encargado: {data.get('contact', 'N/A')}
 Avisos entregados en: {data.get('avisos_address', 'N/A')}
 """
     msg.attach(MIMEText(body, 'plain'))
@@ -103,170 +101,68 @@ Avisos entregados en: {data.get('avisos_address', 'N/A')}
 # =============================================================================
 def back_handler(update: Update, context: CallbackContext) -> int:
     """
-    Si el usuario envía el mensaje "Atrás" (o presiona el botón correspondiente),
-    se retorna el estado anterior según el diccionario BACK_MAP.
+    Retrocede al estado anterior según BACK_MAP y reenvía la pregunta correspondiente.
+    Se detecta si el usuario escribió "atras" (en cualquiera de sus variantes).
     """
-    # Se detecta si es un callback query o un mensaje de texto
     if update.callback_query:
         update.callback_query.answer()
     previous_state = BACK_MAP.get(context.user_data.get("current_state"))
     if previous_state is None:
-        # No se puede retroceder (por ejemplo, en el primer paso)
         if update.callback_query:
             update.callback_query.edit_message_text("No puedes retroceder más.")
         else:
             update.message.reply_text("No puedes retroceder más.")
         return context.user_data.get("current_state", CODE)
     else:
-        # Informamos al usuario y devolvemos el estado anterior
-        text = "Retrocediendo al paso anterior..."
-        if update.callback_query:
-            update.callback_query.edit_message_text(text)
-        else:
-            update.message.reply_text(text)
+        context.user_data["current_state"] = previous_state
+        re_ask(previous_state, update, context)
         return previous_state
 
-def add_back_button(keyboard: list) -> list:
+def re_ask(state: int, update: Update, context: CallbackContext):
     """
-    Función auxiliar: recibe una lista de botones (o de filas de botones)
-    y añade una fila extra con el botón "Atrás".
+    Reenvía la pregunta correspondiente al estado indicado, mostrando botones si corresponde.
     """
-    # Se agrega una fila con el botón "Atrás"
-    keyboard.append([InlineKeyboardButton("Atrás", callback_data="back")])
-    return keyboard
-
-# =============================================================================
-# FUNCIONES DEL FLUJO DE CONVERSACIÓN
-# =============================================================================
-def start(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text("¡Hola! Inserte su código:")
-    context.user_data["current_state"] = CODE
-    return CODE
-
-def get_code(update: Update, context: CallbackContext) -> int:
-    context.user_data['code'] = update.message.text
-    update.message.reply_text("Escriba el número de la orden de trabajo:\n(O escriba 'Atrás' para volver)")
-    context.user_data["current_state"] = ORDER
-    return ORDER
-
-def get_order(update: Update, context: CallbackContext) -> int:
-    if update.message.text.lower() == "atrás":
-        return back_handler(update, context)
-    context.user_data['order'] = update.message.text
-    update.message.reply_text("Escriba la dirección:\n(O escriba 'Atrás' para volver)")
-    context.user_data["current_state"] = ADDRESS
-    return ADDRESS
-
-def get_address(update: Update, context: CallbackContext) -> int:
-    if update.message.text.lower() == "atrás":
-        return back_handler(update, context)
-    context.user_data['address'] = update.message.text
-    # Se crea el teclado para seleccionar el servicio y se añade el botón "Atrás" manualmente si se desea.
-    keyboard = [
-        [InlineKeyboardButton("FUMIGACIONES", callback_data='fumigaciones')],
-        [InlineKeyboardButton("LIMPIEZA Y REPARACION DE TANQUES", callback_data='limpieza')]
-    ]
-    # En este caso se usa un menú inline, por lo que se añade un botón "Atrás" a la misma.
-    keyboard = add_back_button(keyboard)
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("¿Qué servicio se realizó?", reply_markup=reply_markup)
-    context.user_data["current_state"] = SERVICE
-    return SERVICE
-
-def service_selection(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    # Si se presionó el botón "Atrás" (callback_data "back")
-    if query.data == "back":
-        return back_handler(update, context)
-    service_type = query.data
-    context.user_data['service'] = service_type
-    if service_type == "fumigaciones":
-        query.edit_message_text("Servicio seleccionado: Fumigaciones\n¿Qué unidades contienen bichos?\n(Puede escribir 'Atrás' para volver)")
-        context.user_data["current_state"] = FUMIGATION
-        return FUMIGATION
-    else:
-        query.edit_message_text("Servicio seleccionado: Limpieza y Reparación de Tanques")
+    chat_id = update.effective_chat.id
+    if state == CODE:
+        context.bot.send_message(chat_id=chat_id, text="¡Hola! Inserte su código:")
+    elif state == ORDER:
+        context.bot.send_message(chat_id=chat_id, text="Escriba el número de la orden de trabajo:")
+    elif state == ADDRESS:
+        context.bot.send_message(chat_id=chat_id, text="Escriba la dirección:")
+    elif state == SERVICE:
+        keyboard = [
+            [InlineKeyboardButton("FUMIGACIONES", callback_data='fumigaciones')],
+            [InlineKeyboardButton("LIMPIEZA Y REPARACION DE TANQUES", callback_data='limpieza')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        context.bot.send_message(chat_id=chat_id, text="¿Qué servicio se realizó?", reply_markup=reply_markup)
+    elif state == FUMIGATION:
+        context.bot.send_message(chat_id=chat_id, text="¿Qué unidades contienen insectos?")
+    elif state == REPAIR_CATEGORY:
         keyboard = [
             [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
             [InlineKeyboardButton("RESERVA", callback_data='reserva')],
             [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
         ]
-        keyboard = add_back_button(keyboard)
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.message.reply_text("Seleccione la categoría de reparación:", reply_markup=reply_markup)
-        context.user_data["current_state"] = REPAIR_CATEGORY
-        return REPAIR_CATEGORY
-
-def fumigation_data(update: Update, context: CallbackContext) -> int:
-    if update.message.text.lower() == "atrás":
-        return back_handler(update, context)
-    context.user_data['fumigated_units'] = update.message.text
-    update.message.reply_text("Marque las observaciones para la próxima visita:\n(O escriba 'Atrás' para volver)")
-    context.user_data["current_state"] = NOTICES
-    return NOTICES
-
-def handle_repair_category(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    if query.data == "back":
-        return back_handler(update, context)
-    category = query.data  # 'cisterna', 'reserva' o 'intermediario'
-    context.user_data['repair_category'] = category.capitalize()
-    if category == 'cisterna':
+        context.bot.send_message(chat_id=chat_id, text="Seleccione la categoría de reparación:", reply_markup=reply_markup)
+    elif state == REPAIR_DETAIL:
+        context.bot.send_message(chat_id=chat_id, text="Seleccione el detalle de reparación (vuelva a elegir):")
+    elif state == TAPA_MEDIDAS:
+        context.bot.send_message(chat_id=chat_id, text="Indique tipo de tapa y medidas:")
+    elif state == FOTO_TANQUE:
+        context.bot.send_message(chat_id=chat_id, text="Adjunte foto de tanque:")
+    elif state == FOTO_FICHA:
+        context.bot.send_message(chat_id=chat_id, text="Adjunte foto de ficha:")
+    elif state == FOTO_ORDEN:
+        context.bot.send_message(chat_id=chat_id, text="Adjunte foto de orden de trabajo:")
+    elif state == NOTICES:
+        context.bot.send_message(chat_id=chat_id, text="Marque las observaciones para la próxima visita:")
+    elif state == CONTACT:
+        context.bot.send_message(chat_id=chat_id, text="Ingrese el Nombre y teléfono del encargado:")
+    elif state == AVISOS_MENU:
         keyboard = [
-            [InlineKeyboardButton("TITCEA", callback_data="TITCEA"),
-             InlineKeyboardButton("TITCC", callback_data="TITCC")],
-            [InlineKeyboardButton("TATCEA", callback_data="TATCEA"),
-             InlineKeyboardButton("TATCC", callback_data="TATCC")],
-            [InlineKeyboardButton("MATCEA", callback_data="MATCEA"),
-             InlineKeyboardButton("MATCC", callback_data="MATCC")],
-            [InlineKeyboardButton("TMTCEA", callback_data="TMTCEA"),
-             InlineKeyboardButton("TMTCC", callback_data="TMTCC")]
+            [InlineKeyboardButton("Si", callback_data='si'),
+             InlineKeyboardButton("No", callback_data='no')]
         ]
-    elif category == 'reserva':
-        keyboard = [
-            [InlineKeyboardButton("TITREA", callback_data="TITREA"),
-             InlineKeyboardButton("TITRC", callback_data="TITRC")],
-            [InlineKeyboardButton("TATREA", callback_data="TATREA"),
-             InlineKeyboardButton("TATRC", callback_data="TATRC")],
-            [InlineKeyboardButton("MATREA", callback_data="MATREA"),
-             InlineKeyboardButton("MATRC", callback_data="MATRC")],
-            [InlineKeyboardButton("TMTREA", callback_data="TMTREA"),
-             InlineKeyboardButton("TMTRC", callback_data="TMTRC")]
-        ]
-    elif category == 'intermediario':
-        keyboard = [
-            [InlineKeyboardButton("TITHEA", callback_data="TITHEA"),
-             InlineKeyboardButton("TITHC", callback_data="TITHC")],
-            [InlineKeyboardButton("TATHEA", callback_data="TATHEA"),
-             InlineKeyboardButton("TATHC", callback_data="TATHC")],
-            [InlineKeyboardButton("MATHEA", callback_data="MATHEA"),
-             InlineKeyboardButton("MATHC", callback_data="MATHC")],
-            [InlineKeyboardButton("TMTHEA", callback_data="TMTHEA"),
-             InlineKeyboardButton("TMTHC", callback_data="TMTHC")]
-        ]
-    else:
-        query.edit_message_text("Opción no válida.")
-        return ConversationHandler.END
-
-    keyboard = add_back_button(keyboard)
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(f"Categoría seleccionada: {category.capitalize()}\nAhora seleccione el detalle de reparación:", reply_markup=reply_markup)
-    context.user_data["current_state"] = REPAIR_DETAIL
-    return REPAIR_DETAIL
-
-def handle_repair_detail(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    if query.data == "back":
-        return back_handler(update, context)
-    repair_detail = query.data
-    context.user_data['repair_detail'] = repair_detail
-    query.edit_message_text(f"Detalle seleccionado: {repair_detail}")
-    query.message.reply_text("Indique tipo de tapa y medidas:\n(O escriba 'Atrás' para volver)")
-    context.user_data["current_state"] = TAPA_MEDIDAS
-    return TAPA_MEDIDAS
-
-def get_tapa_medidas(update: Update, context: CallbackContext) -> int:
-    if update.message.text.lower()
+        reply_markup = InlineKeyboardMarkup(keyboard)
