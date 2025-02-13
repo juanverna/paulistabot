@@ -269,4 +269,9 @@ def handle_repair_detail(update: Update, context: CallbackContext) -> int:
     return TAPA_MEDIDAS
 
 def get_tapa_medidas(update: Update, context: CallbackContext) -> int:
-    if update.message.text.lower()
+    if update.message.text.lower() == "atrás":
+        return back_handler(update, context)
+    context.user_data['tapa_medidas'] = update.message.text
+    update.message.reply_text("Por favor, envíe una foto del tanque:\n(O escriba 'Atrás' para volver)")
+    context.user_data["current_state"] = FOTO_TANQUE
+    return FOTO_TANQUE
