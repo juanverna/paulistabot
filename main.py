@@ -31,25 +31,32 @@ logger = logging.getLogger(__name__)
 # 4: FUMIGATION (¿Qué unidades contienen insectos?)
 # 15: FUM_OBS (Observaciones para la próxima visita)
 # 16: FUM_PHOTOS (Adjuntar fotos para fumigación)
-# 17: FUM_AVISOS (Respuesta a "Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?")
-# 18: FUM_AVISOS_MENU (Menú: "Entregaste avisos en otras direcciones?")
+# 17: FUM_AVISOS (Respuesta a avisos para el próximo mes)
+# 18: FUM_AVISOS_MENU (Menú: avisos en otras direcciones)
 # 19: FUM_AVISOS_TEXT (En qué direcciones, si respondió afirmativo)
 #
 # Para limpieza y reparación:
 # 5: TANK_TYPE (Seleccione el tipo de tanque)
-# 6: REPAIR_FIRST (Observaciones para la opción seleccionada)
+# 6: REPAIR_FIRST (Observaciones y reparación de la opción principal)
 # 7: ASK_SECOND (¿Quiere comentar algo sobre la primera alternativa?)
 # 8: REPAIR_SECOND (Observaciones para la primera alternativa)
 # 9: ASK_THIRD (¿Quiere comentar algo sobre la segunda alternativa?)
 # 10: REPAIR_THIRD (Observaciones para la segunda alternativa)
 # 11: PHOTOS (Adjuntar fotos para limpieza/reparación)
 # 12: CONTACT (Nombre y teléfono del encargado)
-# 13: AVISOS_MENU (Menú: "Entregaste avisos en otras direcciones?")
+# 13: AVISOS_MENU (Menú: avisos en otras direcciones)
 # 14: AVISOS_TEXT (Direcciones adicionales)
+#
+# Estados nuevos para medidas de tanques (rama de limpieza/reparación):
+# 20: ALTO (Medida de alto del tanque)
+# 21: ANCHO (Medida de ancho del tanque)
+# 22: PROFUNDO (Medida de profundo del tanque)
+# 23: TAPAS (Medida de las tapas)
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
  REPAIR_FIRST, ASK_SECOND, REPAIR_SECOND, ASK_THIRD, REPAIR_THIRD,
  PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT, 
- FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT) = range(20)
+ FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
+ ALTO, ANCHO, PROFUNDO, TAPAS) = range(24)
 
 # =============================================================================
 # DICTIONARIO DE RETROCESO (“ATRÁS”)
@@ -60,7 +67,12 @@ BACK_MAP = {
     SERVICE: ADDRESS,
     FUMIGATION: SERVICE,
     TANK_TYPE: SERVICE,
-    REPAIR_FIRST: TANK_TYPE,
+    # Para la rama de limpieza, se actualizan los retrocesos:
+    ALTO: TANK_TYPE,
+    ANCHO: ALTO,
+    PROFUNDO: ANCHO,
+    TAPAS: PROFUNDO,
+    REPAIR_FIRST: TAPAS,  # Desde observaciones, si se va atrás vuelve a TAPAS
     ASK_SECOND: REPAIR_FIRST,
     REPAIR_SECOND: ASK_SECOND,
     ASK_THIRD: REPAIR_SECOND,
@@ -95,7 +107,7 @@ def send_email(data, update: Update, context: CallbackContext):
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = RECIPIENT_EMAIL
 
-    # Se arma el encabezado común
+    # Encabezado común
     body = f"""Formulario completado:
 Código de empleado: {data.get('code', 'N/A')}
 Orden de trabajo: {data.get('order', 'N/A')}
@@ -103,7 +115,6 @@ Dirección: {data.get('address', 'N/A')}
 Servicio: {data.get('service', 'N/A')}
 """
     service = data.get('service', 'N/A')
-    # Se arma el cuerpo según el rubro elegido
     if service == "Fumigacion":
         body += f"Unidades con insectos: {data.get('fumigated_units', 'N/A')}\n"
         body += f"Observaciones para la próxima visita: {data.get('fum_obs', 'N/A')}\n"
@@ -112,6 +123,10 @@ Servicio: {data.get('service', 'N/A')}
     elif service == "limpieza":
         selected = data.get("selected_category", "N/A").capitalize()
         body += f"Tipo de tanque seleccionado: {selected}\n"
+        body += f"Medida de ALTO: {data.get('alto', 'N/A')}\n"
+        body += f"Medida de ANCHO: {data.get('ancho', 'N/A')}\n"
+        body += f"Medida de PROFUNDO: {data.get('profundo', 'N/A')}\n"
+        body += f"Medida de las TAPAS: {data.get('tapas', 'N/A')}\n"
         body += f"Observaciones y reparación de {selected}: {data.get('repair_'+data.get('selected_category',''), 'N/A')}\n"
         if data.get('repair_'+data.get('alternative_1','')):
             alt1 = data.get("alternative_1", "").capitalize()
@@ -122,12 +137,11 @@ Servicio: {data.get('service', 'N/A')}
         body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
         body += f"Avisos: {data.get('avisos_address', 'N/A')}\n"
     else:
-        # En caso de que no se reconozca el servicio, se envían solo los campos comunes
         body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
 
     msg.attach(MIMEText(body, 'plain'))
 
-    # Descargar y adjuntar las imágenes enviadas por el usuario
+    # Adjuntar imágenes
     photos = data.get("photos")
     if photos:
         for idx, file_id in enumerate(photos, start=1):
@@ -193,7 +207,6 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=chat_id, text="¿Qué unidades contienen insectos?")
     elif state == FUM_OBS:
         context.bot.send_message(chat_id=chat_id, text="Marque las observaciones para la próxima visita:")
-    # Para fumigación: pedir fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO
     elif state == FUM_PHOTOS:
         context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:")
     elif state == FUM_AVISOS:
@@ -215,6 +228,14 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         context.bot.send_message(chat_id=chat_id, text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
+    elif state == ALTO:
+        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ALTO del tanque:")
+    elif state == ANCHO:
+        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ANCHO del tanque:")
+    elif state == PROFUNDO:
+        context.bot.send_message(chat_id=chat_id, text="Indique la medida de PROFUNDO del tanque:")
+    elif state == TAPAS:
+        context.bot.send_message(chat_id=chat_id, text="Indique la medida de las TAPAS (47/8/9  50/1/2/5  51  54  56  58  62  69):")
     elif state == REPAIR_FIRST:
         sel = context.user_data.get("selected_category", "la opción").capitalize()
         context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {sel}:")
@@ -240,7 +261,6 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     elif state == REPAIR_THIRD:
         alt2 = context.user_data.get("alternative_2", "la segunda alternativa").capitalize()
         context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2}:")
-    # Para limpieza y reparación: pedir fotos de ORDEN DE TRABAJO, FICHA y TANQUES
     elif state == PHOTOS:
         context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES (cada foto en un mensaje separado):")
     elif state == CONTACT:
@@ -262,7 +282,6 @@ def re_ask(state: int, update: Update, context: CallbackContext):
 # =============================================================================
 def start_conversation(update: Update, context: CallbackContext) -> int:
     logger.debug("Inicio de conversación.")
-    # Se limpian los datos de conversaciones previas para evitar que se acumulen imágenes u otros datos.
     context.user_data.clear()
     update.message.reply_text("¡Hola! Inserte su código:")
     context.user_data["current_state"] = CODE
@@ -283,7 +302,6 @@ def get_order(update: Update, context: CallbackContext) -> int:
     logger.debug("get_order: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    # Se requiere que el número de orden tenga EXACTAMENTE 7 dígitos
     if not text.isdigit() or len(text) != 7:
         update.message.reply_text("Por favor, ingrese un número de orden numérico de EXACTAMENTE 7 dígitos:")
         return ORDER
@@ -337,7 +355,6 @@ def service_selection(update: Update, context: CallbackContext) -> int:
 
 # Funciones para la rama de fumigación
 def fumigation_data(update: Update, context: CallbackContext) -> int:
-    """Recoge las unidades con insectos para fumigación."""
     text = update.message.text
     logger.debug("fumigation_data: %s", text)
     if text.lower().replace("á", "a") == "atras":
@@ -348,7 +365,6 @@ def fumigation_data(update: Update, context: CallbackContext) -> int:
     return FUM_OBS
 
 def get_fum_obs(update: Update, context: CallbackContext) -> int:
-    """Recoge las observaciones para la próxima visita en fumigación."""
     text = update.message.text
     logger.debug("get_fum_obs: %s", text)
     if text.lower().replace("á", "a") == "atras":
@@ -359,7 +375,6 @@ def get_fum_obs(update: Update, context: CallbackContext) -> int:
     return FUM_PHOTOS
 
 def get_fum_avisos(update: Update, context: CallbackContext) -> int:
-    """Recoge la respuesta a 'Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?' vía texto."""
     text = update.message.text
     logger.debug("get_fum_avisos: %s", text)
     if text.lower().replace("á", "a") == "atras":
@@ -375,29 +390,68 @@ def get_fum_avisos(update: Update, context: CallbackContext) -> int:
     return FUM_AVISOS_MENU
 
 def handle_fum_avisos_callback(update: Update, context: CallbackContext) -> int:
-    """Procesa la respuesta a 'Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?' vía botones inline."""
     query = update.callback_query
     query.answer()
     logger.debug("handle_fum_avisos_callback: %s", query.data)
     context.user_data['fum_avisos'] = query.data
-    # Se podría continuar con otro flujo, pero en este caso no se utiliza.
     return ConversationHandler.END
 
-# Funciones para la rama de limpieza y reparación (se mantienen sin cambios salvo las modificaciones indicadas)
+# Funciones para la rama de limpieza y reparación
 def handle_tank_type(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
     logger.debug("handle_tank_type: %s", query.data)
     if query.data == "back":
         return back_handler(update, context)
-    selected = query.data  # 'cisterna', 'reserva' o 'intermediario'
+    selected = query.data
     context.user_data["selected_category"] = selected
     alternatives = [x for x in ["cisterna", "reserva", "intermediario"] if x != selected]
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
     query.edit_message_text(f"Tipo de tanque seleccionado: {selected.capitalize()}")
-    context.bot.send_message(chat_id=update.effective_chat.id,
-         text=f"Indique las observaciones y reparación de {selected.capitalize()}:")
+    # Inicia la secuencia de mediciones antes de las observaciones
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Indique la medida de ALTO del tanque:")
+    context.user_data["current_state"] = ALTO
+    return ALTO
+
+def get_alto(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_alto: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    context.user_data['alto'] = text
+    update.message.reply_text("Indique la medida de ANCHO del tanque:")
+    context.user_data["current_state"] = ANCHO
+    return ANCHO
+
+def get_ancho(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_ancho: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    context.user_data['ancho'] = text
+    update.message.reply_text("Indique la medida de PROFUNDO del tanque:")
+    context.user_data["current_state"] = PROFUNDO
+    return PROFUNDO
+
+def get_profundo(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_profundo: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    context.user_data['profundo'] = text
+    update.message.reply_text("Indique la medida de las TAPAS (47/8/9  50/1/2/5  51  54  56  58  62  69):")
+    context.user_data["current_state"] = TAPAS
+    return TAPAS
+
+def get_tapas(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_tapas: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    context.user_data['tapas'] = text
+    selected = context.user_data.get("selected_category", "N/A").capitalize()
+    update.message.reply_text(f"Indique las observaciones y reparación de {selected}:")
     context.user_data["current_state"] = REPAIR_FIRST
     return REPAIR_FIRST
 
@@ -501,29 +555,16 @@ def get_repair_third(update: Update, context: CallbackContext) -> int:
     return PHOTOS
 
 # =============================================================================
-# Función para el manejo de fotos (usadas tanto en limpieza como en fumigación)
+# Función para el manejo de fotos (aplicable en ambas ramas)
 # =============================================================================
 def handle_photos(update: Update, context: CallbackContext) -> int:
-    """
-    Maneja la recepción de fotos.
-
-    Para fumigaciones: se requieren 2 fotos (ORDEN DE TRABAJO y PORTERO ELECTRICO).  
-    Para tanques: se requieren 3 fotos (ORDEN DE TRABAJO, FICHA y TANQUES),
-    cada una enviada en un mensaje separado.
-
-    Si el mensaje recibido no contiene imagen o se adjunta un archivo inválido,
-    se muestra un mensaje de error.
-    """
-    # Determinar la cantidad requerida según el servicio
     service = context.user_data.get('service')
     if service == "Fumigacion":
         required_count = 2
-        target_state = FUM_PHOTOS  # Estado actual en fumigación
+        target_state = FUM_PHOTOS
     else:
         required_count = 3
-        target_state = PHOTOS       # Estado actual en limpieza/reparación
-
-    # Validar que el archivo adjuntado sea una imagen
+        target_state = PHOTOS
     if not update.message.photo:
         if update.message.document:
             mime_type = update.message.document.mime_type
@@ -535,8 +576,6 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             update.message.reply_text("Por favor, adjunte un archivo de imagen válido. No se permite avanzar sin una imagen.")
             context.user_data["current_state"] = target_state
             return target_state
-
-    # Para limpieza y reparación: asegurar que cada imagen se envíe en un mensaje separado.
     if service != "Fumigacion" and update.message.media_group_id:
         if context.user_data.get("last_media_group_id") == update.message.media_group_id:
             update.message.reply_text("Por favor, envíe cada imagen en un mensaje separado.")
@@ -544,14 +583,11 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             return target_state
         else:
             context.user_data["last_media_group_id"] = update.message.media_group_id
-
-    # Procesar la imagen
     photos = context.user_data.get("photos", [])
     file_id = update.message.photo[-1].file_id
     photos.append(file_id)
     context.user_data["photos"] = photos
     logger.debug("Fotos acumuladas: %s", len(photos))
-
     if len(photos) < required_count:
         if required_count == 2:
             update.message.reply_text("Por favor cargue la segunda foto.")
@@ -563,8 +599,6 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = target_state
         return target_state
     else:
-        # Modificación solicitada: Para fumigaciones, luego de recibir las fotos se pasa a pedir
-        # "Ingrese el Nombre y teléfono del encargado:" en lugar de preguntar avisos.
         if service == "Fumigacion":
             update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
             context.user_data["current_state"] = CONTACT
@@ -574,9 +608,8 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             context.user_data["current_state"] = CONTACT
             return CONTACT
 
-# Funciones para fumigación avisos en otras direcciones
+# Funciones para avisos adicionales en fumigación
 def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
-    """Maneja la respuesta al menú de avisos adicionales en fumigación."""
     query = update.callback_query
     query.answer()
     logger.debug("handle_fum_avisos_menu: %s", query.data)
@@ -590,7 +623,7 @@ def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
         query.edit_message_text("Gracias!")
         return ConversationHandler.END
 
-# Función para limpieza y reparación (continuación)
+# Función para la parte final de limpieza y reparación
 def get_contact(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     logger.debug("get_contact: %s", text)
@@ -690,6 +723,18 @@ def main():
                 CallbackQueryHandler(handle_tank_type),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
             ],
+            ALTO: [
+                MessageHandler(Filters.text & ~Filters.command, get_alto)
+            ],
+            ANCHO: [
+                MessageHandler(Filters.text & ~Filters.command, get_ancho)
+            ],
+            PROFUNDO: [
+                MessageHandler(Filters.text & ~Filters.command, get_profundo)
+            ],
+            TAPAS: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas)
+            ],
             REPAIR_FIRST: [
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_repair_first)
@@ -704,7 +749,7 @@ def main():
             ],
             ASK_THIRD: [
                 CallbackQueryHandler(handle_ask_third),
-                MessageHandler(Filters.text & ~Filters.command, lambda u, c: back_handler(u, c))  # fallback
+                MessageHandler(Filters.text & ~Filters.command, lambda u, c: back_handler(u, c))
             ],
             REPAIR_THIRD: [
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
