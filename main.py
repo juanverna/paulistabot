@@ -109,9 +109,6 @@ Servicio: {data.get('service', 'N/A')}
         body += f"Observaciones para la próxima visita: {data.get('fum_obs', 'N/A')}\n"
         body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
         body += f"Avisos: {data.get('avisos_address', 'N/A')}\n"
-        body += f"Respuesta a avisos para el próximo mes: {data.get('fum_avisos', 'N/A')}\n"
-        body += f"Respuesta a avisos en otras direcciones: {data.get('fum_avisos_menu', 'N/A')}\n"
-        body += f"Direcciones adicionales: {data.get('fum_avisos_text', 'N/A')}\n"
     elif service == "limpieza":
         selected = data.get("selected_category", "N/A").capitalize()
         body += f"Tipo de tanque seleccionado: {selected}\n"
