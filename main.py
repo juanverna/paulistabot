@@ -95,16 +95,24 @@ def send_email(data, update: Update, context: CallbackContext):
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = RECIPIENT_EMAIL
 
+    # Se arma el encabezado común
     body = f"""Formulario completado:
 Código de empleado: {data.get('code', 'N/A')}
 Orden de trabajo: {data.get('order', 'N/A')}
 Dirección: {data.get('address', 'N/A')}
 Servicio: {data.get('service', 'N/A')}
 """
-    if data.get('service') == "Fumigacion":
+    service = data.get('service', 'N/A')
+    # Se arma el cuerpo según el rubro elegido
+    if service == "Fumigacion":
         body += f"Unidades con insectos: {data.get('fumigated_units', 'N/A')}\n"
         body += f"Observaciones para la próxima visita: {data.get('fum_obs', 'N/A')}\n"
-    else:
+        body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
+        body += f"Avisos: {data.get('avisos_address', 'N/A')}\n"
+        body += f"Respuesta a avisos para el próximo mes: {data.get('fum_avisos', 'N/A')}\n"
+        body += f"Respuesta a avisos en otras direcciones: {data.get('fum_avisos_menu', 'N/A')}\n"
+        body += f"Direcciones adicionales: {data.get('fum_avisos_text', 'N/A')}\n"
+    elif service == "limpieza":
         selected = data.get("selected_category", "N/A").capitalize()
         body += f"Tipo de tanque seleccionado: {selected}\n"
         body += f"Observaciones y reparación de {selected}: {data.get('repair_'+data.get('selected_category',''), 'N/A')}\n"
@@ -114,14 +122,11 @@ Servicio: {data.get('service', 'N/A')}
         if data.get('repair_'+data.get('alternative_2','')):
             alt2 = data.get("alternative_2", "").capitalize()
             body += f"Observaciones y reparación de {alt2}: {data.get('repair_'+data.get('alternative_2',''), 'N/A')}\n"
-    body += f"""Nombre y teléfono del encargado: {data.get('contact', 'N/A')}
-Avisos: {data.get('avisos_address', 'N/A')}
-"""
-    # Para fumigación, se añaden las respuestas de avisos
-    if data.get('service') == "Fumigacion":
-        body += f"Respuesta a avisos para el próximo mes: {data.get('fum_avisos', 'N/A')}\n"
-        body += f"Respuesta a avisos en otras direcciones: {data.get('fum_avisos_menu', 'N/A')}\n"
-        body += f"Direcciones adicionales: {data.get('fum_avisos_text', 'N/A')}\n"
+        body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
+        body += f"Avisos: {data.get('avisos_address', 'N/A')}\n"
+    else:
+        # En caso de que no se reconozca el servicio, se envían solo los campos comunes
+        body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
 
     msg.attach(MIMEText(body, 'plain'))
 
