@@ -82,7 +82,7 @@ BACK_MAP = {
 # =============================================================================
 RECIPIENT_EMAIL = "botpaulista25@gmail.com"
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "cdit tfcr ttfn vurm")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
 
 # =============================================================================
@@ -95,37 +95,48 @@ def send_email(data, update: Update, context: CallbackContext):
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = RECIPIENT_EMAIL
 
-    body = f"""Formulario completado:
-Código de empleado: {data.get('code', 'N/A')}
-Orden de trabajo: {data.get('order', 'N/A')}
-Dirección: {data.get('address', 'N/A')}
-Servicio: {data.get('service', 'N/A')}
-"""
-    if data.get('service') == "Fumigacion":
-        body += f"Unidades con insectos: {data.get('fumigated_units', 'N/A')}\n"
-        body += f"Observaciones para la próxima visita: {data.get('fum_obs', 'N/A')}\n"
-    else:
-        selected = data.get("selected_category", "N/A").capitalize()
-        body += f"Tipo de tanque seleccionado: {selected}\n"
-        body += f"Observaciones y reparación de {selected}: {data.get('repair_'+data.get('selected_category',''), 'N/A')}\n"
-        if data.get('repair_'+data.get('alternative_1','')):
-            alt1 = data.get("alternative_1", "").capitalize()
-            body += f"Observaciones y reparación de {alt1}: {data.get('repair_'+data.get('alternative_1',''), 'N/A')}\n"
-        if data.get('repair_'+data.get('alternative_2','')):
-            alt2 = data.get("alternative_2", "").capitalize()
-            body += f"Observaciones y reparación de {alt2}: {data.get('repair_'+data.get('alternative_2',''), 'N/A')}\n"
-    body += f"""Nombre y teléfono del encargado: {data.get('contact', 'N/A')}
-Avisos: {data.get('avisos_address', 'N/A')}
-"""
-    # Para fumigación, se añaden las respuestas de avisos
-    if data.get('service') == "Fumigacion":
-        body += f"Respuesta a avisos para el próximo mes: {data.get('fum_avisos', 'N/A')}\n"
-        body += f"Respuesta a avisos en otras direcciones: {data.get('fum_avisos_menu', 'N/A')}\n"
-        body += f"Direcciones adicionales: {data.get('fum_avisos_text', 'N/A')}\n"
+    # Construir el cuerpo del correo usando una lista de líneas
+    body_lines = []
+    body_lines.append("Formulario completado:")
+    body_lines.append(f"Código de empleado: {data.get('code', 'N/A')}")
+    body_lines.append(f"Orden de trabajo: {data.get('order', 'N/A')}")
+    body_lines.append(f"Dirección: {data.get('address', 'N/A')}")
+    body_lines.append(f"Servicio: {data.get('service', 'N/A')}")
 
+    if data.get('service') == "Fumigacion":
+        # Incluimos sólo las respuestas que se preguntaron en fumigación
+        body_lines.append(f"Unidades con insectos: {data.get('fumigated_units', 'N/A')}")
+        body_lines.append(f"Observaciones para la próxima visita: {data.get('fum_obs', 'N/A')}")
+        if data.get('contact'):
+            body_lines.append(f"Nombre y teléfono del encargado: {data.get('contact')}")
+        # Si se hicieron preguntas adicionales sobre avisos en fumigación, se incluyen solo si se respondieron
+        if data.get('fum_avisos'):
+            body_lines.append(f"Respuesta a avisos para el próximo mes: {data.get('fum_avisos')}")
+        if data.get('fum_avisos_menu'):
+            body_lines.append(f"Respuesta a avisos en otras direcciones: {data.get('fum_avisos_menu')}")
+        if data.get('fum_avisos_text'):
+            body_lines.append(f"Direcciones adicionales: {data.get('fum_avisos_text')}")
+    else:
+        # Ramo de limpieza y reparación
+        selected = data.get("selected_category", "N/A").capitalize()
+        body_lines.append(f"Tipo de tanque seleccionado: {selected}")
+        repair_field = f"repair_{data.get('selected_category','')}"
+        body_lines.append(f"Observaciones y reparación de {selected}: {data.get(repair_field, 'N/A')}")
+        if data.get('alternative_1') and data.get(f"repair_{data.get('alternative_1','')}"):
+            alt1 = data.get("alternative_1", "").capitalize()
+            body_lines.append(f"Observaciones y reparación de {alt1}: {data.get('repair_'+data.get('alternative_1',''), 'N/A')}")
+        if data.get('alternative_2') and data.get(f"repair_{data.get('alternative_2','')}"):
+            alt2 = data.get("alternative_2", "").capitalize()
+            body_lines.append(f"Observaciones y reparación de {alt2}: {data.get('repair_'+data.get('alternative_2',''), 'N/A')}")
+        if data.get('contact'):
+            body_lines.append(f"Nombre y teléfono del encargado: {data.get('contact')}")
+        if data.get('avisos_address'):
+            body_lines.append(f"Avisos: {data.get('avisos_address')}")
+
+    body = "\n".join(body_lines)
     msg.attach(MIMEText(body, 'plain'))
 
-    # Descargar y adjuntar las imágenes enviadas por el usuario
+    # Adjuntar imágenes (si las hay)
     photos = data.get("photos")
     if photos:
         for idx, file_id in enumerate(photos, start=1):
