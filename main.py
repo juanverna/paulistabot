@@ -260,6 +260,8 @@ def re_ask(state: int, update: Update, context: CallbackContext):
 # =============================================================================
 def start_conversation(update: Update, context: CallbackContext) -> int:
     logger.debug("Inicio de conversación.")
+    # Se limpian los datos de conversaciones previas para evitar que se acumulen imágenes u otros datos.
+    context.user_data.clear()
     update.message.reply_text("¡Hola! Inserte su código:")
     context.user_data["current_state"] = CODE
     return CODE
