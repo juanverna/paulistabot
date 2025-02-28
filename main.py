@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 # 5: TANK_TYPE (Seleccione el tipo de tanque)
 # 6: REPAIR_FIRST (Observaciones y reparación del tanque principal)
 # 7: ASK_SECOND (¿Quiere comentar algo sobre la 1ª alternativa?)
-# 8: REPAIR_SECOND (Observaciones y reparación de la 1ª alternativa)
+# 8: REPAIR_SECOND (Observaciones y reparación de la 1ª alternativa) -> No se usa en el nuevo flujo
 # 9: ASK_THIRD (¿Quiere comentar algo sobre la 2ª alternativa?)
-# 10: REPAIR_THIRD (Observaciones y reparación de la 2ª alternativa)
+# 10: REPAIR_THIRD (Observaciones y reparación de la 2ª alternativa) -> No se usa en el nuevo flujo
 # 11: PHOTOS (Adjuntar fotos para limpieza/reparación)
 # 12: CONTACT (Nombre y teléfono del encargado)
 # 13: AVISOS_MENU (Menú: avisos en otras direcciones)
@@ -152,7 +152,6 @@ Servicio: {data.get('service', 'N/A')}
         if data.get('repair_'+data.get('alternative_2','')):
             alt2 = data.get("alternative_2", "").capitalize()
             body += f"Observaciones y reparación de {alt2}: {data.get('repair_'+data.get('alternative_2',''), 'N/A')}\n"
-        # Se incluye también la información de las alternativas, si se completaron:
         if data.get('alto_alt1'):
             body += f"\n[Alternativa 1]\nMedida de ALTO: {data.get('alto_alt1', 'N/A')}\n"
             body += f"Medida de ANCHO: {data.get('ancho_alt1', 'N/A')}\n"
@@ -432,6 +431,21 @@ def get_fum_avisos(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = FUM_AVISOS_MENU
     return FUM_AVISOS_MENU
 
+# Función para fumigación: DEFINICIÓN de handle_fum_avisos_menu
+def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    logger.debug("handle_fum_avisos_menu: %s", query.data)
+    if query.data.lower() == "back":
+        return back_handler(update, context)
+    if query.data.lower() == "si":
+        query.edit_message_text("¿En qué direcciones? (Separe las direcciones con una coma)")
+        context.user_data["current_state"] = FUM_AVISOS_TEXT
+        return FUM_AVISOS_TEXT
+    else:
+        query.edit_message_text("Gracias!")
+        return ConversationHandler.END
+
 def handle_fum_avisos_callback(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
@@ -446,7 +460,7 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
     logger.debug("handle_tank_type: %s", query.data)
     if query.data == "back":
         return back_handler(update, context)
-    selected = query.data  # 'cisterna', 'reserva' o 'intermediario'
+    selected = query.data
     context.user_data["selected_category"] = selected
     alternatives = [x for x in ["cisterna", "reserva", "intermediario"] if x != selected]
     context.user_data["alternative_1"] = alternatives[0]
@@ -504,7 +518,6 @@ def get_repair_first(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     sel = context.user_data.get("selected_category")
     context.user_data[f'repair_{sel}'] = text
-    # Preguntar sobre la 1ª alternativa
     alt1 = context.user_data.get("alternative_1")
     keyboard = [
         [InlineKeyboardButton("Si", callback_data='si'),
@@ -821,18 +834,24 @@ def main():
             ANCHO: [MessageHandler(Filters.text & ~Filters.command, get_ancho)],
             PROFUNDO: [MessageHandler(Filters.text & ~Filters.command, get_profundo)],
             TAPAS: [MessageHandler(Filters.text & ~Filters.command, get_tapas)],
-            REPAIR_FIRST: [MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
-                           MessageHandler(Filters.text & ~Filters.command, get_repair_first)],
-            ASK_SECOND: [CallbackQueryHandler(handle_ask_second),
-                         MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)],
+            REPAIR_FIRST: [
+                MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_repair_first)
+            ],
+            ASK_SECOND: [
+                CallbackQueryHandler(handle_ask_second),
+                MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
+            ],
             # Estados para alternativa 1
             ALTO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_alto_alt1)],
             ANCHO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_ancho_alt1)],
             PROFUNDO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_profundo_alt1)],
             TAPAS_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_alt1)],
             REPAIR_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)],
-            ASK_THIRD: [CallbackQueryHandler(handle_ask_third),
-                        MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)],
+            ASK_THIRD: [
+                CallbackQueryHandler(handle_ask_third),
+                MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
+            ],
             # Estados para alternativa 2
             ALTO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_alto_alt2)],
             ANCHO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_ancho_alt2)],
