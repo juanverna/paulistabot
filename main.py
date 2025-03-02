@@ -15,9 +15,9 @@ from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler
 # =============================================================================
 def apply_bold_keywords(text: str) -> str:
     """
-    Envuelve en <b></b> las palabras 'cisterna', 'reserva' e 'intermediario' (case-insensitive).
+    Envuelve en <b></b> las palabras 'CISTERNA', 'RESERVA' e 'INTERMEDIARIO' (case-insensitive).
     """
-    pattern = r"(?i)\b(cisterna|reserva|intermediario)\b"
+    pattern = r"(?i)\b(CISTERNA|RESERVA|INTERMEDIARIO)\b"
     return re.sub(pattern, lambda m: f"<b>{m.group(0)}</b>", text)
 
 # =============================================================================
@@ -182,9 +182,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         )
     elif state == TANK_TYPE:
         keyboard = [
-            [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
-            [InlineKeyboardButton("RESERVA", callback_data='reserva')],
-            [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
+            [InlineKeyboardButton("CISTERNA", callback_data='CISTERNA')],
+            [InlineKeyboardButton("RESERVA", callback_data='RESERVA')],
+            [InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         context.bot.send_message(
@@ -414,9 +414,9 @@ def service_selection(update: Update, context: CallbackContext) -> int:
             parse_mode=ParseMode.HTML
         )
         keyboard = [
-            [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
-            [InlineKeyboardButton("RESERVA", callback_data='reserva')],
-            [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
+            [InlineKeyboardButton("CISTERNA", callback_data='CISTERNA')],
+            [InlineKeyboardButton("RESERVA", callback_data='RESERVA')],
+            [InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         context.bot.send_message(
@@ -509,7 +509,7 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     selected = query.data
     context.user_data["selected_category"] = selected
-    alternatives = [x for x in ["cisterna", "reserva", "intermediario"] if x != selected]
+    alternatives = [x for x in ["CISTERNA", "RESERVA", "INTERMEDIARIO"] if x != selected]
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
     query.edit_message_text(
