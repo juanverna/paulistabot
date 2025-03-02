@@ -38,27 +38,39 @@ logger = logging.getLogger(__name__)
 # Para limpieza y reparación:
 # 5: TANK_TYPE (Seleccione el tipo de tanque)
 # 6: REPAIR_FIRST (Observaciones y reparación del tanque principal)
-# 7: ASK_SECOND (¿Quiere comentar algo sobre la 1ª alternativa?)
-# 8: REPAIR_SECOND (Observaciones y reparación de la 1ª alternativa) -> No se usa en el nuevo flujo
-# 9: ASK_THIRD (¿Quiere comentar algo sobre la 2ª alternativa?)
-# 10: REPAIR_THIRD (Observaciones y reparación de la 2ª alternativa) -> No se usa en el nuevo flujo
+# 7: ASK_SECOND (¿Quiere comentar algo sobre la opción alternativa 1?)
+# 9: ASK_THIRD (¿Quiere comentar algo sobre la opción alternativa 2?)
 # 11: PHOTOS (Adjuntar fotos para limpieza/reparación)
 # 12: CONTACT (Nombre y teléfono del encargado)
 # 13: AVISOS_MENU (Menú: avisos en otras direcciones)
 # 14: AVISOS_TEXT (Direcciones adicionales)
-# Medidas para el tanque principal:
-# 20: ALTO, 21: ANCHO, 22: PROFUNDO, 23: TAPAS
-# Medidas para la 1ª alternativa:
-# 24: ALTO_ALT1, 25: ANCHO_ALT1, 26: PROFUNDO_ALT1, 27: TAPAS_ALT1, 28: REPAIR_ALT1
-# Medidas para la 2ª alternativa:
-# 29: ALTO_ALT2, 30: ANCHO_ALT2, 31: PROFUNDO_ALT2, 32: TAPAS_ALT2, 33: REPAIR_ALT2
+#
+# Para el tanque principal (medidas combinadas):
+# 20: MEASURE_MAIN (Formato: ALTO, ANCHO, PROFUNDO)
+# 21: TAPAS_INSPECCION_MAIN
+# 22: TAPAS_ACCESO_MAIN
+#
+# Para la 1ª alternativa:
+# 23: MEASURE_ALT1
+# 24: TAPAS_INSPECCION_ALT1
+# 25: TAPAS_ACCESO_ALT1
+# 26: REPAIR_ALT1 (Observaciones y reparación para la alternativa 1)
+#
+# Para la 2ª alternativa:
+# 27: MEASURE_ALT2
+# 28: TAPAS_INSPECCION_ALT2
+# 29: TAPAS_ACCESO_ALT2
+# 30: REPAIR_ALT2 (Observaciones y reparación para la alternativa 2)
+#
+# Nueva pregunta para horario:
+# 31: TASK_SCHEDULE (Horario de INICIO y FIN de tareas)
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
- REPAIR_FIRST, ASK_SECOND, REPAIR_SECOND, ASK_THIRD, REPAIR_THIRD,
- PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT, 
+ REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT, 
  FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
- ALTO, ANCHO, PROFUNDO, TAPAS,
- ALTO_ALT1, ANCHO_ALT1, PROFUNDO_ALT1, TAPAS_ALT1, REPAIR_ALT1,
- ALTO_ALT2, ANCHO_ALT2, PROFUNDO_ALT2, TAPAS_ALT2, REPAIR_ALT2) = range(34)
+ MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN,
+ MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, REPAIR_ALT1,
+ MEASURE_ALT2, TAPAS_INSPECCION_ALT2, TAPAS_ACCESO_ALT2, REPAIR_ALT2,
+ TASK_SCHEDULE) = range(32)
 
 # =============================================================================
 # DICTIONARIO DE RETROCESO (“ATRÁS”)
@@ -77,33 +89,26 @@ BACK_MAP = {
     FUM_AVISOS_TEXT: FUM_AVISOS_MENU,
     # Limpieza/Reparación – principal
     TANK_TYPE: SERVICE,
-    ALTO: TANK_TYPE,
-    ANCHO: ALTO,
-    PROFUNDO: ANCHO,
-    TAPAS: PROFUNDO,
-    REPAIR_FIRST: TAPAS,
+    MEASURE_MAIN: TANK_TYPE,
+    TAPAS_INSPECCION_MAIN: MEASURE_MAIN,
+    TAPAS_ACCESO_MAIN: TAPAS_INSPECCION_MAIN,
+    REPAIR_FIRST: TAPAS_ACCESO_MAIN,
     # Limpieza/Reparación – alternativas
     ASK_SECOND: REPAIR_FIRST,
-    # Para la 1ª alternativa:
-    ALTO_ALT1: ASK_SECOND,
-    ANCHO_ALT1: ALTO_ALT1,
-    PROFUNDO_ALT1: ANCHO_ALT1,
-    TAPAS_ALT1: PROFUNDO_ALT1,
-    REPAIR_ALT1: TAPAS_ALT1,
-    # Si en ASK_SECOND responde "no", se pasa a la 2ª alternativa:
+    MEASURE_ALT1: ASK_SECOND,
+    TAPAS_INSPECCION_ALT1: MEASURE_ALT1,
+    TAPAS_ACCESO_ALT1: TAPAS_INSPECCION_ALT1,
+    REPAIR_ALT1: TAPAS_ACCESO_ALT1,
     ASK_THIRD: REPAIR_FIRST,  # Si no comenta la 1ª, se pregunta sobre la 2ª
-    # Para la 2ª alternativa:
-    ALTO_ALT2: ASK_THIRD,
-    ANCHO_ALT2: ALTO_ALT2,
-    PROFUNDO_ALT2: ANCHO_ALT2,
-    TAPAS_ALT2: PROFUNDO_ALT2,
-    REPAIR_ALT2: TAPAS_ALT2,
+    MEASURE_ALT2: ASK_THIRD,
+    TAPAS_INSPECCION_ALT2: MEASURE_ALT2,
+    TAPAS_ACCESO_ALT2: TAPAS_INSPECCION_ALT2,
+    REPAIR_ALT2: TAPAS_ACCESO_ALT2,
     # Resto
-    REPAIR_SECOND: ASK_SECOND,  # (No se usa en este nuevo flujo)
-    REPAIR_THIRD: ASK_THIRD,    # (No se usa en este nuevo flujo)
     PHOTOS: REPAIR_FIRST,  # Para limpieza, PHOTOS retrocede a REPAIR_FIRST
     CONTACT: PHOTOS,
-    AVISOS_MENU: CONTACT,
+    TASK_SCHEDULE: CONTACT,
+    AVISOS_MENU: TASK_SCHEDULE,
     AVISOS_TEXT: AVISOS_MENU
 }
 
@@ -125,7 +130,6 @@ def send_email(data, update: Update, context: CallbackContext):
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = RECIPIENT_EMAIL
 
-    # Encabezado común
     body = f"""Formulario completado:
 Código de empleado: {data.get('code', 'N/A')}
 Orden de trabajo: {data.get('order', 'N/A')}
@@ -141,30 +145,24 @@ Servicio: {data.get('service', 'N/A')}
     elif service == "limpieza":
         selected = data.get("selected_category", "N/A").capitalize()
         body += f"Tipo de tanque seleccionado: {selected}\n"
-        body += f"Medida de ALTO: {data.get('alto', 'N/A')}\n"
-        body += f"Medida de ANCHO: {data.get('ancho', 'N/A')}\n"
-        body += f"Medida de PROFUNDO: {data.get('profundo', 'N/A')}\n"
-        body += f"Medida de las TAPAS: {data.get('tapas', 'N/A')}\n"
+        body += f"Medidas (ALTO, ANCHO, PROFUNDO): {data.get('measure_main', 'N/A')}\n"
+        body += f"TAPAS INSPECCIÓN: {data.get('tapas_inspeccion_main', 'N/A')}\n"
+        body += f"TAPAS ACCESO: {data.get('tapas_acceso_main', 'N/A')}\n"
         body += f"Observaciones y reparación de {selected}: {data.get('repair_'+data.get('selected_category',''), 'N/A')}\n"
-        if data.get('repair_'+data.get('alternative_1','')):
-            alt1 = data.get("alternative_1", "").capitalize()
-            body += f"Observaciones y reparación de {alt1}: {data.get('repair_'+data.get('alternative_1',''), 'N/A')}\n"
-        if data.get('repair_'+data.get('alternative_2','')):
-            alt2 = data.get("alternative_2", "").capitalize()
-            body += f"Observaciones y reparación de {alt2}: {data.get('repair_'+data.get('alternative_2',''), 'N/A')}\n"
-        if data.get('alto_alt1'):
-            body += f"\n[Alternativa 1]\nMedida de ALTO: {data.get('alto_alt1', 'N/A')}\n"
-            body += f"Medida de ANCHO: {data.get('ancho_alt1', 'N/A')}\n"
-            body += f"Medida de PROFUNDO: {data.get('profundo_alt1', 'N/A')}\n"
-            body += f"Medida de las TAPAS: {data.get('tapas_alt1', 'N/A')}\n"
+        if data.get('measure_alt1'):
+            alt1 = data.get("alternative_1").capitalize()
+            body += f"\n[Alternativa: {alt1}]\nMedidas (ALTO, ANCHO, PROFUNDO): {data.get('measure_alt1', 'N/A')}\n"
+            body += f"TAPAS INSPECCIÓN: {data.get('tapas_inspeccion_alt1', 'N/A')}\n"
+            body += f"TAPAS ACCESO: {data.get('tapas_acceso_alt1', 'N/A')}\n"
             body += f"Observaciones y reparación: {data.get('repair_alt1', 'N/A')}\n"
-        if data.get('alto_alt2'):
-            body += f"\n[Alternativa 2]\nMedida de ALTO: {data.get('alto_alt2', 'N/A')}\n"
-            body += f"Medida de ANCHO: {data.get('ancho_alt2', 'N/A')}\n"
-            body += f"Medida de PROFUNDO: {data.get('profundo_alt2', 'N/A')}\n"
-            body += f"Medida de las TAPAS: {data.get('tapas_alt2', 'N/A')}\n"
+        if data.get('measure_alt2'):
+            alt2 = data.get("alternative_2").capitalize()
+            body += f"\n[Alternativa: {alt2}]\nMedidas (ALTO, ANCHO, PROFUNDO): {data.get('measure_alt2', 'N/A')}\n"
+            body += f"TAPAS INSPECCIÓN: {data.get('tapas_inspeccion_alt2', 'N/A')}\n"
+            body += f"TAPAS ACCESO: {data.get('tapas_acceso_alt2', 'N/A')}\n"
             body += f"Observaciones y reparación: {data.get('repair_alt2', 'N/A')}\n"
         body += f"\nNombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
+        body += f"Horario de INICIO y FIN de tareas: {data.get('task_schedule', 'N/A')}\n"
         body += f"Avisos: {data.get('avisos_address', 'N/A')}\n"
     else:
         body += f"Nombre y teléfono del encargado: {data.get('contact', 'N/A')}\n"
@@ -252,61 +250,48 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         context.bot.send_message(chat_id=chat_id, text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
-    elif state == ALTO:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ALTO del tanque:")
-    elif state == ANCHO:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ANCHO del tanque:")
-    elif state == PROFUNDO:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de PROFUNDO del tanque:")
-    elif state == TAPAS:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de las TAPAS (47/8/9  50/1/2/5  51  54  56  58  62  69):")
+    elif state == MEASURE_MAIN:
+        selected = context.user_data.get("selected_category", "").capitalize()
+        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque de {selected} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    elif state == TAPAS_INSPECCION_MAIN:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN:")
+    elif state == TAPAS_ACCESO_MAIN:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO:")
     elif state == REPAIR_FIRST:
-        sel = context.user_data.get("selected_category", "la opción").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {sel}:")
+        selected = context.user_data.get("selected_category", "").capitalize()
+        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {selected}:")
     elif state == ASK_SECOND:
-        alt1 = context.user_data.get("alternative_1", "la primera alternativa").capitalize()
-        keyboard = [
-            [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt1}?", reply_markup=reply_markup)
-    elif state == ALTO_ALT1:
-        alt1 = context.user_data.get("alternative_1", "la primera alternativa").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida de ALTO del tanque para {alt1}:")
-    elif state == ANCHO_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ANCHO del tanque para la 1ª alternativa:")
-    elif state == PROFUNDO_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de PROFUNDO del tanque para la 1ª alternativa:")
-    elif state == TAPAS_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de las TAPAS para la 1ª alternativa (47/8/9  50/1/2/5  51  54  56  58  62  69):")
+        alt1 = context.user_data.get("alternative_1")
+        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt1.capitalize()}?")
+    elif state == MEASURE_ALT1:
+        alt1 = context.user_data.get("alternative_1")
+        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    elif state == TAPAS_INSPECCION_ALT1:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
+    elif state == TAPAS_ACCESO_ALT1:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
     elif state == REPAIR_ALT1:
-        alt1 = context.user_data.get("alternative_1", "la primera alternativa").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt1}:")
+        alt1 = context.user_data.get("alternative_1")
+        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt1.capitalize()}:")
     elif state == ASK_THIRD:
-        alt2 = context.user_data.get("alternative_2", "la segunda alternativa").capitalize()
-        keyboard = [
-            [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt2}?", reply_markup=reply_markup)
-    elif state == ALTO_ALT2:
-        alt2 = context.user_data.get("alternative_2", "la segunda alternativa").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida de ALTO del tanque para {alt2}:")
-    elif state == ANCHO_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de ANCHO del tanque para la 2ª alternativa:")
-    elif state == PROFUNDO_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de PROFUNDO del tanque para la 2ª alternativa:")
-    elif state == TAPAS_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique la medida de las TAPAS para la 2ª alternativa (47/8/9  50/1/2/5  51  54  56  58  62  69):")
+        alt2 = context.user_data.get("alternative_2")
+        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt2.capitalize()}?")
+    elif state == MEASURE_ALT2:
+        alt2 = context.user_data.get("alternative_2")
+        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    elif state == TAPAS_INSPECCION_ALT2:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
+    elif state == TAPAS_ACCESO_ALT2:
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
     elif state == REPAIR_ALT2:
-        alt2 = context.user_data.get("alternative_2", "la segunda alternativa").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2}:")
+        alt2 = context.user_data.get("alternative_2")
+        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2.capitalize()}:")
     elif state == PHOTOS:
         context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES (cada foto en un mensaje separado):")
     elif state == CONTACT:
         context.bot.send_message(chat_id=chat_id, text="Ingrese el Nombre y teléfono del encargado:")
+    elif state == TASK_SCHEDULE:
+        context.bot.send_message(chat_id=chat_id, text="Indique el Horario de INICIO y FIN de tareas:")
     elif state == AVISOS_MENU:
         keyboard = [
             [InlineKeyboardButton("Si", callback_data='si'),
@@ -431,7 +416,6 @@ def get_fum_avisos(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = FUM_AVISOS_MENU
     return FUM_AVISOS_MENU
 
-# Función para fumigación: DEFINICIÓN de handle_fum_avisos_menu
 def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
@@ -466,67 +450,41 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
     query.edit_message_text(f"Tipo de tanque seleccionado: {selected.capitalize()}")
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Indique la medida de ALTO del tanque:")
-    context.user_data["current_state"] = ALTO
-    return ALTO
+    # Preguntar medidas combinadas para el tanque principal
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    context.user_data["current_state"] = MEASURE_MAIN
+    return MEASURE_MAIN
 
-def get_alto(update: Update, context: CallbackContext) -> int:
+def get_measure_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_alto: %s", text)
+    logger.debug("get_measure_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['alto'] = text
-    update.message.reply_text("Indique la medida de ANCHO del tanque:")
-    context.user_data["current_state"] = ANCHO
-    return ANCHO
+    context.user_data['measure_main'] = text
+    update.message.reply_text("Indique TAPAS INSPECCIÓN:")
+    context.user_data["current_state"] = TAPAS_INSPECCION_MAIN
+    return TAPAS_INSPECCION_MAIN
 
-def get_ancho(update: Update, context: CallbackContext) -> int:
+def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_ancho: %s", text)
+    logger.debug("get_tapas_inspeccion_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['ancho'] = text
-    update.message.reply_text("Indique la medida de PROFUNDO del tanque:")
-    context.user_data["current_state"] = PROFUNDO
-    return PROFUNDO
+    context.user_data['tapas_inspeccion_main'] = text
+    update.message.reply_text("Indique TAPAS ACCESO:")
+    context.user_data["current_state"] = TAPAS_ACCESO_MAIN
+    return TAPAS_ACCESO_MAIN
 
-def get_profundo(update: Update, context: CallbackContext) -> int:
+def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_profundo: %s", text)
+    logger.debug("get_tapas_acceso_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['profundo'] = text
-    update.message.reply_text("Indique la medida de las TAPAS (47/8/9  50/1/2/5  51  54  56  58  62  69):")
-    context.user_data["current_state"] = TAPAS
-    return TAPAS
-
-def get_tapas(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    logger.debug("get_tapas: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    context.user_data['tapas'] = text
-    selected = context.user_data.get("selected_category", "N/A").capitalize()
+    context.user_data['tapas_acceso_main'] = text
+    selected = context.user_data.get("selected_category", "").capitalize()
     update.message.reply_text(f"Indique las observaciones y reparación de {selected}:")
     context.user_data["current_state"] = REPAIR_FIRST
     return REPAIR_FIRST
-
-def get_repair_first(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    logger.debug("get_repair_first: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    sel = context.user_data.get("selected_category")
-    context.user_data[f'repair_{sel}'] = text
-    alt1 = context.user_data.get("alternative_1")
-    keyboard = [
-        [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(f"¿Quiere comentar algo sobre {alt1.capitalize()}?", reply_markup=reply_markup)
-    context.user_data["current_state"] = ASK_SECOND
-    return ASK_SECOND
 
 # Rama de limpieza y reparación – Alternativa 1
 def handle_ask_second(update: Update, context: CallbackContext) -> int:
@@ -537,9 +495,9 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     if query.data.lower() == "si":
         alt1 = context.user_data.get("alternative_1")
-        query.edit_message_text(f"Indique la medida de ALTO del tanque para {alt1.capitalize()}:")
-        context.user_data["current_state"] = ALTO_ALT1
-        return ALTO_ALT1
+        query.edit_message_text(f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        context.user_data["current_state"] = MEASURE_ALT1
+        return MEASURE_ALT1
     elif query.data.lower() == "no":
         alt2 = context.user_data.get("alternative_2")
         keyboard = [
@@ -557,44 +515,34 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
 
-def get_alto_alt1(update: Update, context: CallbackContext) -> int:
+def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_alto_alt1: %s", text)
+    logger.debug("get_measure_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['alto_alt1'] = text
-    update.message.reply_text("Indique la medida de ANCHO del tanque para la 1ª alternativa:")
-    context.user_data["current_state"] = ANCHO_ALT1
-    return ANCHO_ALT1
+    context.user_data['measure_alt1'] = text
+    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción:")
+    context.user_data["current_state"] = TAPAS_INSPECCION_ALT1
+    return TAPAS_INSPECCION_ALT1
 
-def get_ancho_alt1(update: Update, context: CallbackContext) -> int:
+def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_ancho_alt1: %s", text)
+    logger.debug("get_tapas_inspeccion_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['ancho_alt1'] = text
-    update.message.reply_text("Indique la medida de PROFUNDO del tanque para la 1ª alternativa:")
-    context.user_data["current_state"] = PROFUNDO_ALT1
-    return PROFUNDO_ALT1
+    context.user_data['tapas_inspeccion_alt1'] = text
+    update.message.reply_text("Indique TAPAS ACCESO para esta opción:")
+    context.user_data["current_state"] = TAPAS_ACCESO_ALT1
+    return TAPAS_ACCESO_ALT1
 
-def get_profundo_alt1(update: Update, context: CallbackContext) -> int:
+def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_profundo_alt1: %s", text)
+    logger.debug("get_tapas_acceso_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['profundo_alt1'] = text
-    update.message.reply_text("Indique la medida de las TAPAS para la 1ª alternativa (47/8/9  50/1/2/5  51  54  56  58  62  69):")
-    context.user_data["current_state"] = TAPAS_ALT1
-    return TAPAS_ALT1
-
-def get_tapas_alt1(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    logger.debug("get_tapas_alt1: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    context.user_data['tapas_alt1'] = text
-    alt1 = context.user_data.get("alternative_1", "N/A").capitalize()
-    update.message.reply_text(f"Indique las observaciones y reparación de {alt1}:")
+    context.user_data['tapas_acceso_alt1'] = text
+    alt1 = context.user_data.get("alternative_1")
+    update.message.reply_text(f"Indique las observaciones y reparación de {alt1.capitalize()}:")
     context.user_data["current_state"] = REPAIR_ALT1
     return REPAIR_ALT1
 
@@ -617,9 +565,9 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     if query.data.lower() == "si":
         alt2 = context.user_data.get("alternative_2")
-        query.edit_message_text(f"Indique la medida de ALTO del tanque para {alt2.capitalize()}:")
-        context.user_data["current_state"] = ALTO_ALT2
-        return ALTO_ALT2
+        query.edit_message_text(f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        context.user_data["current_state"] = MEASURE_ALT2
+        return MEASURE_ALT2
     elif query.data.lower() == "no":
         update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
         context.user_data["current_state"] = PHOTOS
@@ -631,44 +579,34 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
 
-def get_alto_alt2(update: Update, context: CallbackContext) -> int:
+def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_alto_alt2: %s", text)
+    logger.debug("get_measure_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['alto_alt2'] = text
-    update.message.reply_text("Indique la medida de ANCHO del tanque para la 2ª alternativa:")
-    context.user_data["current_state"] = ANCHO_ALT2
-    return ANCHO_ALT2
+    context.user_data['measure_alt2'] = text
+    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción:")
+    context.user_data["current_state"] = TAPAS_INSPECCION_ALT2
+    return TAPAS_INSPECCION_ALT2
 
-def get_ancho_alt2(update: Update, context: CallbackContext) -> int:
+def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_ancho_alt2: %s", text)
+    logger.debug("get_tapas_inspeccion_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['ancho_alt2'] = text
-    update.message.reply_text("Indique la medida de PROFUNDO del tanque para la 2ª alternativa:")
-    context.user_data["current_state"] = PROFUNDO_ALT2
-    return PROFUNDO_ALT2
+    context.user_data['tapas_inspeccion_alt2'] = text
+    update.message.reply_text("Indique TAPAS ACCESO para esta opción:")
+    context.user_data["current_state"] = TAPAS_ACCESO_ALT2
+    return TAPAS_ACCESO_ALT2
 
-def get_profundo_alt2(update: Update, context: CallbackContext) -> int:
+def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_profundo_alt2: %s", text)
+    logger.debug("get_tapas_acceso_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
-    context.user_data['profundo_alt2'] = text
-    update.message.reply_text("Indique la medida de las TAPAS para la 2ª alternativa (47/8/9  50/1/2/5  51  54  56  58  62  69):")
-    context.user_data["current_state"] = TAPAS_ALT2
-    return TAPAS_ALT2
-
-def get_tapas_alt2(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    logger.debug("get_tapas_alt2: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    context.user_data['tapas_alt2'] = text
-    alt2 = context.user_data.get("alternative_2", "N/A").capitalize()
-    update.message.reply_text(f"Indique las observaciones y reparación de {alt2}:")
+    context.user_data['tapas_acceso_alt2'] = text
+    alt2 = context.user_data.get("alternative_2")
+    update.message.reply_text(f"Indique las observaciones y reparación de {alt2.capitalize()}:")
     context.user_data["current_state"] = REPAIR_ALT2
     return REPAIR_ALT2
 
@@ -682,7 +620,23 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = PHOTOS
     return PHOTOS
 
-# Función para manejo de fotos (aplicable a ambos servicios)
+# Nueva función para el horario de tareas
+def get_task_schedule(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_task_schedule: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    context.user_data['task_schedule'] = text
+    keyboard = [
+        [InlineKeyboardButton("Si", callback_data='si'),
+         InlineKeyboardButton("No", callback_data='no')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text("Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
+    context.user_data["current_state"] = AVISOS_MENU
+    return AVISOS_MENU
+
+# Funciones para manejo de fotos (aplicable a ambos servicios)
 def handle_photos(update: Update, context: CallbackContext) -> int:
     service = context.user_data.get('service')
     if service == "Fumigacion":
@@ -740,14 +694,10 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['contact'] = text
-    keyboard = [
-        [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
-    context.user_data["current_state"] = AVISOS_MENU
-    return AVISOS_MENU
+    # En lugar de ir directamente a AVISOS_MENU, pedimos el horario de tareas
+    update.message.reply_text("Indique el Horario de INICIO y FIN de tareas:")
+    context.user_data["current_state"] = TASK_SCHEDULE
+    return TASK_SCHEDULE
 
 def handle_avisos_menu(update: Update, context: CallbackContext) -> int:
     logger.debug("handle_avisos_menu invoked.")
@@ -830,10 +780,9 @@ def main():
                 CallbackQueryHandler(handle_tank_type),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
             ],
-            ALTO: [MessageHandler(Filters.text & ~Filters.command, get_alto)],
-            ANCHO: [MessageHandler(Filters.text & ~Filters.command, get_ancho)],
-            PROFUNDO: [MessageHandler(Filters.text & ~Filters.command, get_profundo)],
-            TAPAS: [MessageHandler(Filters.text & ~Filters.command, get_tapas)],
+            MEASURE_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_measure_main)],
+            TAPAS_INSPECCION_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_main)],
+            TAPAS_ACCESO_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_main)],
             REPAIR_FIRST: [
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_repair_first)
@@ -842,21 +791,17 @@ def main():
                 CallbackQueryHandler(handle_ask_second),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
             ],
-            # Estados para alternativa 1
-            ALTO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_alto_alt1)],
-            ANCHO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_ancho_alt1)],
-            PROFUNDO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_profundo_alt1)],
-            TAPAS_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_alt1)],
+            MEASURE_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_measure_alt1)],
+            TAPAS_INSPECCION_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt1)],
+            TAPAS_ACCESO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt1)],
             REPAIR_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)],
             ASK_THIRD: [
                 CallbackQueryHandler(handle_ask_third),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
             ],
-            # Estados para alternativa 2
-            ALTO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_alto_alt2)],
-            ANCHO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_ancho_alt2)],
-            PROFUNDO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_profundo_alt2)],
-            TAPAS_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_alt2)],
+            MEASURE_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_measure_alt2)],
+            TAPAS_INSPECCION_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt2)],
+            TAPAS_ACCESO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt2)],
             REPAIR_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt2)],
             PHOTOS: [
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
@@ -867,6 +812,7 @@ def main():
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_contact)
             ],
+            TASK_SCHEDULE: [MessageHandler(Filters.text & ~Filters.command, get_task_schedule)],
             AVISOS_MENU: [
                 CallbackQueryHandler(handle_avisos_menu),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
