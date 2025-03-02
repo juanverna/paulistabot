@@ -569,9 +569,21 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
-    update.message.reply_text("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
-    context.user_data["current_state"] = PHOTOS
-    return PHOTOS
+    # Tras finalizar la alternativa 1, se pregunta por la segunda alternativa
+    alt2 = context.user_data.get("alternative_2")
+    if alt2:
+        keyboard = [
+            [InlineKeyboardButton("Si", callback_data='si'),
+             InlineKeyboardButton("No", callback_data='no')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        update.message.reply_text(f"¿Quiere comentar algo sobre {alt2.capitalize()}?", reply_markup=reply_markup)
+        context.user_data["current_state"] = ASK_THIRD
+        return ASK_THIRD
+    else:
+        update.message.reply_text("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
 
 # Rama de limpieza y reparación – Alternativa 2
 def handle_ask_third(update: Update, context: CallbackContext) -> int:
