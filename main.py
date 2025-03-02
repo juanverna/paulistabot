@@ -142,9 +142,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         selected = context.user_data.get("selected_category", "").capitalize()
         context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque de {selected} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
     elif state == TAPAS_INSPECCION_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
     elif state == TAPAS_ACCESO_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     elif state == REPAIR_FIRST:
         selected = context.user_data.get("selected_category", "").capitalize()
         context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {selected}:")
@@ -155,9 +155,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         alt1 = context.user_data.get("alternative_1")
         context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
     elif state == TAPAS_INSPECCION_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
     elif state == TAPAS_ACCESO_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     elif state == REPAIR_ALT1:
         alt1 = context.user_data.get("alternative_1")
         context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt1.capitalize()}:")
@@ -168,9 +168,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         alt2 = context.user_data.get("alternative_2")
         context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
     elif state == TAPAS_INSPECCION_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
     elif state == TAPAS_ACCESO_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
+        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción(4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     elif state == REPAIR_ALT2:
         alt2 = context.user_data.get("alternative_2")
         context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2.capitalize()}:")
@@ -342,7 +342,7 @@ def get_measure_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_main'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN:")
+    update.message.reply_text("Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
     context.user_data["current_state"] = TAPAS_INSPECCION_MAIN
     return TAPAS_INSPECCION_MAIN
 
@@ -351,7 +351,7 @@ def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_main'] = text
-    update.message.reply_text("Indique TAPAS ACCESO:")
+    update.message.reply_text("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     context.user_data["current_state"] = TAPAS_ACCESO_MAIN
     return TAPAS_ACCESO_MAIN
 
@@ -413,7 +413,7 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción:")
+    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
     context.user_data["current_state"] = TAPAS_INSPECCION_ALT1
     return TAPAS_INSPECCION_ALT1
 
@@ -422,7 +422,7 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt1'] = text
-    update.message.reply_text("Indique TAPAS ACCESO para esta opción:")
+    update.message.reply_text("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     context.user_data["current_state"] = TAPAS_ACCESO_ALT1
     return TAPAS_ACCESO_ALT1
 
@@ -482,7 +482,7 @@ def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción:")
+    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
     context.user_data["current_state"] = TAPAS_INSPECCION_ALT2
     return TAPAS_INSPECCION_ALT2
 
@@ -491,7 +491,7 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt2'] = text
-    update.message.reply_text("Indique TAPAS ACCESO para esta opción:")
+    update.message.reply_text("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
     context.user_data["current_state"] = TAPAS_ACCESO_ALT2
     return TAPAS_ACCESO_ALT2
 
