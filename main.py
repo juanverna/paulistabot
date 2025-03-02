@@ -29,48 +29,48 @@ logger = logging.getLogger(__name__)
 #
 # Para fumigaciones:
 # 4: FUMIGATION (¿Qué unidades contienen insectos?)
-# 15: FUM_OBS (Observaciones para la próxima visita)
-# 16: FUM_PHOTOS (Adjuntar fotos para fumigación)
-# 17: FUM_AVISOS (Respuesta a avisos para el próximo mes)
-# 18: FUM_AVISOS_MENU (Menú: avisos en otras direcciones)
-# 19: FUM_AVISOS_TEXT (En qué direcciones, si respondió afirmativo)
+# 13: FUM_OBS (Observaciones para la próxima visita)
+# 14: FUM_PHOTOS (Adjuntar fotos para fumigación)
+# 15: FUM_AVISOS (Respuesta a avisos para el próximo mes)
+# 16: FUM_AVISOS_MENU (Menú: avisos en otras direcciones)
+# 17: FUM_AVISOS_TEXT (En qué direcciones, si respondió afirmativo)
 #
 # Para limpieza y reparación:
 # 5: TANK_TYPE (Seleccione el tipo de tanque)
 # 6: REPAIR_FIRST (Observaciones y reparación del tanque principal)
 # 7: ASK_SECOND (¿Quiere comentar algo sobre la alternativa 1?)
-# 9: ASK_THIRD (¿Quiere comentar algo sobre la alternativa 2?)
-# 11: PHOTOS (Adjuntar fotos para limpieza/reparación)
-# 12: CONTACT (Nombre y teléfono del encargado)
-# 13: AVISOS_MENU (Menú: avisos en otras direcciones)
-# 14: AVISOS_TEXT (Direcciones adicionales)
+# 8: ASK_THIRD (¿Quiere comentar algo sobre la alternativa 2?)
+# 9: PHOTOS (Adjuntar fotos para limpieza/reparación)
+# 10: CONTACT (Nombre y teléfono del encargado)
+# 11: AVISOS_MENU (Menú: avisos en otras direcciones)
+# 12: AVISOS_TEXT (Direcciones adicionales)
 #
 # Para el tanque principal (medidas combinadas):
-# 20: MEASURE_MAIN (Formato: ALTO, ANCHO, PROFUNDO)
-# 21: TAPAS_INSPECCION_MAIN
-# 22: TAPAS_ACCESO_MAIN
+# 18: MEASURE_MAIN (Formato: ALTO, ANCHO, PROFUNDO)
+# 19: TAPAS_INSPECCION_MAIN
+# 20: TAPAS_ACCESO_MAIN
 #
 # Para la 1ª alternativa:
-# 23: MEASURE_ALT1
-# 24: TAPAS_INSPECCION_ALT1
-# 25: TAPAS_ACCESO_ALT1
-# 26: REPAIR_ALT1 (Observaciones y reparación para la alternativa 1)
+# 21: MEASURE_ALT1
+# 22: TAPAS_INSPECCION_ALT1
+# 23: TAPAS_ACCESO_ALT1
+# 24: REPAIR_ALT1 (Observaciones y reparación para la alternativa 1)
 #
 # Para la 2ª alternativa:
-# 27: MEASURE_ALT2
-# 28: TAPAS_INSPECCION_ALT2
-# 29: TAPAS_ACCESO_ALT2
-# 30: REPAIR_ALT2 (Observaciones y reparación para la alternativa 2)
+# 25: MEASURE_ALT2
+# 26: TAPAS_INSPECCION_ALT2
+# 27: TAPAS_ACCESO_ALT2
+# 28: REPAIR_ALT2 (Observaciones y reparación para la alternativa 2)
 #
 # Nueva pregunta para horario:
-# 31: TASK_SCHEDULE (Horario de INICIO y FIN de tareas)
+# 29: TASK_SCHEDULE (Horario de INICIO y FIN de tareas)
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
  REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT, 
  FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
  MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN,
  MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, REPAIR_ALT1,
  MEASURE_ALT2, TAPAS_INSPECCION_ALT2, TAPAS_ACCESO_ALT2, REPAIR_ALT2,
- TASK_SCHEDULE) = range(32)
+ TASK_SCHEDULE) = range(30)
 
 # =============================================================================
 # DICTIONARIO DE RETROCESO (“ATRÁS”)
