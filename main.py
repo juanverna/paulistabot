@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 # DEFINICIÓN DE ESTADOS
 # =============================================================================
 # Estados comunes:
-# 0: CODE (Código de empleado)
-# 1: ORDER (Número de orden)
+# 0: CODE (Código de empleado) [solo números]
+# 1: ORDER (Número de orden) [solo números, exactamente 7 dígitos]
 # 2: ADDRESS (Dirección)
 # 3: SERVICE (¿Qué servicio se realizó?)
 #
 # Para fumigaciones:
 # 4: FUMIGATION (¿Qué unidades contienen insectos?)
 # 13: FUM_OBS (Observaciones para la próxima visita)
-# 14: FUM_PHOTOS (Adjuntar fotos para fumigación)
+# 14: FUM_PHOTOS (Adjuntar fotos para fumigación) – se usa el método tradicional
 # 15: FUM_AVISOS (Respuesta a avisos para el próximo mes)
 # 16: FUM_AVISOS_MENU (Menú: avisos en otras direcciones)
 # 17: FUM_AVISOS_TEXT (En qué direcciones, si respondió afirmativo)
@@ -40,37 +40,39 @@ logger = logging.getLogger(__name__)
 # 6: REPAIR_FIRST (Observaciones y reparación del tanque principal)
 # 7: ASK_SECOND (¿Quiere comentar algo sobre la alternativa 1?)
 # 8: ASK_THIRD (¿Quiere comentar algo sobre la alternativa 2?)
-# 9: PHOTOS (Adjuntar fotos para limpieza/reparación)
+# 9: PHOTOS (Adjuntar fotos para limpieza/reparación) – en este servicio el usuario puede enviar varias fotos y, cuando termine, debe escribir "Listo"
 # 10: CONTACT (Nombre y teléfono del encargado)
 # 11: AVISOS_MENU (Menú: avisos en otras direcciones)
 # 12: AVISOS_TEXT (Direcciones adicionales)
 #
 # Para el tanque principal (medidas combinadas):
-# 18: MEASURE_MAIN (Formato: ALTO, ANCHO, PROFUNDO)
-# 19: TAPAS_INSPECCION_MAIN
-# 20: TAPAS_ACCESO_MAIN
+# 13: MEASURE_MAIN (Formato: ALTO, ANCHO, PROFUNDO)
+# 14: TAPAS_INSPECCION_MAIN
+# 15: TAPAS_ACCESO_MAIN
 #
 # Para la 1ª alternativa:
-# 21: MEASURE_ALT1
-# 22: TAPAS_INSPECCION_ALT1
-# 23: TAPAS_ACCESO_ALT1
-# 24: REPAIR_ALT1 (Observaciones y reparación para la alternativa 1)
+# 16: MEASURE_ALT1
+# 17: TAPAS_INSPECCION_ALT1
+# 18: TAPAS_ACCESO_ALT1
+# 19: REPAIR_ALT1 (Observaciones y reparación para la alternativa 1)
 #
 # Para la 2ª alternativa:
-# 25: MEASURE_ALT2
-# 26: TAPAS_INSPECCION_ALT2
-# 27: TAPAS_ACCESO_ALT2
-# 28: REPAIR_ALT2 (Observaciones y reparación para la alternativa 2)
+# 20: MEASURE_ALT2
+# 21: TAPAS_INSPECCION_ALT2
+# 22: TAPAS_ACCESO_ALT2
+# 23: REPAIR_ALT2 (Observaciones y reparación para la alternativa 2)
 #
 # Nueva pregunta para horario:
-# 29: TASK_SCHEDULE (Horario de INICIO y FIN de tareas)
+# 24: TASK_SCHEDULE (Horario de INICIO y FIN de tareas)
+# 
+# Nota: Se ajusta el total de estados a 25 (0 a 24).
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
- REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT, 
+ REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT,
  FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
  MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN,
  MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, REPAIR_ALT1,
  MEASURE_ALT2, TAPAS_INSPECCION_ALT2, TAPAS_ACCESO_ALT2, REPAIR_ALT2,
- TASK_SCHEDULE) = range(30)
+ TASK_SCHEDULE) = range(25)
 
 # =============================================================================
 # DICTIONARIO DE RETROCESO (“ATRÁS”)
@@ -192,117 +194,30 @@ Servicio: {data.get('service', 'N/A')}
         logger.error("Error sending email: %s", e)
 
 # =============================================================================
-# FUNCIONES DE RETROCESO (“ATRÁS”)
+# FUNCIONES PARA VALIDAR CAMPOS NUMÉRICOS
 # =============================================================================
-def back_handler(update: Update, context: CallbackContext) -> int:
-    logger.debug("back_handler: Estado actual: %s", context.user_data.get("current_state"))
-    if update.callback_query:
-        update.callback_query.answer()
-    current_state = context.user_data.get("current_state", CODE)
-    previous_state = BACK_MAP.get(current_state)
-    if previous_state is None:
-        re_ask(current_state, update, context)
-        return current_state
-    else:
-        context.user_data["current_state"] = previous_state
-        logger.debug("Retrocediendo a estado: %s", previous_state)
-        re_ask(previous_state, update, context)
-        return previous_state
+def get_code(update: Update, context: CallbackContext) -> int:
+    text = update.message.text.strip()
+    # Quitar espacios intermedios
+    text_numeric = "".join(text.split())
+    if not text_numeric.isdigit():
+        update.message.reply_text("Por favor, ingrese solo números para el código.")
+        return CODE
+    context.user_data['code'] = text_numeric
+    update.message.reply_text("Escriba el número de la orden de trabajo (7 dígitos):")
+    context.user_data["current_state"] = ORDER
+    return ORDER
 
-def re_ask(state: int, update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    logger.debug("re_ask: Estado %s", state)
-    if state == CODE:
-        context.bot.send_message(chat_id=chat_id, text="¡Hola! Inserte su código:")
-    elif state == ORDER:
-        context.bot.send_message(chat_id=chat_id, text="Escriba el número de la orden de trabajo:")
-    elif state == ADDRESS:
-        context.bot.send_message(chat_id=chat_id, text="Escriba la dirección:")
-    elif state == SERVICE:
-        keyboard = [
-            [InlineKeyboardButton("Fumigación", callback_data='Fumigacion')],
-            [InlineKeyboardButton("Limpieza y reparación de tanques", callback_data='limpieza')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="¿Qué servicio se realizó?", reply_markup=reply_markup)
-    elif state == FUMIGATION:
-        context.bot.send_message(chat_id=chat_id, text="¿Qué unidades contienen insectos?")
-    elif state == FUM_OBS:
-        context.bot.send_message(chat_id=chat_id, text="Marque las observaciones para la próxima visita:")
-    elif state == FUM_PHOTOS:
-        context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:")
-    elif state == FUM_AVISOS:
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?")
-    elif state == FUM_AVISOS_MENU:
-        keyboard = [
-            [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
-    elif state == FUM_AVISOS_TEXT:
-        context.bot.send_message(chat_id=chat_id, text="¿En qué direcciones? (Separe las direcciones con una coma)")
-    elif state == TANK_TYPE:
-        keyboard = [
-            [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
-            [InlineKeyboardButton("RESERVA", callback_data='reserva')],
-            [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
-    elif state == MEASURE_MAIN:
-        selected = context.user_data.get("selected_category", "").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque de {selected} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
-    elif state == TAPAS_INSPECCION_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN:")
-    elif state == TAPAS_ACCESO_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO:")
-    elif state == REPAIR_FIRST:
-        selected = context.user_data.get("selected_category", "").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {selected}:")
-    elif state == ASK_SECOND:
-        alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt1.capitalize()}?")
-    elif state == MEASURE_ALT1:
-        alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
-    elif state == TAPAS_INSPECCION_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
-    elif state == TAPAS_ACCESO_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
-    elif state == REPAIR_ALT1:
-        alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt1.capitalize()}:")
-    elif state == ASK_THIRD:
-        alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt2.capitalize()}?")
-    elif state == MEASURE_ALT2:
-        alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
-    elif state == TAPAS_INSPECCION_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción:")
-    elif state == TAPAS_ACCESO_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción:")
-    elif state == REPAIR_ALT2:
-        alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2.capitalize()}:")
-    elif state == PHOTOS:
-        context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES (cada foto en un mensaje separado):")
-    elif state == CONTACT:
-        context.bot.send_message(chat_id=chat_id, text="Ingrese el Nombre y teléfono del encargado:")
-    elif state == TASK_SCHEDULE:
-        context.bot.send_message(chat_id=chat_id, text="Indique el Horario de INICIO y FIN de tareas:")
-    elif state == AVISOS_MENU:
-        keyboard = [
-            [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
-    elif state == AVISOS_TEXT:
-        context.bot.send_message(chat_id=chat_id, text="Indique qué direcciones (separadas por una coma):")
-    else:
-        context.bot.send_message(chat_id=chat_id, text="Error: Estado desconocido.")
+def get_order(update: Update, context: CallbackContext) -> int:
+    text = update.message.text.strip()
+    text_numeric = "".join(text.split())
+    if not text_numeric.isdigit() or len(text_numeric) != 7:
+        update.message.reply_text("Por favor, ingrese un número de orden de EXACTAMENTE 7 dígitos (solo números).")
+        return ORDER
+    context.user_data['order'] = text_numeric
+    update.message.reply_text("Escriba la dirección:")
+    context.user_data["current_state"] = ADDRESS
+    return ADDRESS
 
 # =============================================================================
 # FUNCIONES DEL FLUJO DE CONVERSACIÓN
@@ -310,32 +225,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
 def start_conversation(update: Update, context: CallbackContext) -> int:
     logger.debug("Inicio de conversación.")
     context.user_data.clear()
-    update.message.reply_text("¡Hola! Inserte su código:")
+    update.message.reply_text("¡Hola! Inserte su código (solo números):")
     context.user_data["current_state"] = CODE
     return CODE
-
-def get_code(update: Update, context: CallbackContext) -> int:
-    text = update.message.text.strip()
-    logger.debug("get_code: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    context.user_data['code'] = text
-    update.message.reply_text("Escriba el número de la orden de trabajo:")
-    context.user_data["current_state"] = ORDER
-    return ORDER
-
-def get_order(update: Update, context: CallbackContext) -> int:
-    text = update.message.text.strip()
-    logger.debug("get_order: %s", text)
-    if text.lower().replace("á", "a") == "atras":
-        return back_handler(update, context)
-    if not text.isdigit() or len(text) != 7:
-        update.message.reply_text("Por favor, ingrese un número de orden numérico de EXACTAMENTE 7 dígitos:")
-        return ORDER
-    context.user_data['order'] = text
-    update.message.reply_text("Escriba la dirección:")
-    context.user_data["current_state"] = ADDRESS
-    return ADDRESS
 
 def get_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -354,15 +246,11 @@ def get_address(update: Update, context: CallbackContext) -> int:
 
 def service_selection(update: Update, context: CallbackContext) -> int:
     logger.debug("service_selection invoked.")
-    if update.message and update.message.text:
-        if update.message.text.lower().replace("á", "a") == "atras":
-            return back_handler(update, context)
     query = update.callback_query
     query.answer()
     if query.data == "back":
         return back_handler(update, context)
     service_type = query.data
-    logger.debug("Servicio seleccionado: %s", service_type)
     context.user_data['service'] = service_type
     if service_type == "Fumigacion":
         query.edit_message_text("Servicio seleccionado: Fumigación\n¿Qué unidades contienen insectos?")
@@ -376,11 +264,12 @@ def service_selection(update: Update, context: CallbackContext) -> int:
             [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
+        context.bot.send_message(chat_id=query.message.chat_id,
+                                 text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
         context.user_data["current_state"] = TANK_TYPE
         return TANK_TYPE
 
-# Ramas de fumigación
+# Ramas de fumigación (se mantienen sin cambios)
 def fumigation_data(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     logger.debug("fumigation_data: %s", text)
@@ -419,7 +308,6 @@ def get_fum_avisos(update: Update, context: CallbackContext) -> int:
 def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    logger.debug("handle_fum_avisos_menu: %s", query.data)
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
@@ -433,7 +321,6 @@ def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
 def handle_fum_avisos_callback(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    logger.debug("handle_fum_avisos_callback: %s", query.data)
     context.user_data['fum_avisos'] = query.data
     return ConversationHandler.END
 
@@ -441,7 +328,6 @@ def handle_fum_avisos_callback(update: Update, context: CallbackContext) -> int:
 def handle_tank_type(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    logger.debug("handle_tank_type: %s", query.data)
     if query.data == "back":
         return back_handler(update, context)
     selected = query.data
@@ -450,14 +336,13 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
     query.edit_message_text(f"Tipo de tanque seleccionado: {selected.capitalize()}")
-    context.bot.send_message(chat_id=update.effective_chat.id, 
+    context.bot.send_message(chat_id=query.message.chat_id, 
                              text=f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
     context.user_data["current_state"] = MEASURE_MAIN
     return MEASURE_MAIN
 
 def get_measure_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_measure_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_main'] = text
@@ -467,7 +352,6 @@ def get_measure_main(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_inspeccion_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_main'] = text
@@ -477,7 +361,6 @@ def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_acceso_main: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
@@ -488,7 +371,6 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
 
 def get_repair_first(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_repair_first: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     sel = context.user_data.get("selected_category")
@@ -507,7 +389,6 @@ def get_repair_first(update: Update, context: CallbackContext) -> int:
 def handle_ask_second(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    logger.debug("handle_ask_second: %s", query.data)
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
@@ -526,7 +407,7 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = ASK_THIRD
         return ASK_THIRD
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
+        context.bot.send_message(chat_id=query.message.chat_id,
                                  text="Respuesta no reconocida, se asume 'No'.")
         update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
         context.user_data["current_state"] = PHOTOS
@@ -534,7 +415,6 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
 
 def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_measure_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
@@ -544,7 +424,6 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_inspeccion_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt1'] = text
@@ -554,7 +433,6 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_acceso_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt1'] = text
@@ -565,11 +443,10 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_repair_alt1: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
-    # Tras finalizar la alternativa 1, se pregunta por la segunda alternativa
+    # Una vez finalizada la alternativa 1, se pregunta por la alternativa 2
     alt2 = context.user_data.get("alternative_2")
     if alt2:
         keyboard = [
@@ -589,7 +466,6 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
 def handle_ask_third(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    logger.debug("handle_ask_third: %s", query.data)
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
@@ -602,7 +478,7 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
+        context.bot.send_message(chat_id=query.message.chat_id,
                                  text="Respuesta no reconocida, se asume 'No'.")
         update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
         context.user_data["current_state"] = PHOTOS
@@ -610,7 +486,6 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
 
 def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_measure_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
@@ -620,7 +495,6 @@ def get_measure_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_inspeccion_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt2'] = text
@@ -630,7 +504,6 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_tapas_acceso_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt2'] = text
@@ -641,7 +514,6 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_repair_alt2: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
@@ -652,7 +524,6 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
 # Nueva función para el horario de tareas
 def get_task_schedule(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_task_schedule: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['task_schedule'] = text
@@ -665,61 +536,49 @@ def get_task_schedule(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = AVISOS_MENU
     return AVISOS_MENU
 
-# Funciones para manejo de fotos (aplicable a ambos servicios)
+# Función para el manejo de fotos
 def handle_photos(update: Update, context: CallbackContext) -> int:
     service = context.user_data.get('service')
+    # Si el servicio es fumigación, se usa el flujo anterior (se esperan 2 fotos)
     if service == "Fumigacion":
-        required_count = 2
-        target_state = FUM_PHOTOS
-    else:
-        required_count = 3
-        target_state = PHOTOS
-    if not update.message.photo:
-        if update.message.document:
-            mime_type = update.message.document.mime_type
-            if not mime_type.startswith("image/"):
-                update.message.reply_text("Por favor, adjunte un archivo de imagen válido. No se permite avanzar sin una imagen.")
-                context.user_data["current_state"] = target_state
-                return target_state
-        else:
-            update.message.reply_text("Por favor, adjunte un archivo de imagen válido. No se permite avanzar sin una imagen.")
-            context.user_data["current_state"] = target_state
-            return target_state
-    if service != "Fumigacion" and update.message.media_group_id:
-        if context.user_data.get("last_media_group_id") == update.message.media_group_id:
-            update.message.reply_text("Por favor, envíe cada imagen en un mensaje separado.")
-            context.user_data["current_state"] = target_state
-            return target_state
-        else:
-            context.user_data["last_media_group_id"] = update.message.media_group_id
-    photos = context.user_data.get("photos", [])
-    file_id = update.message.photo[-1].file_id
-    photos.append(file_id)
-    context.user_data["photos"] = photos
-    logger.debug("Fotos acumuladas: %s", len(photos))
-    if len(photos) < required_count:
-        if required_count == 2:
+        # Mantenemos el comportamiento original para fumigación
+        if not update.message.photo:
+            update.message.reply_text("Por favor, adjunte una imagen válida.")
+            return FUM_PHOTOS
+        photos = context.user_data.get("photos", [])
+        file_id = update.message.photo[-1].file_id
+        photos.append(file_id)
+        context.user_data["photos"] = photos
+        if len(photos) < 2:
             update.message.reply_text("Por favor cargue la segunda foto.")
+            return FUM_PHOTOS
         else:
-            if len(photos) == 1:
-                update.message.reply_text("Por favor cargue la segunda foto.")
-            elif len(photos) == 2:
-                update.message.reply_text("Por favor cargue la tercera foto.")
-        context.user_data["current_state"] = target_state
-        return target_state
+            update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
+            context.user_data["current_state"] = CONTACT
+            return CONTACT
     else:
-        if service == "Fumigacion":
-            update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
-            context.user_data["current_state"] = CONTACT
-            return CONTACT
+        # Para limpieza: el usuario puede enviar varias fotos y, cuando termine, debe enviar "Listo"
+        if update.message.text and update.message.text.lower().strip() == "listo":
+            if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
+                update.message.reply_text("Debe cargar al menos una foto antes de escribir 'Listo'.")
+                return PHOTOS
+            else:
+                update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
+                context.user_data["current_state"] = CONTACT
+                return CONTACT
+        elif update.message.photo:
+            photos = context.user_data.get("photos", [])
+            file_id = update.message.photo[-1].file_id
+            photos.append(file_id)
+            context.user_data["photos"] = photos
+            update.message.reply_text("Foto recibida. Puede enviar más fotos o escriba 'Listo' para continuar.")
+            return PHOTOS
         else:
-            update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
-            context.user_data["current_state"] = CONTACT
-            return CONTACT
+            update.message.reply_text("Por favor, envíe una foto o escriba 'Listo' para continuar.")
+            return PHOTOS
 
 def get_contact(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_contact: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['contact'] = text
@@ -728,27 +587,23 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     return TASK_SCHEDULE
 
 def handle_avisos_menu(update: Update, context: CallbackContext) -> int:
-    logger.debug("handle_avisos_menu invoked.")
-    if update.message and update.message.text:
-        if update.message.text.lower().replace("á", "a") == "atras":
-            return back_handler(update, context)
+    if update.message and update.message.text and update.message.text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
     query = update.callback_query
     query.answer()
-    logger.debug("handle_avisos_menu callback data: %s", query.data)
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Indique qué direcciones (separadas por una coma):")
+        context.bot.send_message(chat_id=query.message.chat_id, text="Indique qué direcciones (separadas por una coma):")
         context.user_data["current_state"] = AVISOS_TEXT
         return AVISOS_TEXT
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Gracias!")
+        context.bot.send_message(chat_id=query.message.chat_id, text="Gracias!")
         send_email(context.user_data, update, context)
         return ConversationHandler.END
 
 def get_aviso_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
-    logger.debug("get_aviso_address: %s", text)
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['avisos_address'] = text
