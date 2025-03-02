@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 # Para limpieza y reparación:
 # 5: TANK_TYPE (Seleccione el tipo de tanque)
 # 6: REPAIR_FIRST (Observaciones y reparación del tanque principal)
-# 7: ASK_SECOND (¿Quiere comentar algo sobre la opción alternativa 1?)
-# 9: ASK_THIRD (¿Quiere comentar algo sobre la opción alternativa 2?)
+# 7: ASK_SECOND (¿Quiere comentar algo sobre la alternativa 1?)
+# 9: ASK_THIRD (¿Quiere comentar algo sobre la alternativa 2?)
 # 11: PHOTOS (Adjuntar fotos para limpieza/reparación)
 # 12: CONTACT (Nombre y teléfono del encargado)
 # 13: AVISOS_MENU (Menú: avisos en otras direcciones)
@@ -450,8 +450,8 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
     query.edit_message_text(f"Tipo de tanque seleccionado: {selected.capitalize()}")
-    # Preguntar medidas combinadas para el tanque principal
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    context.bot.send_message(chat_id=update.effective_chat.id, 
+                             text=f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
     context.user_data["current_state"] = MEASURE_MAIN
     return MEASURE_MAIN
 
@@ -485,6 +485,23 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(f"Indique las observaciones y reparación de {selected}:")
     context.user_data["current_state"] = REPAIR_FIRST
     return REPAIR_FIRST
+
+def get_repair_first(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    logger.debug("get_repair_first: %s", text)
+    if text.lower().replace("á", "a") == "atras":
+        return back_handler(update, context)
+    sel = context.user_data.get("selected_category")
+    context.user_data[f'repair_{sel}'] = text
+    alt1 = context.user_data.get("alternative_1")
+    keyboard = [
+        [InlineKeyboardButton("Si", callback_data='si'),
+         InlineKeyboardButton("No", callback_data='no')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text(f"¿Quiere comentar algo sobre {alt1.capitalize()}?", reply_markup=reply_markup)
+    context.user_data["current_state"] = ASK_SECOND
+    return ASK_SECOND
 
 # Rama de limpieza y reparación – Alternativa 1
 def handle_ask_second(update: Update, context: CallbackContext) -> int:
@@ -694,7 +711,6 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['contact'] = text
-    # En lugar de ir directamente a AVISOS_MENU, pedimos el horario de tareas
     update.message.reply_text("Indique el Horario de INICIO y FIN de tareas:")
     context.user_data["current_state"] = TASK_SCHEDULE
     return TASK_SCHEDULE
