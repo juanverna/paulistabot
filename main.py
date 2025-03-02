@@ -1,13 +1,24 @@
 import logging
 import os
 import smtplib
+import re
 from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
                           ConversationHandler, CallbackContext)
+
+# =============================================================================
+# FUNCION AUXILIAR PARA NEGRITA
+# =============================================================================
+def apply_bold_keywords(text: str) -> str:
+    """
+    Envuelve en <b></b> las palabras 'cisterna', 'reserva' e 'intermediario' (case-insensitive).
+    """
+    pattern = r"(?i)\b(cisterna|reserva|intermediario)\b"
+    return re.sub(pattern, lambda m: f"<b>{m.group(0)}</b>", text)
 
 # =============================================================================
 # CONFIGURACIÓN DEL LOGGING
@@ -21,7 +32,6 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # VARIABLES DE CONFIGURACIÓN
 # =============================================================================
-# Asegúrate de definir estas variables o configurarlas en el entorno.
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
@@ -29,8 +39,6 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 # =============================================================================
 # DEFINICIÓN DE ESTADOS
 # =============================================================================
-# Los estados se definen para el flujo del ConversationHandler.
-# (La lista de nombres incluye los estados para ambos flujos: fumigación y limpieza/reparación)
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
  REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT,
  FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
@@ -101,35 +109,77 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     logger.debug("re_ask: Estado %s", state)
     if state == CODE:
-        context.bot.send_message(chat_id=chat_id, text="¡Hola! Inserte su código (solo números):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == ORDER:
-        context.bot.send_message(chat_id=chat_id, text="Escriba el número de la orden de trabajo (7 dígitos):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Escriba el número de la orden de trabajo (7 dígitos):"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == ADDRESS:
-        context.bot.send_message(chat_id=chat_id, text="Escriba la dirección:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Escriba la dirección:"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == SERVICE:
         keyboard = [
             [InlineKeyboardButton("Fumigación", callback_data='Fumigacion')],
             [InlineKeyboardButton("Limpieza y reparación de tanques", callback_data='limpieza')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="¿Qué servicio se realizó?", reply_markup=reply_markup)
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("¿Qué servicio se realizó?"), 
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUMIGATION:
-        context.bot.send_message(chat_id=chat_id, text="¿Qué unidades contienen insectos?")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("¿Qué unidades contienen insectos?"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUM_OBS:
-        context.bot.send_message(chat_id=chat_id, text="Marque las observaciones para la próxima visita:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Marque las observaciones para la próxima visita:"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUM_PHOTOS:
-        context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUM_AVISOS:
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUM_AVISOS_MENU:
         keyboard = [
             [InlineKeyboardButton("Si", callback_data='si'),
              InlineKeyboardButton("No", callback_data='no')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Entregaste avisos en otras direcciones?"), 
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUM_AVISOS_TEXT:
-        context.bot.send_message(chat_id=chat_id, text="¿En qué direcciones? (Separe las direcciones con una coma)")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("¿En qué direcciones? (Separe las direcciones con una coma)"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == TANK_TYPE:
         keyboard = [
             [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
@@ -137,60 +187,146 @@ def re_ask(state: int, update: Update, context: CallbackContext):
             [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Seleccione el tipo de tanque:"), 
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
     elif state == MEASURE_MAIN:
         selected = context.user_data.get("selected_category", "").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque de {selected} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique la medida del tanque de {selected} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_INSPECCION_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN (30 40 50 60 80):"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_ACCESO_MAIN:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == REPAIR_FIRST:
         selected = context.user_data.get("selected_category", "").capitalize()
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {selected}:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique las observaciones y reparación de {selected}:"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == ASK_SECOND:
         alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt1.capitalize()}?")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"¿Quiere comentar algo sobre {alt1.capitalize()}?"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == MEASURE_ALT1:
         alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_INSPECCION_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_ACCESO_ALT1:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == REPAIR_ALT1:
         alt1 = context.user_data.get("alternative_1")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt1.capitalize()}:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique las observaciones y reparación de {alt1.capitalize()}:"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == ASK_THIRD:
         alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"¿Quiere comentar algo sobre {alt2.capitalize()}?")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"¿Quiere comentar algo sobre {alt2.capitalize()}?"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == MEASURE_ALT2:
         alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_INSPECCION_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == TAPAS_ACCESO_ALT2:
-        context.bot.send_message(chat_id=chat_id, text="Indique TAPAS ACCESO para esta opción(4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción(4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == REPAIR_ALT2:
         alt2 = context.user_data.get("alternative_2")
-        context.bot.send_message(chat_id=chat_id, text=f"Indique las observaciones y reparación de {alt2.capitalize()}:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords(f"Indique las observaciones y reparación de {alt2.capitalize()}:"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == PHOTOS:
-        context.bot.send_message(chat_id=chat_id, text="Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES.\nSi ha terminado, escriba 'Listo'.")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES.\nSi ha terminado, escriba 'Listo'."), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == CONTACT:
-        context.bot.send_message(chat_id=chat_id, text="Ingrese el Nombre y teléfono del encargado:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == TASK_SCHEDULE:
-        context.bot.send_message(chat_id=chat_id, text="Indique el Horario de INICIO y FIN de tareas:")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique el Horario de INICIO y FIN de tareas:"), 
+            parse_mode=ParseMode.HTML
+        )
     elif state == AVISOS_MENU:
         keyboard = [
             [InlineKeyboardButton("Si", callback_data='si'),
              InlineKeyboardButton("No", callback_data='no')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id, text="Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Entregaste avisos en otras direcciones?"), 
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
     elif state == AVISOS_TEXT:
-        context.bot.send_message(chat_id=chat_id, text="Indique qué direcciones (separadas por una coma):")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Indique qué direcciones (separadas por una coma):"), 
+            parse_mode=ParseMode.HTML
+        )
     else:
-        context.bot.send_message(chat_id=chat_id, text="Error: Estado desconocido.")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=apply_bold_keywords("Error: Estado desconocido."), 
+            parse_mode=ParseMode.HTML
+        )
 
 # =============================================================================
 # FUNCIONES PARA VALIDAR CAMPOS NUMÉRICOS (get_code y get_order)
@@ -198,20 +334,32 @@ def re_ask(state: int, update: Update, context: CallbackContext):
 def get_code(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if not text.isdigit():
-        update.message.reply_text("El código debe ser numérico. Por favor, inténtalo de nuevo:")
+        update.message.reply_text(
+            apply_bold_keywords("El código debe ser numérico. Por favor, inténtalo de nuevo:"),
+            parse_mode=ParseMode.HTML
+        )
         return CODE
     context.user_data["code"] = text
-    update.message.reply_text("Por favor, ingrese el número de orden (7 dígitos):")
+    update.message.reply_text(
+        apply_bold_keywords("Por favor, ingrese el número de orden (7 dígitos):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = ORDER
     return ORDER
 
 def get_order(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if not text.isdigit() or len(text) != 7:
-        update.message.reply_text("El número de orden debe ser numérico y contener 7 dígitos. Por favor, inténtalo de nuevo:")
+        update.message.reply_text(
+            apply_bold_keywords("El número de orden debe ser numérico y contener 7 dígitos. Por favor, inténtalo de nuevo:"),
+            parse_mode=ParseMode.HTML
+        )
         return ORDER
     context.user_data["order"] = text
-    update.message.reply_text("Ingrese la dirección:")
+    update.message.reply_text(
+        apply_bold_keywords("Ingrese la dirección:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = ADDRESS
     return ADDRESS
 
@@ -221,7 +369,10 @@ def get_order(update: Update, context: CallbackContext) -> int:
 def start_conversation(update: Update, context: CallbackContext) -> int:
     logger.debug("Inicio de conversación.")
     context.user_data.clear()
-    update.message.reply_text("¡Hola! Inserte su código (solo números):")
+    update.message.reply_text(
+        apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = CODE
     return CODE
 
@@ -235,7 +386,11 @@ def get_address(update: Update, context: CallbackContext) -> int:
         [InlineKeyboardButton("Limpieza y reparación de tanques", callback_data='limpieza')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("¿Qué servicio se realizó?", reply_markup=reply_markup)
+    update.message.reply_text(
+        apply_bold_keywords("¿Qué servicio se realizó?"),
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = SERVICE
     return SERVICE
 
@@ -247,31 +402,44 @@ def service_selection(update: Update, context: CallbackContext) -> int:
     service_type = query.data
     context.user_data['service'] = service_type
     if service_type == "Fumigacion":
-        query.edit_message_text("Servicio seleccionado: Fumigación\n¿Qué unidades contienen insectos?")
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Fumigación\n¿Qué unidades contienen insectos?"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = FUMIGATION
         return FUMIGATION
     else:
-        query.edit_message_text("Servicio seleccionado: Limpieza y reparación de tanques")
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Limpieza y reparación de tanques"),
+            parse_mode=ParseMode.HTML
+        )
         keyboard = [
             [InlineKeyboardButton("CISTERNA", callback_data='cisterna')],
             [InlineKeyboardButton("RESERVA", callback_data='reserva')],
             [InlineKeyboardButton("INTERMEDIARIO", callback_data='intermediario')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=query.message.chat_id,
-                                 text="Seleccione el tipo de tanque:", reply_markup=reply_markup)
+        context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=apply_bold_keywords("Seleccione el tipo de tanque:"),
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = TANK_TYPE
         return TANK_TYPE
 
 # =============================================================================
-# FUNCIONES PARA FUMIGACIÓN (se mantienen sin cambios)
+# FUNCIONES PARA FUMIGACIÓN (se mantienen sin cambios, con formato aplicado)
 # =============================================================================
 def fumigation_data(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['fumigated_units'] = text
-    update.message.reply_text("Marque las observaciones para la próxima visita:")
+    update.message.reply_text(
+        apply_bold_keywords("Marque las observaciones para la próxima visita:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = FUM_OBS
     return FUM_OBS
 
@@ -280,7 +448,10 @@ def get_fum_obs(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['fum_obs'] = text
-    update.message.reply_text("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:")
+    update.message.reply_text(
+        apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = FUM_PHOTOS
     return FUM_PHOTOS
 
@@ -294,7 +465,11 @@ def get_fum_avisos(update: Update, context: CallbackContext) -> int:
          InlineKeyboardButton("No", callback_data='no')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?", reply_markup=reply_markup)
+    update.message.reply_text(
+        apply_bold_keywords("Entregaste avisos para el próximo mes en la dirección en la que hiciste el trabajo?"),
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = FUM_AVISOS_MENU
     return FUM_AVISOS_MENU
 
@@ -304,11 +479,17 @@ def handle_fum_avisos_menu(update: Update, context: CallbackContext) -> int:
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
-        query.edit_message_text("¿En qué direcciones? (Separe las direcciones con una coma)")
+        query.edit_message_text(
+            apply_bold_keywords("¿En qué direcciones? (Separe las direcciones con una coma)"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = FUM_AVISOS_TEXT
         return FUM_AVISOS_TEXT
     else:
-        query.edit_message_text("Gracias!")
+        query.edit_message_text(
+            apply_bold_keywords("Gracias!"),
+            parse_mode=ParseMode.HTML
+        )
         send_email(context.user_data, update, context)
         return ConversationHandler.END
 
@@ -331,9 +512,15 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
     alternatives = [x for x in ["cisterna", "reserva", "intermediario"] if x != selected]
     context.user_data["alternative_1"] = alternatives[0]
     context.user_data["alternative_2"] = alternatives[1]
-    query.edit_message_text(f"Tipo de tanque seleccionado: {selected.capitalize()}")
-    context.bot.send_message(chat_id=query.message.chat_id, 
-                             text=f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+    query.edit_message_text(
+        apply_bold_keywords(f"Tipo de tanque seleccionado: {selected.capitalize()}"),
+        parse_mode=ParseMode.HTML
+    )
+    context.bot.send_message(
+        chat_id=query.message.chat_id, 
+        text=apply_bold_keywords(f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = MEASURE_MAIN
     return MEASURE_MAIN
 
@@ -342,7 +529,10 @@ def get_measure_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_main'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS INSPECCIÓN (30 40 50 60 80):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_INSPECCION_MAIN
     return TAPAS_INSPECCION_MAIN
 
@@ -351,7 +541,10 @@ def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_main'] = text
-    update.message.reply_text("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_ACCESO_MAIN
     return TAPAS_ACCESO_MAIN
 
@@ -361,7 +554,10 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
     selected = context.user_data.get("selected_category", "").capitalize()
-    update.message.reply_text(f"Indique las observaciones y reparación de {selected}:")
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique las observaciones y reparación de {selected}:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = REPAIR_FIRST
     return REPAIR_FIRST
 
@@ -377,7 +573,11 @@ def get_repair_first(update: Update, context: CallbackContext) -> int:
          InlineKeyboardButton("No", callback_data='no')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(f"¿Quiere comentar algo sobre {alt1.capitalize()}?", reply_markup=reply_markup)
+    update.message.reply_text(
+        apply_bold_keywords(f"¿Quiere comentar algo sobre {alt1.capitalize()}?"),
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = ASK_SECOND
     return ASK_SECOND
 
@@ -388,7 +588,10 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     if query.data.lower() == "si":
         alt1 = context.user_data.get("alternative_1")
-        query.edit_message_text(f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        query.edit_message_text(
+            apply_bold_keywords(f"Indique la medida del tanque para {alt1.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = MEASURE_ALT1
         return MEASURE_ALT1
     elif query.data.lower() == "no":
@@ -398,13 +601,23 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
              InlineKeyboardButton("No", callback_data='no')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(f"¿Quiere comentar algo sobre {alt2.capitalize()}?", reply_markup=reply_markup)
+        query.edit_message_text(
+            apply_bold_keywords(f"¿Quiere comentar algo sobre {alt2.capitalize()}?"),
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = ASK_THIRD
         return ASK_THIRD
     else:
-        context.bot.send_message(chat_id=query.message.chat_id,
-                                 text="Respuesta no reconocida, se asume 'No'.")
-        update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+        context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
+            parse_mode=ParseMode.HTML
+        )
+        update.effective_chat.send_message(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
 
@@ -413,7 +626,10 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_INSPECCION_ALT1
     return TAPAS_INSPECCION_ALT1
 
@@ -422,7 +638,10 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt1'] = text
-    update.message.reply_text("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_ACCESO_ALT1
     return TAPAS_ACCESO_ALT1
 
@@ -432,7 +651,10 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt1'] = text
     alt1 = context.user_data.get("alternative_1")
-    update.message.reply_text(f"Indique las observaciones y reparación de {alt1.capitalize()}:")
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique las observaciones y reparación de {alt1.capitalize()}:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = REPAIR_ALT1
     return REPAIR_ALT1
 
@@ -448,11 +670,18 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
              InlineKeyboardButton("No", callback_data='no')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text(f"¿Quiere comentar algo sobre {alt2.capitalize()}?", reply_markup=reply_markup)
+        update.message.reply_text(
+            apply_bold_keywords(f"¿Quiere comentar algo sobre {alt2.capitalize()}?"),
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = ASK_THIRD
         return ASK_THIRD
     else:
-        update.message.reply_text("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+        update.message.reply_text(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
 
@@ -463,17 +692,29 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     if query.data.lower() == "si":
         alt2 = context.user_data.get("alternative_2")
-        query.edit_message_text(f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO")
+        query.edit_message_text(
+            apply_bold_keywords(f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = MEASURE_ALT2
         return MEASURE_ALT2
     elif query.data.lower() == "no":
-        update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+        update.effective_chat.send_message(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
     else:
-        context.bot.send_message(chat_id=query.message.chat_id,
-                                 text="Respuesta no reconocida, se asume 'No'.")
-        update.effective_chat.send_message("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+        context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
+            parse_mode=ParseMode.HTML
+        )
+        update.effective_chat.send_message(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
 
@@ -482,7 +723,10 @@ def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
-    update.message.reply_text("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_INSPECCION_ALT2
     return TAPAS_INSPECCION_ALT2
 
@@ -491,7 +735,10 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt2'] = text
-    update.message.reply_text("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
+    update.message.reply_text(
+        apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = TAPAS_ACCESO_ALT2
     return TAPAS_ACCESO_ALT2
 
@@ -501,7 +748,10 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt2'] = text
     alt2 = context.user_data.get("alternative_2")
-    update.message.reply_text(f"Indique las observaciones y reparación de {alt2.capitalize()}:")
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique las observaciones y reparación de {alt2.capitalize()}:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = REPAIR_ALT2
     return REPAIR_ALT2
 
@@ -510,7 +760,10 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
-    update.message.reply_text("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:")
+    update.message.reply_text(
+        apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = PHOTOS
     return PHOTOS
 
@@ -527,7 +780,11 @@ def get_task_schedule(update: Update, context: CallbackContext) -> int:
          InlineKeyboardButton("No", callback_data='no')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Entregaste avisos en otras direcciones?", reply_markup=reply_markup)
+    update.message.reply_text(
+        apply_bold_keywords("Entregaste avisos en otras direcciones?"),
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = AVISOS_MENU
     return AVISOS_MENU
 
@@ -538,27 +795,41 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
     service = context.user_data.get('service')
     if service == "Fumigacion":
         if not update.message.photo:
-            update.message.reply_text("Por favor, adjunte una imagen válida.")
+            update.message.reply_text(
+                apply_bold_keywords("Por favor, adjunte una imagen válida."),
+                parse_mode=ParseMode.HTML
+            )
             return FUM_PHOTOS
         photos = context.user_data.get("photos", [])
         file_id = update.message.photo[-1].file_id
         photos.append(file_id)
         context.user_data["photos"] = photos
         if len(photos) < 2:
-            update.message.reply_text("Por favor cargue la segunda foto.")
+            update.message.reply_text(
+                apply_bold_keywords("Por favor cargue la segunda foto."),
+                parse_mode=ParseMode.HTML
+            )
             return FUM_PHOTOS
         else:
-            update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
+            update.message.reply_text(
+                apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                parse_mode=ParseMode.HTML
+            )
             context.user_data["current_state"] = CONTACT
             return CONTACT
     else:
-        # Para Limpieza: el usuario puede enviar fotos y cuando termine, debe escribir "Listo"
         if update.message.text and update.message.text.lower().strip() == "listo":
             if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
-                update.message.reply_text("Debe cargar al menos una foto antes de escribir 'Listo'.")
+                update.message.reply_text(
+                    apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
+                    parse_mode=ParseMode.HTML
+                )
                 return PHOTOS
             else:
-                update.message.reply_text("Ingrese el Nombre y teléfono del encargado:")
+                update.message.reply_text(
+                    apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                    parse_mode=ParseMode.HTML
+                )
                 context.user_data["current_state"] = CONTACT
                 return CONTACT
         elif update.message.photo:
@@ -566,10 +837,16 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             file_id = update.message.photo[-1].file_id
             photos.append(file_id)
             context.user_data["photos"] = photos
-            update.message.reply_text("Foto recibida. Puede enviar más fotos o escriba 'Listo' para continuar.")
+            update.message.reply_text(
+                apply_bold_keywords("Foto recibida. Puede enviar más fotos o escriba 'Listo' para continuar."),
+                parse_mode=ParseMode.HTML
+            )
             return PHOTOS
         else:
-            update.message.reply_text("Por favor, envíe una foto o escriba 'Listo' para continuar.")
+            update.message.reply_text(
+                apply_bold_keywords("Por favor, envíe una foto o escriba 'Listo' para continuar."),
+                parse_mode=ParseMode.HTML
+            )
             return PHOTOS
 
 # =============================================================================
@@ -583,11 +860,19 @@ def handle_avisos_menu(update: Update, context: CallbackContext) -> int:
     if query.data.lower() == "back":
         return back_handler(update, context)
     if query.data.lower() == "si":
-        context.bot.send_message(chat_id=query.message.chat_id, text="Indique qué direcciones (separadas por una coma):")
+        context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=apply_bold_keywords("Indique qué direcciones (separadas por una coma):"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = AVISOS_TEXT
         return AVISOS_TEXT
     else:
-        context.bot.send_message(chat_id=query.message.chat_id, text="Gracias!")
+        context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=apply_bold_keywords("Gracias!"),
+            parse_mode=ParseMode.HTML
+        )
         send_email(context.user_data, update, context)
         return ConversationHandler.END
 
@@ -597,7 +882,10 @@ def get_aviso_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['avisos_address'] = text
     send_email(context.user_data, update, context)
-    update.message.reply_text("Gracias!")
+    update.message.reply_text(
+        apply_bold_keywords("Gracias!"),
+        parse_mode=ParseMode.HTML
+    )
     return ConversationHandler.END
 
 # =============================================================================
@@ -608,13 +896,18 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data["contact"] = text
-    # Diferenciar según el servicio seleccionado:
     if context.user_data.get("service", "").lower() == "fumigacion":
-        update.message.reply_text("Gracias por proporcionar el contacto.")
+        update.message.reply_text(
+            apply_bold_keywords("Gracias por proporcionar el contacto."),
+            parse_mode=ParseMode.HTML
+        )
         send_email(context.user_data, update, context)
         return ConversationHandler.END
     else:
-        update.message.reply_text("Ingrese el Horario de INICIO y FIN de tareas:")
+        update.message.reply_text(
+            apply_bold_keywords("Ingrese el Horario de INICIO y FIN de tareas:"),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = TASK_SCHEDULE
         return TASK_SCHEDULE
 
@@ -626,7 +919,6 @@ def send_email(user_data, update: Update, context: CallbackContext):
 
     msg = MIMEMultipart()
     msg["From"] = EMAIL_ADDRESS
-    # Configura el destinatario según lo requieras:
     msg["To"] = "destinatario@example.com"
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
@@ -639,15 +931,29 @@ def send_email(user_data, update: Update, context: CallbackContext):
         server.quit()
         logger.info("Correo enviado exitosamente.")
         if update.message:
-            update.message.reply_text("Correo enviado exitosamente.")
+            update.message.reply_text(
+                apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML
+            )
         else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text="Correo enviado exitosamente.")
+            context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML
+            )
     except Exception as e:
         logger.error("Error al enviar email: %s", e)
         if update.message:
-            update.message.reply_text("Error al enviar correo.")
+            update.message.reply_text(
+                apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML
+            )
         else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text="Error al enviar correo.")
+            context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML
+            )
 
 # =============================================================================
 # FUNCIÓN MAIN
@@ -672,7 +978,6 @@ def main():
                 CallbackQueryHandler(service_selection),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
             ],
-            # Fumigación
             FUMIGATION: [
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, fumigation_data)
@@ -699,7 +1004,6 @@ def main():
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_aviso_address)
             ],
-            # Limpieza y Reparación – principal y alternativas
             TANK_TYPE: [
                 CallbackQueryHandler(handle_tank_type),
                 MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)
