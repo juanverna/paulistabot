@@ -29,50 +29,8 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 # =============================================================================
 # DEFINICIÓN DE ESTADOS
 # =============================================================================
-# Se utilizarán 25 estados (0 a 24) para el flujo del ConversationHandler.
-# Los estados son:
-#  0: CODE                - Código de empleado (solo números)
-#  1: ORDER               - Número de orden (solo números, exactamente 7 dígitos)
-#  2: ADDRESS             - Dirección
-#  3: SERVICE             - ¿Qué servicio se realizó?
-#
-# Para Fumigación:
-#  4: FUMIGATION         - ¿Qué unidades contienen insectos?
-# 13: FUM_OBS            - Observaciones para la próxima visita
-# 14: FUM_PHOTOS         - Adjuntar fotos para fumigación
-# 15: FUM_AVISOS         - Respuesta a avisos para el próximo mes
-# 16: FUM_AVISOS_MENU    - Menú: avisos en otras direcciones
-# 17: FUM_AVISOS_TEXT    - En qué direcciones, si respondió afirmativo
-#
-# Para Limpieza y Reparación:
-#  5: TANK_TYPE          - Seleccione el tipo de tanque
-#  6: REPAIR_FIRST       - Observaciones y reparación del tanque principal
-#  7: ASK_SECOND         - ¿Quiere comentar algo sobre la alternativa 1?
-#  8: ASK_THIRD          - ¿Quiere comentar algo sobre la alternativa 2?
-#  9: PHOTOS             - Adjuntar fotos (el usuario puede enviar varias fotos y cuando termine escribe "Listo")
-# 10: CONTACT            - Nombre y teléfono del encargado
-# 11: AVISOS_MENU        - Menú: avisos en otras direcciones
-# 12: AVISOS_TEXT        - Direcciones adicionales
-#
-# Para el tanque principal (medidas combinadas):
-# 13: MEASURE_MAIN       - Formato: ALTO, ANCHO, PROFUNDO
-# 14: TAPAS_INSPECCION_MAIN
-# 15: TAPAS_ACCESO_MAIN
-#
-# Para la 1ª alternativa:
-# 16: MEASURE_ALT1       - Formato: ALTO, ANCHO, PROFUNDO
-# 17: TAPAS_INSPECCION_ALT1
-# 18: TAPAS_ACCESO_ALT1
-# 19: REPAIR_ALT1        - Observaciones y reparación para la alternativa 1
-#
-# Para la 2ª alternativa:
-# 20: MEASURE_ALT2       - Formato: ALTO, ANCHO, PROFUNDO
-# 21: TAPAS_INSPECCION_ALT2
-# 22: TAPAS_ACCESO_ALT2
-# 23: REPAIR_ALT2        - Observaciones y reparación para la alternativa 2
-#
-# Nueva pregunta para horario:
-# 24: TASK_SCHEDULE      - Horario de INICIO y FIN de tareas
+# Los estados se definen para el flujo del ConversationHandler.
+# (La lista de nombres incluye los estados para ambos flujos: fumigación y limpieza/reparación)
 (CODE, ORDER, ADDRESS, SERVICE, FUMIGATION, TANK_TYPE, 
  REPAIR_FIRST, ASK_SECOND, ASK_THIRD, PHOTOS, CONTACT, AVISOS_MENU, AVISOS_TEXT,
  FUM_OBS, FUM_PHOTOS, FUM_AVISOS, FUM_AVISOS_MENU, FUM_AVISOS_TEXT,
