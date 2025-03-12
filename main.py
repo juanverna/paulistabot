@@ -420,7 +420,7 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Seleccione el tipo de tanque:"),
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
@@ -517,7 +517,7 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         parse_mode=ParseMode.HTML
     )
     context.bot.send_message(
-        chat_id=query.message.chat_id, 
+        chat_id=query.message.chat.id, 
         text=apply_bold_keywords(f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
         parse_mode=ParseMode.HTML
     )
@@ -610,7 +610,7 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         return ASK_THIRD
     else:
         context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
             parse_mode=ParseMode.HTML
         )
@@ -707,7 +707,7 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         return PHOTOS
     else:
         context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
             parse_mode=ParseMode.HTML
         )
@@ -749,7 +749,7 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     context.user_data['tapas_acceso_alt2'] = text
     alt2 = context.user_data.get("alternative_2")
     update.message.reply_text(
-        apply_bold_keywords(f"Indique las observaciones y reparación de {alt2.capitalize()}:"),
+        apply_bold_keywords(f"Indique las observaciones y reparación de {alt2.capitalize()}:"), 
         parse_mode=ParseMode.HTML
     )
     context.user_data["current_state"] = REPAIR_ALT2
@@ -861,7 +861,7 @@ def handle_avisos_menu(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     if query.data.lower() == "si":
         context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Indique qué direcciones (separadas por una coma):"),
             parse_mode=ParseMode.HTML
         )
@@ -869,7 +869,7 @@ def handle_avisos_menu(update: Update, context: CallbackContext) -> int:
         return AVISOS_TEXT
     else:
         context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Gracias!"),
             parse_mode=ParseMode.HTML
         )
@@ -914,14 +914,55 @@ def get_contact(update: Update, context: CallbackContext) -> int:
 def send_email(user_data, update: Update, context: CallbackContext):
     subject = "Reporte de Servicio"
     body = "Detalles del reporte:\n"
-    for key, value in user_data.items():
-        body += f"{key}: {value}\n"
+    # Diccionario para mostrar etiquetas amigables en el correo
+    field_mapping = {
+        "code": "Código",
+        "order": "Número de Orden",
+        "address": "Dirección",
+        "service": "Servicio",
+        "fumigated_units": "Unidades con insectos",
+        "fum_obs": "Observaciones de fumigación",
+        "contact": "Contacto",
+        "task_schedule": "Horario de tareas",
+        "selected_category": "Tipo de tanque",
+        "measure_main": "Medida principal",
+        "tapas_inspeccion_main": "Tapas inspección principal",
+        "tapas_acceso_main": "Tapas acceso principal",
+        "measure_alt1": "Medida alternativa 1",
+        "tapas_inspeccion_alt1": "Tapas inspección alternativa 1",
+        "tapas_acceso_alt1": "Tapas acceso alternativa 1",
+        "repair_alt1": "Reparación alternativa 1",
+        "measure_alt2": "Medida alternativa 2",
+        "tapas_inspeccion_alt2": "Tapas inspección alternativa 2",
+        "tapas_acceso_alt2": "Tapas acceso alternativa 2",
+        "repair_alt2": "Reparación alternativa 2",
+        "avisos_address": "Direcciones avisos"
+    }
+    for key, label in field_mapping.items():
+        if key in user_data:
+            value = user_data[key]
+            body += f"{label}: {value}\n"
 
+    # Crear el mensaje de correo (multipart para incluir texto e imágenes)
     msg = MIMEMultipart()
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = "destinatario@example.com"
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
+
+    # Adjuntar las imágenes (descargadas a partir de sus file_id)
+    photos = user_data.get("photos", [])
+    for idx, file_id in enumerate(photos):
+        try:
+            file = context.bot.get_file(file_id)
+            bio = BytesIO()
+            file.download(out=bio)
+            bio.seek(0)
+            image = MIMEImage(bio.read(), _subtype="jpeg")
+            image.add_header('Content-Disposition', 'attachment', filename=f"foto_{idx+1}.jpg")
+            msg.attach(image)
+        except Exception as e:
+            logger.error("Error al descargar/adjuntar imagen: %s", e)
 
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
