@@ -752,12 +752,23 @@ def get_contact(update: Update, context: CallbackContext) -> int:
 def send_email(user_data, update: Update, context: CallbackContext):
     subject = "Reporte de Servicio"
     lines = []
+
+    # Transformar el valor de "service" para mostrar el texto adecuado
+    if "service" in user_data:
+        if user_data["service"].lower() == "fumigacion":
+            service_val = "Fumigación"
+        elif user_data["service"].lower() == "limpieza":
+            service_val = "Limpieza y Reparación de Tanques"
+        else:
+            service_val = user_data["service"]
+        user_data["service"] = service_val
+
     # Orden fijo en el reporte según las preguntas:
     ordered_fields = [
         ("code", "Código"),
         ("order", "Número de Orden"),
         ("address", "Dirección"),
-        ("service", "Servicio"),
+        ("service", "Servicio seleccionado"),
         ("contact", "Contacto"),
         ("task_schedule", "Horario de tareas"),
         ("selected_category", "Tipo de tanque"),
@@ -775,7 +786,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
             ("measure_alt1", "Medida " + alt),
             ("tapas_inspeccion_alt1", "Tapas inspección " + alt),
             ("tapas_acceso_alt1", "Tapas acceso " + alt),
-            ("repair_alt1", "Reparación " + alt)
+            ("repair_alt1", "Observaciones de " + alt)
         ]
         for key, label in alt_fields:
             if key in user_data:
@@ -787,7 +798,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
             ("measure_alt2", "Medida " + alt),
             ("tapas_inspeccion_alt2", "Tapas inspección " + alt),
             ("tapas_acceso_alt2", "Tapas acceso " + alt),
-            ("repair_alt2", "Reparación " + alt)
+            ("repair_alt2", "Observaciones de " + alt)
         ]
         for key, label in alt_fields:
             if key in user_data:
