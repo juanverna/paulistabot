@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # VARIABLES DE CONFIGURACIÓN
 # =============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TU_TOKEN_AQUI")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 
@@ -199,7 +199,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  parse_mode=ParseMode.HTML)
     elif state == REPAIR_MAIN:
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc):"),
+                                 text=apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la sección principal:"),
                                  parse_mode=ParseMode.HTML)
     elif state == SUGGESTIONS_MAIN:
         context.bot.send_message(chat_id=chat_id,
@@ -226,8 +226,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
                                  parse_mode=ParseMode.HTML)
     elif state == TAPAS_ACCESO_ALT1:
+        alt1 = context.user_data.get("alternative_1", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+                                 text=apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt1}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == REPAIR_ALT1:
         alt1 = context.user_data.get("alternative_1", "").capitalize()
@@ -235,8 +236,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords(f"Indique reparaciones a realizar para {alt1} (EJ: tapas, revoques, etc):"),
                                  parse_mode=ParseMode.HTML)
     elif state == SUGGESTIONS_ALT1:
+        alt1 = context.user_data.get("alternative_1", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote):"),
+                                 text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == ASK_THIRD:
         alt2 = context.user_data.get("alternative_2", "")
@@ -259,8 +261,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
                                  parse_mode=ParseMode.HTML)
     elif state == TAPAS_ACCESO_ALT2:
+        alt2 = context.user_data.get("alternative_2", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+                                 text=apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt2}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == REPAIR_ALT2:
         alt2 = context.user_data.get("alternative_2", "").capitalize()
@@ -268,8 +271,9 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords(f"Indique reparaciones a realizar para {alt2} (EJ: tapas, revoques, etc):"),
                                  parse_mode=ParseMode.HTML)
     elif state == SUGGESTIONS_ALT2:
+        alt2 = context.user_data.get("alternative_2", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote):"),
+                                 text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == PHOTOS:
         context.bot.send_message(chat_id=chat_id,
@@ -507,7 +511,7 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
-    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc):"),
+    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la sección principal:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = REPAIR_MAIN
     return REPAIR_MAIN
@@ -593,7 +597,8 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt1'] = text
-    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la alternativa:"),
+    alt1 = context.user_data.get("alternative_1")
+    update.message.reply_text(apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt1.capitalize()}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = REPAIR_ALT1
     return REPAIR_ALT1
@@ -603,7 +608,7 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
-    update.message.reply_text(apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote) para la alternativa:"),
+    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {context.user_data.get('alternative_1', '').capitalize()}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_ALT1
     return SUGGESTIONS_ALT1
@@ -623,6 +628,31 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = ASK_THIRD
     return ASK_THIRD
+
+# --- Función handle_ask_third agregada ---
+def handle_ask_third(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    if query.data.lower() == "back":
+        return back_handler(update, context)
+    if query.data.lower() == "si":
+        alt2 = context.user_data.get("alternative_2")
+        query.edit_message_text(apply_bold_keywords(f"Indique la medida del tanque para {alt2.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
+                                  parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = MEASURE_ALT2
+        return MEASURE_ALT2
+    elif query.data.lower() == "no":
+        query.edit_message_text(apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+                                  parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
+    else:
+        context.bot.send_message(chat_id=query.message.chat.id,
+                                 text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
+                                 parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
+# --- Fin de handle_ask_third ---
 
 def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -649,7 +679,8 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt2'] = text
-    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la alternativa 2:"),
+    alt2 = context.user_data.get("alternative_2")
+    update.message.reply_text(apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt2.capitalize()}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = REPAIR_ALT2
     return REPAIR_ALT2
@@ -659,7 +690,7 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
-    update.message.reply_text(apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote) para la alternativa 2:"),
+    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {context.user_data.get('alternative_2', '').capitalize()}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_ALT2
     return SUGGESTIONS_ALT2
@@ -863,7 +894,7 @@ def main():
             TAPAS_ACCESO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt1)],
             REPAIR_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)],
             SUGGESTIONS_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt1)],
-            ASK_THIRD: [CallbackQueryHandler(handle_ask_second),  # Reusing handle_ask_second for second alternative
+            ASK_THIRD: [CallbackQueryHandler(handle_ask_third),
                         MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler)],
             MEASURE_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_measure_alt2)],
             TAPAS_INSPECCION_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt2)],
