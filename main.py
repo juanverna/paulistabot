@@ -198,12 +198,14 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
                                  parse_mode=ParseMode.HTML)
     elif state == REPAIR_MAIN:
+        selected = context.user_data.get("selected_category", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la sección principal:"),
+                                 text=apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {selected}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == SUGGESTIONS_MAIN:
+        selected = context.user_data.get("selected_category", "").capitalize()
         context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote):"),
+                                 text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {selected}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == ASK_SECOND:
         alt1 = context.user_data.get("alternative_1", "")
@@ -511,7 +513,7 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
-    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para la sección principal:"),
+    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para " + context.user_data.get("selected_category", "").capitalize() + ":"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = REPAIR_MAIN
     return REPAIR_MAIN
@@ -521,7 +523,7 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repairs'] = text
-    update.message.reply_text(apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote):"),
+    update.message.reply_text(apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote) para " + context.user_data.get("selected_category", "").capitalize() + ":"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_MAIN
     return SUGGESTIONS_MAIN
@@ -629,7 +631,6 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = ASK_THIRD
     return ASK_THIRD
 
-# --- Función handle_ask_third agregada ---
 def handle_ask_third(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
@@ -652,7 +653,6 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
                                  parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
-# --- Fin de handle_ask_third ---
 
 def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -784,23 +784,27 @@ def send_email(user_data, update: Update, context: CallbackContext):
             ("service", "Servicio seleccionado")
         ])
         if service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
+            # Obtener el nombre de la opción principal y alternativas
+            selected = user_data.get("selected_category", "")
+            alt1 = user_data.get("alternative_1", "Alternativa 1")
+            alt2 = user_data.get("alternative_2", "Alternativa 2")
             ordered_fields.extend([
                 ("selected_category", "Tipo de tanque"),
                 ("measure_main", "Medida principal"),
                 ("tapas_inspeccion_main", "Tapas inspección"),
                 ("tapas_acceso_main", "Tapas acceso"),
-                ("repairs", "Reparaciones (Principal)"),
-                ("suggestions", "Sugerencias (Principal)"),
-                ("measure_alt1", "Medida Alternativa 1"),
-                ("tapas_inspeccion_alt1", "Tapas inspección Alternativa 1"),
-                ("tapas_acceso_alt1", "Tapas acceso Alternativa 1"),
-                ("repair_alt1", "Reparaciones Alternativa 1"),
-                ("suggestions_alt1", "Sugerencias Alternativa 1"),
-                ("measure_alt2", "Medida Alternativa 2"),
-                ("tapas_inspeccion_alt2", "Tapas inspección Alternativa 2"),
-                ("tapas_acceso_alt2", "Tapas acceso Alternativa 2"),
-                ("repair_alt2", "Reparaciones Alternativa 2"),
-                ("suggestions_alt2", "Sugerencias Alternativa 2")
+                ("repairs", f"Reparaciones {selected}"),
+                ("suggestions", f"Sugerencias {selected}"),
+                ("measure_alt1", "Medida " + alt1),
+                ("tapas_inspeccion_alt1", "Tapas inspección " + alt1),
+                ("tapas_acceso_alt1", "Tapas acceso " + alt1),
+                ("repair_alt1", f"Reparaciones {alt1}"),
+                ("suggestions_alt1", f"Sugerencias {alt1}"),
+                ("measure_alt2", "Medida " + alt2),
+                ("tapas_inspeccion_alt2", "Tapas inspección " + alt2),
+                ("tapas_acceso_alt2", "Tapas acceso " + alt2),
+                ("repair_alt2", f"Reparaciones {alt2}"),
+                ("suggestions_alt2", f"Sugerencias {alt2}")
             ])
         if service == "Fumigaciones":
             ordered_fields.extend([
