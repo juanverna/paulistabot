@@ -278,13 +278,17 @@ def re_ask(state: int, update: Update, context: CallbackContext):
                                  text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
                                  parse_mode=ParseMode.HTML)
     elif state == PHOTOS:
-        context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
-                                 parse_mode=ParseMode.HTML)
-    elif state == AVISOS_CODE:
-        context.bot.send_message(chat_id=chat_id,
-                                 text=apply_bold_keywords("Ingrese su código (solo números):"),
-                                 parse_mode=ParseMode.HTML)
+        # Para "Presupuestos" se omite el paso de fotos
+        if context.user_data.get("service") == "Presupuestos":
+            context.bot.send_message(chat_id=chat_id,
+                                     text=apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                                     parse_mode=ParseMode.HTML)
+            context.user_data["current_state"] = CONTACT
+        else:
+            context.bot.send_message(chat_id=chat_id,
+                                     text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
+                                     parse_mode=ParseMode.HTML)
+            context.user_data["current_state"] = PHOTOS
     elif state == AVISOS_ADDRESS:
         context.bot.send_message(chat_id=chat_id,
                                  text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
@@ -355,11 +359,12 @@ def service_selection(update: Update, context: CallbackContext) -> int:
     elif service_type == "Avisos":
         query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Avisos"),
                                 parse_mode=ParseMode.HTML)
+        # Para Avisos no se pide código de nuevo
         context.bot.send_message(chat_id=query.message.chat.id,
-                                 text=apply_bold_keywords("Ingrese su código (solo números):"),
+                                 text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
                                  parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = AVISOS_CODE
-        return AVISOS_CODE
+        context.user_data["current_state"] = AVISOS_ADDRESS
+        return AVISOS_ADDRESS
 
 def get_order(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -400,18 +405,6 @@ def get_address(update: Update, context: CallbackContext) -> int:
 # =============================================================================
 # FUNCIONES PARA EL FLUJO DE AVISOS
 # =============================================================================
-def get_avisos_code(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    if not text.isdigit():
-        update.message.reply_text(apply_bold_keywords("El código debe ser numérico. Por favor, inténtalo de nuevo:"),
-                                    parse_mode=ParseMode.HTML)
-        return AVISOS_CODE
-    context.user_data["avisos_code"] = text
-    update.message.reply_text(apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
-                                parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = AVISOS_ADDRESS
-    return AVISOS_ADDRESS
-
 def get_avisos_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if text.lower().replace("á", "a") == "atras":
@@ -513,7 +506,8 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
-    update.message.reply_text(apply_bold_keywords("Indique reparaciones a realizar (EJ: tapas, revoques, etc) para " + context.user_data.get("selected_category", "").capitalize() + ":"),
+    selected = context.user_data.get("selected_category", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {selected}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = REPAIR_MAIN
     return REPAIR_MAIN
@@ -523,7 +517,8 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repairs'] = text
-    update.message.reply_text(apply_bold_keywords("Indique sugerencias p/ la próx limpieza (EJ: desagote) para " + context.user_data.get("selected_category", "").capitalize() + ":"),
+    selected = context.user_data.get("selected_category", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {selected}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_MAIN
     return SUGGESTIONS_MAIN
@@ -538,7 +533,8 @@ def get_suggestions_main(update: Update, context: CallbackContext) -> int:
          InlineKeyboardButton("No", callback_data='no')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(apply_bold_keywords(f"¿Quiere comentar algo sobre {context.user_data.get('alternative_1', '').capitalize()}?"),
+    alt1 = context.user_data.get("alternative_1", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"¿Quiere comentar algo sobre {alt1}?"),
                                 reply_markup=reply_markup,
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = ASK_SECOND
@@ -610,7 +606,8 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
-    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {context.user_data.get('alternative_1', '').capitalize()}:"),
+    alt1 = context.user_data.get("alternative_1", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_ALT1
     return SUGGESTIONS_ALT1
@@ -625,7 +622,8 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
          InlineKeyboardButton("No", callback_data='no')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(apply_bold_keywords(f"¿Quiere comentar algo sobre {context.user_data.get('alternative_2', '').capitalize()}?"),
+    alt2 = context.user_data.get("alternative_2", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"¿Quiere comentar algo sobre {alt2}?"),
                                 reply_markup=reply_markup,
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = ASK_THIRD
@@ -690,7 +688,8 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
-    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {context.user_data.get('alternative_2', '').capitalize()}:"),
+    alt2 = context.user_data.get("alternative_2", "").capitalize()
+    update.message.reply_text(apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
                                 parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = SUGGESTIONS_ALT2
     return SUGGESTIONS_ALT2
@@ -700,10 +699,17 @@ def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
     if text.lower().replace("á", "a") == "atras":
         return back_handler(update, context)
     context.user_data['suggestions_alt2'] = text
-    update.message.reply_text(apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
-                                parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = PHOTOS
-    return PHOTOS
+    # Para "Presupuestos" se omite la carga de fotos y se pide directamente el contacto.
+    if context.user_data.get("service") == "Presupuestos":
+        update.message.reply_text(apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                                    parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = CONTACT
+        return CONTACT
+    else:
+        update.message.reply_text(apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
+                                    parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
 
 # =============================================================================
 # FUNCIONES PARA MANEJO DE FOTOS (TANQUES y FUMIGACIONES)
@@ -766,13 +772,10 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 def send_email(user_data, update: Update, context: CallbackContext):
-    subject = "Reporte de Servicio"
-    lines = []
     service = user_data.get("service", "")
+    subject = "Reporte de Servicio: " + service
+    lines = []
     if service == "Avisos":
-        subject = "Reporte de Avisos"
-        if "avisos_code" in user_data:
-            lines.append(f"Código: {user_data['avisos_code']}")
         if "avisos_address" in user_data:
             lines.append(f"Dirección/es: {user_data['avisos_address']}")
     else:
@@ -784,10 +787,9 @@ def send_email(user_data, update: Update, context: CallbackContext):
             ("service", "Servicio seleccionado")
         ])
         if service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
-            # Obtener el nombre de la opción principal y alternativas
             selected = user_data.get("selected_category", "")
-            alt1 = user_data.get("alternative_1", "Alternativa 1")
-            alt2 = user_data.get("alternative_2", "Alternativa 2")
+            alt1 = user_data.get("alternative_1", "")
+            alt2 = user_data.get("alternative_2", "")
             ordered_fields.extend([
                 ("selected_category", "Tipo de tanque"),
                 ("measure_main", "Medida principal"),
@@ -910,7 +912,6 @@ def main():
                      MessageHandler(Filters.text & ~Filters.command, handle_photos)],
             CONTACT: [MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                       MessageHandler(Filters.text & ~Filters.command, get_contact)],
-            AVISOS_CODE: [MessageHandler(Filters.text & ~Filters.command, get_avisos_code)],
             AVISOS_ADDRESS: [MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
                              MessageHandler(Filters.text & ~Filters.command, get_avisos_address)],
             AVISOS_PHOTOS: [MessageHandler(Filters.regex("(?i)^(atr[aá]s)$"), back_handler),
