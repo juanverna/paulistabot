@@ -85,8 +85,16 @@ BACK_MAP = {
 }
 
 # =============================================================================
-# FUNCIONES DE RETROCESO (back_handler Y re_ask)
+# FUNCIONES DE INICIO Y RETROCESO
 # =============================================================================
+def start_conversation(update: Update, context: CallbackContext) -> int:
+    logger.debug("Inicio de conversación.")
+    context.user_data.clear()
+    update.message.reply_text(apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
+                                parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = CODE
+    return CODE
+
 def back_handler(update: Update, context: CallbackContext) -> int:
     logger.debug("back_handler: Estado actual: %s", context.user_data.get("current_state"))
     if update.callback_query:
@@ -97,8 +105,7 @@ def back_handler(update: Update, context: CallbackContext) -> int:
         if context.user_data.get("service") in ["Presupuestos", "Avisos"]:
             previous_state = SERVICE
         else:
-            previous_state = BACK_MAP.get(ORDER)
-            previous_state = ORDER  # Para flujos que usan ORDER
+            previous_state = ORDER
     else:
         previous_state = BACK_MAP.get(current_state)
     if previous_state is None:
