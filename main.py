@@ -3,6 +3,7 @@ import os
 import smtplib
 import re
 from io import BytesIO
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Variables de configuración
 # =============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TU_TOKEN_AQUI")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 
@@ -77,6 +78,19 @@ BACK_MAP = {
 }
 
 # =============================================================================
+# Función para revisar comandos especiales ("terminar")
+# =============================================================================
+def check_special_commands(text: str, update: Update, context: CallbackContext) -> bool:
+    # Normalizamos el texto (minúsculas y sin acentos en "á")
+    lower_text = text.lower().replace("á", "a")
+    if "terminar" in lower_text:
+        context.user_data.clear()
+        update.message.reply_text("Formulario cancelado. Empezando de nuevo.")
+        start_conversation(update, context)
+        return True
+    return False
+
+# =============================================================================
 # Funciones de inicio y retroceso
 # =============================================================================
 def start_conversation(update: Update, context: CallbackContext) -> int:
@@ -112,19 +126,21 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Ejemplo: para CODE se reenvía el mensaje original. (Puedes ampliar para otros estados.)
     if state == CODE:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
             parse_mode=ParseMode.HTML
         )
+    # Se pueden agregar más mensajes según el estado si se desea
 
 # =============================================================================
 # Funciones del flujo de conversación
 # =============================================================================
 def get_code(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     if not text.isdigit():
@@ -135,10 +151,11 @@ def get_code(update: Update, context: CallbackContext) -> int:
         return CODE
     context.user_data["code"] = text
     keyboard = [
-        [InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones")],
-        [InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")],
-        [InlineKeyboardButton("Presupuestos", callback_data="Presupuestos")],
-        [InlineKeyboardButton("Avisos", callback_data="Avisos")]
+        [InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones"),
+         InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")],
+        [InlineKeyboardButton("Presupuestos", callback_data="Presupuestos"),
+         InlineKeyboardButton("Avisos", callback_data="Avisos")],
+        [InlineKeyboardButton("ATRAS", callback_data="back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text(
@@ -207,6 +224,8 @@ def service_selection(update: Update, context: CallbackContext) -> int:
 
 def get_order(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     if not text.isdigit() or len(text) != 7:
@@ -225,6 +244,8 @@ def get_order(update: Update, context: CallbackContext) -> int:
 
 def get_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['address'] = text
@@ -238,9 +259,10 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return FUMIGATION
     elif service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
         keyboard = [
-            [InlineKeyboardButton("CISTERNA", callback_data='CISTERNA')],
-            [InlineKeyboardButton("RESERVA", callback_data='RESERVA')],
-            [InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')]
+            [InlineKeyboardButton("CISTERNA", callback_data='CISTERNA'),
+             InlineKeyboardButton("RESERVA", callback_data='RESERVA'),
+             InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')],
+            [InlineKeyboardButton("ATRAS", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.message.reply_text(
@@ -253,6 +275,8 @@ def get_address(update: Update, context: CallbackContext) -> int:
 
 def fumigation_data(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['fumigated_units'] = text
@@ -265,6 +289,8 @@ def fumigation_data(update: Update, context: CallbackContext) -> int:
 
 def get_fum_obs(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['fum_obs'] = text
@@ -299,6 +325,8 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
 
 def get_measure_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['measure_main'] = text
@@ -311,6 +339,8 @@ def get_measure_main(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_main'] = text
@@ -323,6 +353,8 @@ def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
@@ -336,6 +368,8 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
 
 def get_suggestions_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['suggestions'] = text
@@ -349,13 +383,16 @@ def get_suggestions_main(update: Update, context: CallbackContext) -> int:
 
 def get_repair_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['repairs'] = text
     alt1 = context.user_data.get("alternative_1", "").capitalize()
     keyboard = [
         [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')]
+         InlineKeyboardButton("No", callback_data='no')],
+        [InlineKeyboardButton("ATRAS", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text(
@@ -369,6 +406,8 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
 # Funciones para Alternativa 1
 def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt1'] = text
@@ -381,6 +420,8 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt1'] = text
@@ -394,6 +435,8 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['suggestions_alt1'] = text
@@ -407,13 +450,16 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
     alt2 = context.user_data.get("alternative_2", "").capitalize()
     keyboard = [
         [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')]
+         InlineKeyboardButton("No", callback_data='no')],
+        [InlineKeyboardButton("ATRAS", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text(
@@ -427,6 +473,8 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
 # Funciones para Alternativa 2
 def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt2'] = text
@@ -439,6 +487,8 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt2'] = text
@@ -452,6 +502,8 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['suggestions_alt2'] = text
@@ -465,6 +517,8 @@ def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
@@ -486,6 +540,8 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
 # Funciones para el flujo de Avisos
 def get_avisos_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data["avisos_address"] = text
@@ -542,7 +598,8 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
         alt2 = context.user_data.get("alternative_2")
         keyboard = [
             [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')]
+             InlineKeyboardButton("No", callback_data='no')],
+            [InlineKeyboardButton("ATRAS", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         query.edit_message_text(
@@ -594,6 +651,8 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
 # Funciones para obtener medidas en Alternativa 1 y 2
 def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
@@ -606,6 +665,8 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
@@ -678,6 +739,8 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
 # Funciones para contacto y envío de email
 def get_contact(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
         return back_handler(update, context)
     context.user_data["contact"] = text
@@ -692,6 +755,9 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
+    # Agregar la fecha actual (campo interno)
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines.append(f"Fecha: {fecha}")
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
     if service == "Avisos":
@@ -765,15 +831,29 @@ def send_email(user_data, update: Update, context: CallbackContext):
         server.quit()
         logger.info("Correo enviado exitosamente.")
         if update.message:
-            update.message.reply_text(apply_bold_keywords("Correo enviado exitosamente."), parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML
+            )
         else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=apply_bold_keywords("Correo enviado exitosamente."), parse_mode=ParseMode.HTML)
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML
+            )
     except Exception as e:
         logger.error("Error al enviar email: %s", e)
         if update.message:
-            update.message.reply_text(apply_bold_keywords("Error al enviar correo."), parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML
+            )
         else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=apply_bold_keywords("Error al enviar correo."), parse_mode=ParseMode.HTML)
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML
+            )
 
 def main():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
