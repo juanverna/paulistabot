@@ -81,7 +81,6 @@ BACK_MAP = {
 # Función para revisar comandos especiales ("terminar")
 # =============================================================================
 def check_special_commands(text: str, update: Update, context: CallbackContext) -> bool:
-    # Normalizamos el texto (minúsculas y sin acentos en "á")
     lower_text = text.lower().replace("á", "a")
     if "terminar" in lower_text:
         context.user_data.clear()
@@ -126,13 +125,13 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    # Ejemplo para CODE; para otros estados se pueden agregar mensajes similares si se requiere
     if state == CODE:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
             parse_mode=ParseMode.HTML
         )
-    # Se pueden agregar más mensajes según el estado si se desea
 
 # =============================================================================
 # Funciones del flujo de conversación
@@ -227,6 +226,8 @@ def get_order(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        # Limpiar el parámetro de número de orden
+        context.user_data.pop("order", None)
         return back_handler(update, context)
     if not text.isdigit() or len(text) != 7:
         update.message.reply_text(
@@ -386,6 +387,7 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        context.user_data.pop("repairs", None)
         return back_handler(update, context)
     context.user_data['repairs'] = text
     alt1 = context.user_data.get("alternative_1", "").capitalize()
@@ -453,6 +455,7 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        context.user_data.pop("repair_alt1", None)
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
     alt2 = context.user_data.get("alternative_2", "").capitalize()
@@ -520,6 +523,7 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        context.user_data.pop("repair_alt2", None)
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
     if context.user_data.get("service") == "Presupuestos":
@@ -654,6 +658,7 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        context.user_data.pop("measure_alt1", None)
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
     update.message.reply_text(
@@ -668,6 +673,7 @@ def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     if check_special_commands(text, update, context):
         return ConversationHandler.END
     if "atras" in text.lower().replace("á", "a"):
+        context.user_data.pop("measure_alt2", None)
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
     update.message.reply_text(
@@ -755,7 +761,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
-    # Agregar la fecha actual (campo interno)
+    # Agregar la fecha actual (este campo es interno y no se muestra al usuario)
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines.append(f"Fecha: {fecha}")
     if "code" in user_data:
