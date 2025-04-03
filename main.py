@@ -45,6 +45,34 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
  AVISOS_ADDRESS, AVISOS_PHOTOS) = range(30)
 
 # =============================================================================
+# Mapeo de estados a claves en user_data para eliminar respuesta actual al "atras"
+# =============================================================================
+STATE_KEYS = {
+    CODE: "code",
+    ORDER: "order",
+    ADDRESS: "address",
+    FUMIGATION: "fumigated_units",
+    FUM_OBS: "fum_obs",
+    MEASURE_MAIN: "measure_main",
+    TAPAS_INSPECCION_MAIN: "tapas_inspeccion_main",
+    TAPAS_ACCESO_MAIN: "tapas_acceso_main",
+    SUGGESTIONS_MAIN: "suggestions",
+    REPAIR_MAIN: "repairs",
+    MEASURE_ALT1: "measure_alt1",
+    TAPAS_INSPECCION_ALT1: "tapas_inspeccion_alt1",
+    TAPAS_ACCESO_ALT1: "tapas_acceso_alt1",
+    SUGGESTIONS_ALT1: "suggestions_alt1",
+    REPAIR_ALT1: "repair_alt1",
+    MEASURE_ALT2: "measure_alt2",
+    TAPAS_INSPECCION_ALT2: "tapas_inspeccion_alt2",
+    TAPAS_ACCESO_ALT2: "tapas_acceso_alt2",
+    SUGGESTIONS_ALT2: "suggestions_alt2",
+    REPAIR_ALT2: "repair_alt2",
+    CONTACT: "contact",
+    AVISOS_ADDRESS: "avisos_address",
+}
+
+# =============================================================================
 # Funciones para manejar el historial (stack) de estados
 # =============================================================================
 def push_state(context: CallbackContext, state: int):
@@ -88,7 +116,11 @@ def start_conversation(update: Update, context: CallbackContext) -> int:
     return CODE
 
 def back_handler(update: Update, context: CallbackContext) -> int:
-    logger.debug("Botón ATRAS presionado.")
+    logger.debug("Se activó el comando ATRAS.")
+    # Eliminar la respuesta del estado actual, si corresponde
+    current_state = context.user_data.get("current_state")
+    if current_state in STATE_KEYS:
+        context.user_data.pop(STATE_KEYS[current_state], None)
     prev = pop_state(context)
     if prev is None:
         prev = CODE
@@ -98,7 +130,7 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Aquí se reenvía el mensaje original para cada estado que tenga menú
+    # Reenvía el mensaje original para cada estado (con menú si es necesario)
     if state == CODE:
         context.bot.send_message(
             chat_id=chat_id,
@@ -135,7 +167,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
             chat_id=chat_id,
             text=apply_bold_keywords("Seleccione el tipo de tanque:"),
             reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    # Agrega más casos según sea necesario para otros estados con menú
+    # Agregar más casos según sea necesario para otros estados con menú
 
 # =============================================================================
 # Funciones del flujo de conversación
@@ -144,7 +176,7 @@ def get_code(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     if not text.isdigit():
         update.message.reply_text(
@@ -224,7 +256,7 @@ def get_order(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("order", None)
         return back_handler(update, context)
     if not text.isdigit() or len(text) != 7:
@@ -244,7 +276,7 @@ def get_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['address'] = text
     push_state(context, ADDRESS)
@@ -275,7 +307,7 @@ def fumigation_data(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['fumigated_units'] = text
     push_state(context, FUMIGATION)
@@ -289,7 +321,7 @@ def get_fum_obs(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['fum_obs'] = text
     push_state(context, FUM_OBS)
@@ -324,7 +356,7 @@ def get_measure_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['measure_main'] = text
     push_state(context, MEASURE_MAIN)
@@ -338,7 +370,7 @@ def get_tapas_inspeccion_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_main'] = text
     push_state(context, TAPAS_INSPECCION_MAIN)
@@ -352,7 +384,7 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_main'] = text
     push_state(context, TAPAS_ACCESO_MAIN)
@@ -367,7 +399,7 @@ def get_suggestions_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['suggestions'] = text
     push_state(context, SUGGESTIONS_MAIN)
@@ -382,7 +414,7 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("repairs", None)
         return back_handler(update, context)
     context.user_data['repairs'] = text
@@ -408,7 +440,7 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt1'] = text
     push_state(context, TAPAS_INSPECCION_ALT1)
@@ -422,7 +454,7 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt1'] = text
     push_state(context, TAPAS_ACCESO_ALT1)
@@ -437,7 +469,7 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['suggestions_alt1'] = text
     push_state(context, SUGGESTIONS_ALT1)
@@ -452,7 +484,7 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("repair_alt1", None)
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
@@ -478,7 +510,7 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_inspeccion_alt2'] = text
     push_state(context, TAPAS_INSPECCION_ALT2)
@@ -492,7 +524,7 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['tapas_acceso_alt2'] = text
     push_state(context, TAPAS_ACCESO_ALT2)
@@ -507,7 +539,7 @@ def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data['suggestions_alt2'] = text
     push_state(context, SUGGESTIONS_ALT2)
@@ -522,7 +554,7 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("repair_alt2", None)
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
@@ -545,7 +577,7 @@ def get_avisos_address(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data["avisos_address"] = text
     push_state(context, AVISOS_ADDRESS)
@@ -556,16 +588,21 @@ def get_avisos_address(update: Update, context: CallbackContext) -> int:
     return AVISOS_PHOTOS
 
 def handle_avisos_photos(update: Update, context: CallbackContext) -> int:
-    if update.message.text and update.message.text.lower().strip() == "listo":
-        if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
-            update.message.reply_text(
-                apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
-                parse_mode=ParseMode.HTML)
-            return AVISOS_PHOTOS
-        else:
-            send_email(context.user_data, update, context)
-            return ConversationHandler.END
-    elif update.message.photo:
+    # Se permite usar "Listo" para terminar o "atras" para retroceder
+    if update.message.text:
+        txt = update.message.text.lower().replace("á", "a").strip()
+        if txt == "atras":
+            return back_handler(update, context)
+        if txt == "listo":
+            if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
+                update.message.reply_text(
+                    apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
+                    parse_mode=ParseMode.HTML)
+                return AVISOS_PHOTOS
+            else:
+                send_email(context.user_data, update, context)
+                return ConversationHandler.END
+    if update.message.photo:
         photos = context.user_data.get("photos", [])
         file_id = update.message.photo[-1].file_id
         photos.append(file_id)
@@ -649,7 +686,7 @@ def get_measure_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("measure_alt1", None)
         return back_handler(update, context)
     context.user_data['measure_alt1'] = text
@@ -664,7 +701,7 @@ def get_measure_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         context.user_data.pop("measure_alt2", None)
         return back_handler(update, context)
     context.user_data['measure_alt2'] = text
@@ -700,18 +737,22 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             context.user_data["current_state"] = CONTACT
             return CONTACT
     else:
-        if update.message.text and update.message.text.lower().strip() == "listo":
-            if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
-                update.message.reply_text(
-                    apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
-                    parse_mode=ParseMode.HTML)
-                return PHOTOS
-            else:
-                update.message.reply_text(
-                    apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
-                    parse_mode=ParseMode.HTML)
-                context.user_data["current_state"] = CONTACT
-                return CONTACT
+        if update.message.text:
+            txt = update.message.text.lower().replace("á", "a").strip()
+            if txt == "atras":
+                return back_handler(update, context)
+            if txt == "listo":
+                if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
+                    update.message.reply_text(
+                        apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
+                        parse_mode=ParseMode.HTML)
+                    return PHOTOS
+                else:
+                    update.message.reply_text(
+                        apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                        parse_mode=ParseMode.HTML)
+                    context.user_data["current_state"] = CONTACT
+                    return CONTACT
         elif update.message.photo:
             photos = context.user_data.get("photos", [])
             file_id = update.message.photo[-1].file_id
@@ -732,7 +773,7 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
-    if "atras" in text.lower().replace("á", "a"):
+    if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
     context.user_data["contact"] = text
     push_state(context, CONTACT)
