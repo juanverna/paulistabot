@@ -44,22 +44,21 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
  AVISOS_ADDRESS, AVISOS_PHOTOS) = range(30)
 
 # =============================================================================
-# Historial de estados
+# Funciones para manejar el historial (stack) de estados
 # =============================================================================
 def push_state(context: CallbackContext, state: int):
     if "state_stack" not in context.user_data:
         context.user_data["state_stack"] = []
     context.user_data["state_stack"].append(state)
+    logger.debug("push_state: Se guardó el estado %s. Stack actual: %s", state, context.user_data["state_stack"])
 
 def pop_state(context: CallbackContext):
     if "state_stack" in context.user_data and context.user_data["state_stack"]:
-        return context.user_data["state_stack"].pop()
+        prev = context.user_data["state_stack"].pop()
+        logger.debug("pop_state: Se extrajo el estado %s. Stack actual: %s", prev, context.user_data["state_stack"])
+        return prev
+    logger.debug("pop_state: Stack vacío")
     return None
-
-# =============================================================================
-# Diccionario de retroceso (opcional, si no usamos el stack)
-# =============================================================================
-# Se usa el stack para regresar, por lo que no se necesita BACK_MAP
 
 # =============================================================================
 # Función para revisar comandos especiales ("terminar")
@@ -88,6 +87,7 @@ def start_conversation(update: Update, context: CallbackContext) -> int:
     return CODE
 
 def back_handler(update: Update, context: CallbackContext) -> int:
+    logger.debug("Botón ATRAS presionado.")
     prev = pop_state(context)
     if prev is None:
         prev = CODE
@@ -97,7 +97,7 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Según el estado, reenvía el mensaje original; se puede ampliar para cada estado
+    # Aquí se reenvía el mensaje original del estado
     if state == CODE:
         context.bot.send_message(chat_id=chat_id,
             text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
@@ -114,7 +114,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=chat_id,
             text=apply_bold_keywords("¿Qué servicio se realizó?"),
             reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    # Se pueden agregar más casos según se necesite
+    # Puedes agregar más casos para otros estados si lo requieres
 
 # =============================================================================
 # Funciones del flujo de conversación
@@ -156,28 +156,32 @@ def service_selection(update: Update, context: CallbackContext) -> int:
     context.user_data['service'] = service_type
     if service_type == "Fumigaciones":
         query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Fumigaciones"), parse_mode=ParseMode.HTML)
-        context.bot.send_message(chat_id=query.message.chat.id,
+        context.bot.send_message(
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Por favor, ingrese el número de orden (7 dígitos):"),
             parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = ORDER
         return ORDER
     elif service_type == "Limpieza y Reparacion de Tanques":
         query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Limpieza y Reparacion de Tanques"), parse_mode=ParseMode.HTML)
-        context.bot.send_message(chat_id=query.message.chat.id,
+        context.bot.send_message(
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Por favor indique su número de orden (7 dígitos):"),
             parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = ORDER
         return ORDER
     elif service_type == "Presupuestos":
         query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Presupuestos"), parse_mode=ParseMode.HTML)
-        context.bot.send_message(chat_id=query.message.chat.id,
+        context.bot.send_message(
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Ingrese la dirección:"),
             parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = ADDRESS
         return ADDRESS
     elif service_type == "Avisos":
         query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Avisos"), parse_mode=ParseMode.HTML)
-        context.bot.send_message(chat_id=query.message.chat.id,
+        context.bot.send_message(
+            chat_id=query.message.chat.id,
             text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
             parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = AVISOS_ADDRESS
@@ -701,7 +705,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
-    # Agregar la fecha actual (este campo es interno)
+    # Agregar la fecha actual (campo interno)
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines.append(f"Fecha: {fecha}")
     if "code" in user_data:
@@ -777,17 +781,23 @@ def send_email(user_data, update: Update, context: CallbackContext):
         server.quit()
         logger.info("Correo enviado exitosamente.")
         if update.message:
-            update.message.reply_text(apply_bold_keywords("Correo enviado exitosamente."), parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML)
         else:
             context.bot.send_message(chat_id=update.effective_chat.id,
-                text=apply_bold_keywords("Correo enviado exitosamente."), parse_mode=ParseMode.HTML)
+                text=apply_bold_keywords("Correo enviado exitosamente."),
+                parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error("Error al enviar email: %s", e)
         if update.message:
-            update.message.reply_text(apply_bold_keywords("Error al enviar correo."), parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML)
         else:
             context.bot.send_message(chat_id=update.effective_chat.id,
-                text=apply_bold_keywords("Error al enviar correo."), parse_mode=ParseMode.HTML)
+                text=apply_bold_keywords("Error al enviar correo."),
+                parse_mode=ParseMode.HTML)
 
 def main():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
