@@ -8,7 +8,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
-from telegram.ext import Updater, MessageHandler, Filters, CallbackQueryHandler, ConversationHandler, CallbackContext
+from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
+                          ConversationHandler, CallbackContext)
 
 # =============================================================================
 # Función auxiliar para aplicar negritas a palabras clave
@@ -97,24 +98,44 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 def re_ask(state: int, update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Aquí se reenvía el mensaje original del estado
+    # Aquí se reenvía el mensaje original para cada estado que tenga menú
     if state == CODE:
-        context.bot.send_message(chat_id=chat_id,
+        context.bot.send_message(
+            chat_id=chat_id,
             text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
             parse_mode=ParseMode.HTML)
     elif state == SERVICE:
         keyboard = [
-            [InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones"),
-             InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")],
-            [InlineKeyboardButton("Presupuestos", callback_data="Presupuestos"),
-             InlineKeyboardButton("Avisos", callback_data="Avisos")],
+            [
+                InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones"),
+                InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")
+            ],
+            [
+                InlineKeyboardButton("Presupuestos", callback_data="Presupuestos"),
+                InlineKeyboardButton("Avisos", callback_data="Avisos")
+            ],
             [InlineKeyboardButton("ATRAS", callback_data="back")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=chat_id,
+        context.bot.send_message(
+            chat_id=chat_id,
             text=apply_bold_keywords("¿Qué servicio se realizó?"),
             reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    # Puedes agregar más casos para otros estados si lo requieres
+    elif state == TANK_TYPE:
+        keyboard = [
+            [
+                InlineKeyboardButton("CISTERNA", callback_data="CISTERNA"),
+                InlineKeyboardButton("RESERVA", callback_data="RESERVA"),
+                InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")
+            ],
+            [InlineKeyboardButton("ATRAS", callback_data="back")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("Seleccione el tipo de tanque:"),
+            reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    # Agrega más casos según sea necesario para otros estados con menú
 
 # =============================================================================
 # Funciones del flujo de conversación
@@ -133,10 +154,14 @@ def get_code(update: Update, context: CallbackContext) -> int:
     context.user_data["code"] = text
     push_state(context, CODE)
     keyboard = [
-        [InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones"),
-         InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")],
-        [InlineKeyboardButton("Presupuestos", callback_data="Presupuestos"),
-         InlineKeyboardButton("Avisos", callback_data="Avisos")],
+        [
+            InlineKeyboardButton("Fumigaciones", callback_data="Fumigaciones"),
+            InlineKeyboardButton("Limpieza y Reparacion de Tanques", callback_data="Limpieza y Reparacion de Tanques")
+        ],
+        [
+            InlineKeyboardButton("Presupuestos", callback_data="Presupuestos"),
+            InlineKeyboardButton("Avisos", callback_data="Avisos")
+        ],
         [InlineKeyboardButton("ATRAS", callback_data="back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -155,7 +180,9 @@ def service_selection(update: Update, context: CallbackContext) -> int:
     service_type = query.data
     context.user_data['service'] = service_type
     if service_type == "Fumigaciones":
-        query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Fumigaciones"), parse_mode=ParseMode.HTML)
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Fumigaciones"),
+            parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Por favor, ingrese el número de orden (7 dígitos):"),
@@ -163,7 +190,9 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = ORDER
         return ORDER
     elif service_type == "Limpieza y Reparacion de Tanques":
-        query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Limpieza y Reparacion de Tanques"), parse_mode=ParseMode.HTML)
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Limpieza y Reparacion de Tanques"),
+            parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Por favor indique su número de orden (7 dígitos):"),
@@ -171,7 +200,9 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = ORDER
         return ORDER
     elif service_type == "Presupuestos":
-        query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Presupuestos"), parse_mode=ParseMode.HTML)
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Presupuestos"),
+            parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Ingrese la dirección:"),
@@ -179,7 +210,9 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = ADDRESS
         return ADDRESS
     elif service_type == "Avisos":
-        query.edit_message_text(apply_bold_keywords("Servicio seleccionado: Avisos"), parse_mode=ParseMode.HTML)
+        query.edit_message_text(
+            apply_bold_keywords("Servicio seleccionado: Avisos"),
+            parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
@@ -224,9 +257,11 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return FUMIGATION
     elif service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
         keyboard = [
-            [InlineKeyboardButton("CISTERNA", callback_data='CISTERNA'),
-             InlineKeyboardButton("RESERVA", callback_data='RESERVA'),
-             InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')],
+            [
+                InlineKeyboardButton("CISTERNA", callback_data='CISTERNA'),
+                InlineKeyboardButton("RESERVA", callback_data='RESERVA'),
+                InlineKeyboardButton("INTERMEDIARIO", callback_data='INTERMEDIARIO')
+            ],
             [InlineKeyboardButton("ATRAS", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -354,8 +389,10 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
     push_state(context, REPAIR_MAIN)
     alt1 = context.user_data.get("alternative_1", "").capitalize()
     keyboard = [
-        [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')],
+        [
+            InlineKeyboardButton("Si", callback_data='si'),
+            InlineKeyboardButton("No", callback_data='no')
+        ],
         [InlineKeyboardButton("ATRAS", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -422,8 +459,10 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     push_state(context, REPAIR_ALT1)
     alt2 = context.user_data.get("alternative_2", "").capitalize()
     keyboard = [
-        [InlineKeyboardButton("Si", callback_data='si'),
-         InlineKeyboardButton("No", callback_data='no')],
+        [
+            InlineKeyboardButton("Si", callback_data='si'),
+            InlineKeyboardButton("No", callback_data='no')
+        ],
         [InlineKeyboardButton("ATRAS", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -557,8 +596,10 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
     elif query.data.lower() == "no":
         alt2 = context.user_data.get("alternative_2")
         keyboard = [
-            [InlineKeyboardButton("Si", callback_data='si'),
-             InlineKeyboardButton("No", callback_data='no')],
+            [
+                InlineKeyboardButton("Si", callback_data='si'),
+                InlineKeyboardButton("No", callback_data='no')
+            ],
             [InlineKeyboardButton("ATRAS", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -805,51 +846,109 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(Filters.regex("(?i)^hola$"), start_conversation)],
         states={
-            CODE: [MessageHandler(Filters.text & ~Filters.command, get_code)],
-            SERVICE: [CallbackQueryHandler(service_selection),
-                      MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)],
-            ORDER: [MessageHandler(Filters.text & ~Filters.command, get_order),
-                    MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)],
-            ADDRESS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                      MessageHandler(Filters.text & ~Filters.command, get_address)],
-            FUMIGATION: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                         MessageHandler(Filters.text & ~Filters.command, fumigation_data)],
-            FUM_OBS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                      MessageHandler(Filters.text & ~Filters.command, get_fum_obs)],
-            FUM_PHOTOS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                         MessageHandler(Filters.photo, handle_photos),
-                         MessageHandler(Filters.text & ~Filters.command, handle_photos)],
-            TANK_TYPE: [CallbackQueryHandler(handle_tank_type),
-                        MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)],
-            MEASURE_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_measure_main)],
-            TAPAS_INSPECCION_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_main)],
-            TAPAS_ACCESO_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_main)],
-            SUGGESTIONS_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_suggestions_main)],
-            REPAIR_MAIN: [MessageHandler(Filters.text & ~Filters.command, get_repair_main)],
-            ASK_SECOND: [CallbackQueryHandler(handle_ask_second),
-                         MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)],
-            MEASURE_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_measure_alt1)],
-            TAPAS_INSPECCION_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt1)],
-            TAPAS_ACCESO_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt1)],
-            SUGGESTIONS_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt1)],
-            REPAIR_ALT1: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)],
-            ASK_THIRD: [CallbackQueryHandler(handle_ask_third),
-                        MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)],
-            MEASURE_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_measure_alt2)],
-            TAPAS_INSPECCION_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt2)],
-            TAPAS_ACCESO_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt2)],
-            SUGGESTIONS_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt2)],
-            REPAIR_ALT2: [MessageHandler(Filters.text & ~Filters.command, get_repair_alt2)],
-            PHOTOS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                     MessageHandler(Filters.photo, handle_photos),
-                     MessageHandler(Filters.text & ~Filters.command, handle_photos)],
-            CONTACT: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                      MessageHandler(Filters.text & ~Filters.command, get_contact)],
-            AVISOS_ADDRESS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                             MessageHandler(Filters.text & ~Filters.command, get_avisos_address)],
-            AVISOS_PHOTOS: [MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                            MessageHandler(Filters.photo, handle_avisos_photos),
-                            MessageHandler(Filters.text & ~Filters.command, handle_avisos_photos)]
+            CODE: [
+                MessageHandler(Filters.text & ~Filters.command, get_code)
+            ],
+            SERVICE: [
+                CallbackQueryHandler(service_selection),
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
+            ],
+            ORDER: [
+                MessageHandler(Filters.text & ~Filters.command, get_order),
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
+            ],
+            ADDRESS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_address)
+            ],
+            FUMIGATION: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, fumigation_data)
+            ],
+            FUM_OBS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_fum_obs)
+            ],
+            FUM_PHOTOS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.photo, handle_photos),
+                MessageHandler(Filters.text & ~Filters.command, handle_photos)
+            ],
+            TANK_TYPE: [
+                CallbackQueryHandler(handle_tank_type),
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
+            ],
+            MEASURE_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_measure_main)
+            ],
+            TAPAS_INSPECCION_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_main)
+            ],
+            TAPAS_ACCESO_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_main)
+            ],
+            SUGGESTIONS_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_main)
+            ],
+            REPAIR_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_repair_main)
+            ],
+            ASK_SECOND: [
+                CallbackQueryHandler(handle_ask_second),
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
+            ],
+            MEASURE_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_measure_alt1)
+            ],
+            TAPAS_INSPECCION_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt1)
+            ],
+            TAPAS_ACCESO_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt1)
+            ],
+            SUGGESTIONS_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt1)
+            ],
+            REPAIR_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)
+            ],
+            ASK_THIRD: [
+                CallbackQueryHandler(handle_ask_third),
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
+            ],
+            MEASURE_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_measure_alt2)
+            ],
+            TAPAS_INSPECCION_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_inspeccion_alt2)
+            ],
+            TAPAS_ACCESO_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt2)
+            ],
+            SUGGESTIONS_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt2)
+            ],
+            REPAIR_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_repair_alt2)
+            ],
+            PHOTOS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.photo, handle_photos),
+                MessageHandler(Filters.text & ~Filters.command, handle_photos)
+            ],
+            CONTACT: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_contact)
+            ],
+            AVISOS_ADDRESS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_avisos_address)
+            ],
+            AVISOS_PHOTOS: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.photo, handle_avisos_photos),
+                MessageHandler(Filters.text & ~Filters.command, handle_avisos_photos)
+            ]
         },
         fallbacks=[]
     )
