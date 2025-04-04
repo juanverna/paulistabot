@@ -273,13 +273,14 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     elif state == TAPAS_INSPECCION_ALT1:
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
             parse_mode=ParseMode.HTML
         )
     elif state == TAPAS_ACCESO_ALT1:
+        alt1 = context.user_data.get("alternative_1", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
             parse_mode=ParseMode.HTML
         )
     elif state == SUGGESTIONS_ALT1:
@@ -287,7 +288,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords(
-                f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"
+                f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt1}:"
             ),
             parse_mode=ParseMode.HTML
         )
@@ -328,13 +329,14 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     elif state == TAPAS_INSPECCION_ALT2:
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
             parse_mode=ParseMode.HTML
         )
     elif state == TAPAS_ACCESO_ALT2:
+        alt2 = context.user_data.get("alternative_2", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS ACCESO para esta opción (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
             parse_mode=ParseMode.HTML
         )
     elif state == SUGGESTIONS_ALT2:
@@ -342,7 +344,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords(
-                f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"
+                f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt2}:"
             ),
             parse_mode=ParseMode.HTML
         )
@@ -562,9 +564,7 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         parse_mode=ParseMode.HTML)
     context.bot.send_message(
         chat_id=query.message.chat.id,
-        text=apply_bold_keywords(
-            f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"
-        ),
+        text=apply_bold_keywords(f"Indique la medida del tanque de {selected.capitalize()} en el siguiente formato:\nALTO, ANCHO, PROFUNDO"),
         parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = MEASURE_MAIN
     return MEASURE_MAIN
@@ -662,7 +662,7 @@ def get_tapas_inspeccion_alt1(update: Update, context: CallbackContext) -> int:
     context.user_data['tapas_inspeccion_alt1'] = text
     push_state(context, TAPAS_INSPECCION_ALT1)
     update.message.reply_text(
-        apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+        apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
         parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = TAPAS_ACCESO_ALT1
     return TAPAS_ACCESO_ALT1
@@ -732,7 +732,7 @@ def get_tapas_inspeccion_alt2(update: Update, context: CallbackContext) -> int:
     context.user_data['tapas_inspeccion_alt2'] = text
     push_state(context, TAPAS_INSPECCION_ALT2)
     update.message.reply_text(
-        apply_bold_keywords("Indique TAPAS INSPECCIÓN para esta opción (30 40 50 60 80):"),
+        apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
         parse_mode=ParseMode.HTML)
     context.user_data["current_state"] = TAPAS_ACCESO_ALT2
     return TAPAS_ACCESO_ALT2
