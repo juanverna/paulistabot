@@ -3,7 +3,6 @@ import os
 import smtplib
 import re
 from io import BytesIO
-from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -37,12 +36,12 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 # =============================================================================
 # Definición de estados
 # =============================================================================
-(CODE, SERVICE, ORDER, ADDRESS, FUMIGATION, FUM_OBS, FUM_PHOTOS, CONTACT,
- TANK_TYPE, MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, REPAIR_MAIN,
- SUGGESTIONS_MAIN, ASK_SECOND, MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1,
+(CODE, SERVICE, ORDER, ADDRESS, START_TIME, END_TIME, FUMIGATION, FUM_OBS, FUM_PHOTOS, CONTACT,
+ TANK_TYPE, MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN, REPAIR_MAIN,
+ SUGGESTIONS_MAIN, ASK_SECOND, MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, SEALING_ALT1,
  REPAIR_ALT1, SUGGESTIONS_ALT1, ASK_THIRD, MEASURE_ALT2, TAPAS_INSPECCION_ALT2,
- TAPAS_ACCESO_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS, AVISOS_CODE,
- AVISOS_ADDRESS, AVISOS_PHOTOS) = range(30)
+ TAPAS_ACCESO_ALT2, SEALING_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS, AVISOS_CODE,
+ AVISOS_ADDRESS, AVISOS_PHOTOS) = range(35)
 
 # =============================================================================
 # Mapeo de estados a claves en user_data para eliminar respuesta actual al "atras"
@@ -51,21 +50,26 @@ STATE_KEYS = {
     CODE: "code",
     ORDER: "order",
     ADDRESS: "address",
+    START_TIME: "start_time",
+    END_TIME: "end_time",
     FUMIGATION: "fumigated_units",
     FUM_OBS: "fum_obs",
     MEASURE_MAIN: "measure_main",
     TAPAS_INSPECCION_MAIN: "tapas_inspeccion_main",
     TAPAS_ACCESO_MAIN: "tapas_acceso_main",
+    SEALING_MAIN: "sealing_main",
     SUGGESTIONS_MAIN: "suggestions",
     REPAIR_MAIN: "repairs",
     MEASURE_ALT1: "measure_alt1",
     TAPAS_INSPECCION_ALT1: "tapas_inspeccion_alt1",
     TAPAS_ACCESO_ALT1: "tapas_acceso_alt1",
+    SEALING_ALT1: "sealing_alt1",
     SUGGESTIONS_ALT1: "suggestions_alt1",
     REPAIR_ALT1: "repair_alt1",
     MEASURE_ALT2: "measure_alt2",
     TAPAS_INSPECCION_ALT2: "tapas_inspeccion_alt2",
     TAPAS_ACCESO_ALT2: "tapas_acceso_alt2",
+    SEALING_ALT2: "sealing_alt2",
     SUGGESTIONS_ALT2: "suggestions_alt2",
     REPAIR_ALT2: "repair_alt2",
     CONTACT: "contact",
@@ -172,6 +176,18 @@ def re_ask(state: int, update: Update, context: CallbackContext):
             text=apply_bold_keywords("Ingrese la dirección:"),
             parse_mode=ParseMode.HTML
         )
+    elif state == START_TIME:
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
+            parse_mode=ParseMode.HTML
+        )
+    elif state == END_TIME:
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("¿A qué hora terminaste el trabajo?"),
+            parse_mode=ParseMode.HTML
+        )
     elif state == FUMIGATION:
         context.bot.send_message(
             chat_id=chat_id,
@@ -182,12 +198,6 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Marque las observaciones para la próxima visita:"),
-            parse_mode=ParseMode.HTML
-        )
-    elif state == FUM_PHOTOS:
-        context.bot.send_message(
-            chat_id=chat_id,
-            text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
             parse_mode=ParseMode.HTML
         )
     elif state == TANK_TYPE:
@@ -225,6 +235,13 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            parse_mode=ParseMode.HTML
+        )
+    elif state == SEALING_MAIN:
+        selected = context.user_data.get("selected_category", "").capitalize()
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords(f"Indique como selló el tanque de {selected} (EJ: masilla, burlete, etc):"),
             parse_mode=ParseMode.HTML
         )
     elif state == SUGGESTIONS_MAIN:
@@ -273,23 +290,27 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     elif state == TAPAS_INSPECCION_ALT1:
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN (30 40 50 60 80):"),
             parse_mode=ParseMode.HTML
         )
     elif state == TAPAS_ACCESO_ALT1:
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            parse_mode=ParseMode.HTML
+        )
+    elif state == SEALING_ALT1:
         alt1 = context.user_data.get("alternative_1", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
+            text=apply_bold_keywords(f"Indique como selló el tanque de {alt1} (EJ: masilla, burlete, etc):"),
             parse_mode=ParseMode.HTML
         )
     elif state == SUGGESTIONS_ALT1:
         alt1 = context.user_data.get("alternative_1", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords(
-                f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt1}:"
-            ),
+            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
             parse_mode=ParseMode.HTML
         )
     elif state == REPAIR_ALT1:
@@ -329,23 +350,27 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     elif state == TAPAS_INSPECCION_ALT2:
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            text=apply_bold_keywords("Indique TAPAS INSPECCIÓN (30 40 50 60 80):"),
             parse_mode=ParseMode.HTML
         )
     elif state == TAPAS_ACCESO_ALT2:
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"),
+            parse_mode=ParseMode.HTML
+        )
+    elif state == SEALING_ALT2:
         alt2 = context.user_data.get("alternative_2", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
+            text=apply_bold_keywords(f"Indique como selló el tanque de {alt2} (EJ: masilla, burlete, etc):"),
             parse_mode=ParseMode.HTML
         )
     elif state == SUGGESTIONS_ALT2:
         alt2 = context.user_data.get("alternative_2", "").capitalize()
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords(
-                f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt2}:"
-            ),
+            text=apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
             parse_mode=ParseMode.HTML
         )
     elif state == REPAIR_ALT2:
@@ -357,32 +382,40 @@ def re_ask(state: int, update: Update, context: CallbackContext):
             ),
             parse_mode=ParseMode.HTML
         )
-    elif state == PHOTOS:
-        context.bot.send_message(
-            chat_id=chat_id,
-            text=apply_bold_keywords(
-                "Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."
-            ),
-            parse_mode=ParseMode.HTML
-        )
     elif state == CONTACT:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
             parse_mode=ParseMode.HTML
         )
+    elif state == PHOTOS:
+        service = context.user_data.get("service")
+        if service == "Fumigaciones":
+            context.bot.send_message(
+                chat_id=chat_id,
+                text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+                parse_mode=ParseMode.HTML
+            )
+        elif service == "Avisos":
+            context.bot.send_message(
+                chat_id=chat_id,
+                text=apply_bold_keywords(
+                    "Adjunte las fotos de los avisos junto a la chapa con numeración del edificio:\nSi ha terminado, escriba 'Listo'."
+                ),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            context.bot.send_message(
+                chat_id=chat_id,
+                text=apply_bold_keywords(
+                    "Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."
+                ),
+                parse_mode=ParseMode.HTML
+            )
     elif state == AVISOS_ADDRESS:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
-            parse_mode=ParseMode.HTML
-        )
-    elif state == AVISOS_PHOTOS:
-        context.bot.send_message(
-            chat_id=chat_id,
-            text=apply_bold_keywords(
-                "Adjunte las fotos de los avisos junto a la chapa con numeración del edificio:\nSi ha terminado, escriba 'Listo'."
-            ),
             parse_mode=ParseMode.HTML
         )
 
@@ -497,6 +530,34 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['address'] = text
     push_state(context, ADDRESS)
+    update.message.reply_text(
+        apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = START_TIME
+    return START_TIME
+
+def get_start_time(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['start_time'] = text
+    push_state(context, START_TIME)
+    update.message.reply_text(
+        apply_bold_keywords("¿A qué hora terminaste el trabajo?"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = END_TIME
+    return END_TIME
+
+def get_end_time(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['end_time'] = text
+    push_state(context, END_TIME)
     service = context.user_data.get("service")
     if service == "Fumigaciones":
         update.message.reply_text(
@@ -543,10 +604,10 @@ def get_fum_obs(update: Update, context: CallbackContext) -> int:
     context.user_data['fum_obs'] = text
     push_state(context, FUM_OBS)
     update.message.reply_text(
-        apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+        apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
         parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = FUM_PHOTOS
-    return FUM_PHOTOS
+    context.user_data["current_state"] = CONTACT
+    return CONTACT
 
 def handle_tank_type(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
@@ -607,10 +668,25 @@ def get_tapas_acceso_main(update: Update, context: CallbackContext) -> int:
     push_state(context, TAPAS_ACCESO_MAIN)
     selected = context.user_data.get("selected_category", "").capitalize()
     update.message.reply_text(
-        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {selected}:"),
+        apply_bold_keywords(f"Indique como selló el tanque de {selected} (EJ: masilla, burlete, etc):"),
         parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = SUGGESTIONS_MAIN
-    return SUGGESTIONS_MAIN
+    context.user_data["current_state"] = SEALING_MAIN
+    return SEALING_MAIN
+
+def get_sealing_main(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['sealing_main'] = text
+    push_state(context, SEALING_MAIN)
+    selected = context.user_data.get("selected_category", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {selected}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = REPAIR_MAIN
+    return REPAIR_MAIN
 
 def get_suggestions_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -636,6 +712,21 @@ def get_repair_main(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['repairs'] = text
     push_state(context, REPAIR_MAIN)
+    selected = context.user_data.get("selected_category", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {selected}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = SUGGESTIONS_MAIN
+    return SUGGESTIONS_MAIN
+
+def get_suggestions_main_after_repair(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['suggestions'] = text
+    push_state(context, SUGGESTIONS_MAIN)
     alt1 = context.user_data.get("alternative_1", "").capitalize()
     keyboard = [
         [
@@ -677,10 +768,25 @@ def get_tapas_acceso_alt1(update: Update, context: CallbackContext) -> int:
     push_state(context, TAPAS_ACCESO_ALT1)
     alt1 = context.user_data.get("alternative_1", "").capitalize()
     update.message.reply_text(
-        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
+        apply_bold_keywords(f"Indique como selló el tanque de {alt1} (EJ: masilla, burlete, etc):"),
         parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = SUGGESTIONS_ALT1
-    return SUGGESTIONS_ALT1
+    context.user_data["current_state"] = SEALING_ALT1
+    return SEALING_ALT1
+
+def get_sealing_alt1(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['sealing_alt1'] = text
+    push_state(context, SEALING_ALT1)
+    alt1 = context.user_data.get("alternative_1", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt1}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = REPAIR_ALT1
+    return REPAIR_ALT1
 
 def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -706,6 +812,21 @@ def get_repair_alt1(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['repair_alt1'] = text
     push_state(context, REPAIR_ALT1)
+    alt1 = context.user_data.get("alternative_1", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt1}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = SUGGESTIONS_ALT1
+    return SUGGESTIONS_ALT1
+
+def get_suggestions_alt1_after_repair(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['suggestions_alt1'] = text
+    push_state(context, SUGGESTIONS_ALT1)
     alt2 = context.user_data.get("alternative_2", "").capitalize()
     keyboard = [
         [
@@ -747,10 +868,25 @@ def get_tapas_acceso_alt2(update: Update, context: CallbackContext) -> int:
     push_state(context, TAPAS_ACCESO_ALT2)
     alt2 = context.user_data.get("alternative_2", "").capitalize()
     update.message.reply_text(
-        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
+        apply_bold_keywords(f"Indique como selló el tanque de {alt2} (EJ: masilla, burlete, etc):"),
         parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = SUGGESTIONS_ALT2
-    return SUGGESTIONS_ALT2
+    context.user_data["current_state"] = SEALING_ALT2
+    return SEALING_ALT2
+
+def get_sealing_alt2(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['sealing_alt2'] = text
+    push_state(context, SEALING_ALT2)
+    alt2 = context.user_data.get("alternative_2", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique reparaciones a realizar (EJ: tapas, revoques, etc) para {alt2}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = REPAIR_ALT2
+    return REPAIR_ALT2
 
 def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -776,18 +912,26 @@ def get_repair_alt2(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data['repair_alt2'] = text
     push_state(context, REPAIR_ALT2)
-    if context.user_data.get("service") == "Presupuestos":
-        update.message.reply_text(
-            apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
-            parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = CONTACT
-        return CONTACT
-    else:
-        update.message.reply_text(
-            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
-            parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = PHOTOS
-        return PHOTOS
+    alt2 = context.user_data.get("alternative_2", "").capitalize()
+    update.message.reply_text(
+        apply_bold_keywords(f"Indique sugerencias p/ la próx limpieza (EJ: desagote) para {alt2}:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = SUGGESTIONS_ALT2
+    return SUGGESTIONS_ALT2
+
+def get_suggestions_alt2_after_repair(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['suggestions_alt2'] = text
+    push_state(context, SUGGESTIONS_ALT2)
+    update.message.reply_text(
+        apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = CONTACT
+    return CONTACT
 
 # Funciones para el flujo de Avisos
 def get_avisos_address(update: Update, context: CallbackContext) -> int:
@@ -799,10 +943,24 @@ def get_avisos_address(update: Update, context: CallbackContext) -> int:
     context.user_data["avisos_address"] = text
     push_state(context, AVISOS_ADDRESS)
     update.message.reply_text(
-        apply_bold_keywords("Adjunte las fotos de los avisos junto a la chapa con numeración del edificio:"),
+        apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
         parse_mode=ParseMode.HTML)
-    context.user_data["current_state"] = AVISOS_PHOTOS
-    return AVISOS_PHOTOS
+    context.user_data["current_state"] = START_TIME
+    return START_TIME
+
+def get_avisos_end_time(update: Update, context: CallbackContext) -> int:
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    context.user_data['end_time'] = text
+    push_state(context, END_TIME)
+    update.message.reply_text(
+        apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+        parse_mode=ParseMode.HTML)
+    context.user_data["current_state"] = CONTACT
+    return CONTACT
 
 def handle_avisos_photos(update: Update, context: CallbackContext) -> int:
     if update.message.text:
@@ -814,7 +972,7 @@ def handle_avisos_photos(update: Update, context: CallbackContext) -> int:
                 update.message.reply_text(
                     apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
                     parse_mode=ParseMode.HTML)
-                return AVISOS_PHOTOS
+                return PHOTOS
             else:
                 send_email(context.user_data, update, context)
                 return ConversationHandler.END
@@ -826,12 +984,12 @@ def handle_avisos_photos(update: Update, context: CallbackContext) -> int:
         update.message.reply_text(
             apply_bold_keywords("Foto recibida. Puede enviar más fotos o escriba 'Listo' para continuar."),
             parse_mode=ParseMode.HTML)
-        return AVISOS_PHOTOS
+        return PHOTOS
     else:
         update.message.reply_text(
             apply_bold_keywords("Por favor, envíe una foto o escriba 'Listo' para continuar."),
             parse_mode=ParseMode.HTML)
-        return AVISOS_PHOTOS
+        return PHOTOS
 
 # Función para manejar la respuesta en el paso ASK_SECOND
 def handle_ask_second(update: Update, context: CallbackContext) -> int:
@@ -867,8 +1025,8 @@ def handle_ask_second(update: Update, context: CallbackContext) -> int:
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
             parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = PHOTOS
-        return PHOTOS
+        context.user_data["current_state"] = CONTACT
+        return CONTACT
 
 # Función para manejar la respuesta en el paso ASK_THIRD
 def handle_ask_third(update: Update, context: CallbackContext) -> int:
@@ -885,17 +1043,17 @@ def handle_ask_third(update: Update, context: CallbackContext) -> int:
         return MEASURE_ALT2
     elif query.data.lower() == "no":
         query.edit_message_text(
-            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:"),
+            apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
             parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = PHOTOS
-        return PHOTOS
+        context.user_data["current_state"] = CONTACT
+        return CONTACT
     else:
         context.bot.send_message(
             chat_id=query.message.chat.id,
             text=apply_bold_keywords("Respuesta no reconocida, se asume 'No'."),
             parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = PHOTOS
-        return PHOTOS
+        context.user_data["current_state"] = CONTACT
+        return CONTACT
 
 # Funciones para obtener medidas en Alternativa 1 y 2
 def get_measure_alt1(update: Update, context: CallbackContext) -> int:
@@ -936,7 +1094,7 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             update.message.reply_text(
                 apply_bold_keywords("Por favor, adjunte una imagen válida."),
                 parse_mode=ParseMode.HTML)
-            return FUM_PHOTOS
+            return PHOTOS
         photos = context.user_data.get("photos", [])
         file_id = update.message.photo[-1].file_id
         photos.append(file_id)
@@ -945,13 +1103,38 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
             update.message.reply_text(
                 apply_bold_keywords("Por favor cargue la segunda foto."),
                 parse_mode=ParseMode.HTML)
-            return FUM_PHOTOS
+            return PHOTOS
+        else:
+            send_email(context.user_data, update, context)
+            return ConversationHandler.END
+    elif service == "Avisos":
+        if update.message.text:
+            txt = update.message.text.lower().replace("á", "a").strip()
+            if txt == "atras":
+                return back_handler(update, context)
+            if txt == "listo":
+                if "photos" not in context.user_data or len(context.user_data["photos"]) == 0:
+                    update.message.reply_text(
+                        apply_bold_keywords("Debe cargar al menos una foto antes de escribir 'Listo'."),
+                        parse_mode=ParseMode.HTML)
+                    return PHOTOS
+                else:
+                    send_email(context.user_data, update, context)
+                    return ConversationHandler.END
+        elif update.message.photo:
+            photos = context.user_data.get("photos", [])
+            file_id = update.message.photo[-1].file_id
+            photos.append(file_id)
+            context.user_data["photos"] = photos
+            update.message.reply_text(
+                apply_bold_keywords("Foto recibida. Puede enviar más fotos o escriba 'Listo' para continuar."),
+                parse_mode=ParseMode.HTML)
+            return PHOTOS
         else:
             update.message.reply_text(
-                apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
+                apply_bold_keywords("Por favor, envíe una foto o escriba 'Listo' para continuar."),
                 parse_mode=ParseMode.HTML)
-            context.user_data["current_state"] = CONTACT
-            return CONTACT
+            return PHOTOS
     else:
         if update.message.text:
             txt = update.message.text.lower().replace("á", "a").strip()
@@ -964,11 +1147,8 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
                         parse_mode=ParseMode.HTML)
                     return PHOTOS
                 else:
-                    update.message.reply_text(
-                        apply_bold_keywords("Ingrese el Nombre y teléfono del encargado:"),
-                        parse_mode=ParseMode.HTML)
-                    context.user_data["current_state"] = CONTACT
-                    return CONTACT
+                    send_email(context.user_data, update, context)
+                    return ConversationHandler.END
         elif update.message.photo:
             photos = context.user_data.get("photos", [])
             file_id = update.message.photo[-1].file_id
@@ -993,30 +1173,50 @@ def get_contact(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["contact"] = text
     push_state(context, CONTACT)
-    update.message.reply_text(
-        apply_bold_keywords("Gracias por proporcionar el contacto."),
-        parse_mode=ParseMode.HTML)
-    send_email(context.user_data, update, context)
-    return ConversationHandler.END
+    service = context.user_data.get("service")
+    if service == "Fumigaciones":
+        update.message.reply_text(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+            parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
+    elif service == "Avisos":
+        update.message.reply_text(
+            apply_bold_keywords("Adjunte las fotos de los avisos junto a la chapa con numeración del edificio:\nSi ha terminado, escriba 'Listo'."),
+            parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
+    else:
+        update.message.reply_text(
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES:\nSi ha terminado, escriba 'Listo'."),
+            parse_mode=ParseMode.HTML)
+        context.user_data["current_state"] = PHOTOS
+        return PHOTOS
 
 def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
-    # Agregar la fecha actual (campo interno)
-    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    lines.append(f"Fecha: {fecha}")
+    # Se eliminó la fecha automática según requerimiento
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
     if service == "Avisos":
         if "avisos_address" in user_data:
             lines.append(f"Dirección/es: {user_data['avisos_address']}")
+        if "start_time" in user_data:
+            lines.append(f"Hora de inicio: {user_data['start_time']}")
+        if "end_time" in user_data:
+            lines.append(f"Hora de finalización: {user_data['end_time']}")
+        if "contact" in user_data:
+            lines.append(f"Contacto: {user_data['contact']}")
     else:
         ordered_fields = []
         if service in ["Fumigaciones", "Limpieza y Reparacion de Tanques"]:
             ordered_fields.append(("order", "Número de Orden"))
         ordered_fields.extend([
             ("address", "Dirección"),
+            ("start_time", "Hora de inicio"),
+            ("end_time", "Hora de finalización"),
             ("service", "Servicio seleccionado")
         ])
         if service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
@@ -1028,18 +1228,21 @@ def send_email(user_data, update: Update, context: CallbackContext):
                 ("measure_main", "Medida principal"),
                 ("tapas_inspeccion_main", "Tapas inspección"),
                 ("tapas_acceso_main", "Tapas acceso"),
-                ("suggestions", f"Sugerencias {selected}"),
+                ("sealing_main", f"Sellado {selected}"),
                 ("repairs", f"Reparaciones {selected}"),
+                ("suggestions", f"Sugerencias {selected}"),
                 ("measure_alt1", "Medida " + alt1),
                 ("tapas_inspeccion_alt1", "Tapas inspección " + alt1),
                 ("tapas_acceso_alt1", "Tapas acceso " + alt1),
-                ("suggestions_alt1", f"Sugerencias {alt1}"),
+                ("sealing_alt1", f"Sellado {alt1}"),
                 ("repair_alt1", f"Reparaciones {alt1}"),
+                ("suggestions_alt1", f"Sugerencias {alt1}"),
                 ("measure_alt2", "Medida " + alt2),
                 ("tapas_inspeccion_alt2", "Tapas inspección " + alt2),
                 ("tapas_acceso_alt2", "Tapas acceso " + alt2),
-                ("suggestions_alt2", f"Sugerencias {alt2}"),
-                ("repair_alt2", f"Reparaciones {alt2}")
+                ("sealing_alt2", f"Sellado {alt2}"),
+                ("repair_alt2", f"Reparaciones {alt2}"),
+                ("suggestions_alt2", f"Sugerencias {alt2}")
             ])
         if service == "Fumigaciones":
             ordered_fields.extend([
@@ -1121,6 +1324,14 @@ def main():
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_address)
             ],
+            START_TIME: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_start_time)
+            ],
+            END_TIME: [
+                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
+                MessageHandler(Filters.text & ~Filters.command, get_end_time)
+            ],
             FUMIGATION: [
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, fumigation_data)
@@ -1128,11 +1339,6 @@ def main():
             FUM_OBS: [
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_fum_obs)
-            ],
-            FUM_PHOTOS: [
-                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                MessageHandler(Filters.photo, handle_photos),
-                MessageHandler(Filters.text & ~Filters.command, handle_photos)
             ],
             TANK_TYPE: [
                 CallbackQueryHandler(handle_tank_type),
@@ -1147,8 +1353,11 @@ def main():
             TAPAS_ACCESO_MAIN: [
                 MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_main)
             ],
+            SEALING_MAIN: [
+                MessageHandler(Filters.text & ~Filters.command, get_sealing_main)
+            ],
             SUGGESTIONS_MAIN: [
-                MessageHandler(Filters.text & ~Filters.command, get_suggestions_main)
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_main_after_repair)
             ],
             REPAIR_MAIN: [
                 MessageHandler(Filters.text & ~Filters.command, get_repair_main)
@@ -1166,8 +1375,11 @@ def main():
             TAPAS_ACCESO_ALT1: [
                 MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt1)
             ],
+            SEALING_ALT1: [
+                MessageHandler(Filters.text & ~Filters.command, get_sealing_alt1)
+            ],
             SUGGESTIONS_ALT1: [
-                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt1)
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt1_after_repair)
             ],
             REPAIR_ALT1: [
                 MessageHandler(Filters.text & ~Filters.command, get_repair_alt1)
@@ -1185,8 +1397,11 @@ def main():
             TAPAS_ACCESO_ALT2: [
                 MessageHandler(Filters.text & ~Filters.command, get_tapas_acceso_alt2)
             ],
+            SEALING_ALT2: [
+                MessageHandler(Filters.text & ~Filters.command, get_sealing_alt2)
+            ],
             SUGGESTIONS_ALT2: [
-                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt2)
+                MessageHandler(Filters.text & ~Filters.command, get_suggestions_alt2_after_repair)
             ],
             REPAIR_ALT2: [
                 MessageHandler(Filters.text & ~Filters.command, get_repair_alt2)
@@ -1203,11 +1418,6 @@ def main():
             AVISOS_ADDRESS: [
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_avisos_address)
-            ],
-            AVISOS_PHOTOS: [
-                MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
-                MessageHandler(Filters.photo, handle_avisos_photos),
-                MessageHandler(Filters.text & ~Filters.command, handle_avisos_photos)
             ]
         },
         fallbacks=[]
