@@ -17,3 +17,4 @@ openai
 gspread
 google-auth
 Flask
+openai

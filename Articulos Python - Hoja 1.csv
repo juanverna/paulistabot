@@ -1,0 +1,44 @@
+Codigo,Descripcion Asociada
+TITCEA,Tapa de inspeccion tanque cisterna entrada de agua de 30 o 40 cm
+TITCEA,Tapa de inspeccion tanque cisterna entrada de agua de 50 o 60cm
+TITCEA,Tapa de inspeccion tanque cisterna entrada de agua de 80cm
+TITCC,Tapa de inspeccion tanque cisterna ciego de 30 o 40cm
+TITCC,Tapa de inspeccion tanque cisterna ciego de 50 o 60cm
+TITCC,Tapa de inspeccion tanque cisterna ciego de 80
+TITREA,Tapa de inspeccion tanque reserva entrada de agua de 30 o 40 cm
+TITREA,Tapa de inspeccion tanque reserva entrada de agua de 50 o 60 cm
+TITREA,Tapa de inspeccion tanque reserva entrada de agua de 80cm
+TITRC,Tapa de inspeccion tanque reserva ciego de 30 o 40cm
+TITRC,Tapa de inspeccion tanque reserva ciego de 50 o 60cm
+TITRC,Tapa de inspeccion tanque reserva ciego de 80cm
+TITHEA,Tapa de inspeccion tanque intermediario entrada de agua de 30 o 40 cm
+TITHEA,Tapa de inspeccion tanque intermediario entrada de agua de 50 o 60 cm
+TITHEA,Tapa de inspeccion tanque intermediario entrada de agua de 80cm
+TITHC,Tapa de inspeccion tanque intermediario ciego de 30 o 40cm
+TITHC,Tapa de inspeccion tanque intermediario ciego de 50 o 60cm
+TITHC,Tapa de inspeccion tanque intermediario ciego de 80cm
+TATCEA,Tapa de acceso tanque cisterna entrada de agua de 47/48/49/50/52/54/60 cm.
+TATCEA,"Tapa de acceso tanque cisterna entrada de agua. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+TATCC,Tapa de acceso tanque cisterna ciego de 47/48/49/50/52/54/60 cm.
+TATCC,"Tapa de acceso tanque cisterna ciego. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+TATREA,Tapa de acceso tanque reserva entrada de agua de 47/48/49/50/52/54/60 cm.
+TATREA,"Tapa de acceso tanque reserva entrada de agua. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+TATRC,Tapa de acceso tanque reserva ciego de 47/48/49/50/52/54/60 cm.
+TATRC,"Tapa de acceso tanque reserva ciego. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+TATHEA,Tapa de acceso tanque intermediario entrada de agua de 47/48/49/50/52/54/60 cm.
+TATHEA,"Tapa de acceso tanque intermediario entrada de agua. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+TATHC,Tapa de acceso tanque intermediario ciego de 47/48/49/50/52/54/60 cm.
+TATHC,"Tapa de acceso tanque intermediario ciego. Si es de 53.5/56.5 es una tapa de acceso octagonal con parantes. Tambien puede ser de 54cm punta recortada con parantes. Ademas, puede ser una tapa acceso 12 aguj punta recortadas 49,5/56/56.5/58"
+MATCEA,Marco de tanque cisterna entrada de agua de 48/49/50/52/54/60 cm
+MATCC,Marco de tanque cisterna ciego de 48/49/50/52/54/60 cm
+MATREA,Marco de tanque reserva entrada de agua de 48/49/50/52/54/60 cm
+MATRC,Marco de tanque reserva ciego de 48/49/50/52/54/60 cm
+MATHEA,Marco de tanque intermediario entrada de agua de 48/49/50/52/54/60 cm
+MATHC,Marco de tanque intermediario ciego de 48/49/50/52/54/60 cm
+TMTCEA,Tapa y Marco de acceso de tanque cisterna entrada de agua de 48/49/50/52/54/60 cm
+TMTCC,Tapa y Marco de acceso de tanque cisterna ciego de 48/49/50/52/54/60 cm
+TMTREA,Tapa y Marco de acceso de tanque reserva entrada de agua de 48/49/50/52/54/60 cm
+TMTRC,Tapa y Marco de acceso de tanque reserva ciego de 48/49/50/52/54/60 cm
+TMTHEA,Tapa y Marco de acceso de tanque intermediario entrada de agua de 48/49/50/52/54/60 cm
+TMTHC,Tapa y Marco de acceso de tanque intermediario ciego de 48/49/50/52/54/60 cm
+Reparaciones de mampostería,Revoques (hay que calcular los m2)
