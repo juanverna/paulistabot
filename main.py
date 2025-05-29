@@ -1,3 +1,4 @@
+
 import logging
 import os
 import smtplib
@@ -8,7 +9,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
-                          ConversationHandler, CallbackContext)
+                          ConversationHandler, CallbackContext, CommandHandler)
+from pyzbar import pyzbar
+from PIL import Image
 
 # =============================================================================
 # Función auxiliar para aplicar negritas a palabras clave
@@ -36,12 +39,12 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 # =============================================================================
 # Definición de estados
 # =============================================================================
-(CODE, SERVICE, ORDER, ADDRESS, START_TIME, END_TIME, FUMIGATION, FUM_OBS, FUM_PHOTOS, CONTACT,
+(SCAN_QR, CODE, SERVICE, ORDER, ADDRESS, START_TIME, END_TIME, FUMIGATION, FUM_OBS, FUM_PHOTOS, CONTACT,
  TANK_TYPE, MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN, REPAIR_MAIN,
  SUGGESTIONS_MAIN, ASK_SECOND, MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, SEALING_ALT1,
  REPAIR_ALT1, SUGGESTIONS_ALT1, ASK_THIRD, MEASURE_ALT2, TAPAS_INSPECCION_ALT2,
  TAPAS_ACCESO_ALT2, SEALING_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS, AVISOS_CODE,
- AVISOS_ADDRESS, AVISOS_PHOTOS) = range(35)
+ AVISOS_ADDRESS, AVISOS_PHOTOS) = range(36)
 
 # =============================================================================
 # Mapeo de estados a claves en user_data para eliminar respuesta actual al "atras"
@@ -106,6 +109,82 @@ def check_special_commands(text: str, update: Update, context: CallbackContext) 
     return False
 
 # =============================================================================
+# Función para escanear QR
+# =============================================================================
+def scan_qr(update: Update, context: CallbackContext) -> int:
+    if not update.message.photo:
+        update.message.reply_text(
+            apply_bold_keywords("Por favor, envíe una foto del código QR para continuar."),
+            parse_mode=ParseMode.HTML
+        )
+        return SCAN_QR
+    
+    try:
+        # Descargar la foto del QR
+        file = update.message.photo[-1].get_file()
+        bio = BytesIO()
+        file.download(out=bio)
+        bio.seek(0)
+        
+        # Decodificar la imagen
+        img = Image.open(bio)
+        result = pyzbar.decode(img)
+        
+        if not result:
+            update.message.reply_text(
+                apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+        
+        # Extraer y separar el payload (pipe-delimited)
+        payload = result[0].data.decode()
+        try:
+            orden, admin, cod_admin, direccion, fecha = payload.split("|")
+            
+            # Guardar los datos en user_data SIN mostrarlos
+            context.user_data.update({
+                "orden_trabajo": orden,
+                "administrador": admin,
+                "codigo_admin": cod_admin,
+                "direccion_qr": direccion,
+                "fecha_orden": fecha,
+            })
+            
+            # Verificar si es fumigación para continuar al siguiente estado apropiado
+            service = context.user_data.get("service")
+            if service == "Fumigaciones":
+                update.message.reply_text(
+                    apply_bold_keywords("Código QR procesado correctamente. Ahora inserte su código (solo números):"),
+                    parse_mode=ParseMode.HTML
+                )
+                context.user_data["current_state"] = CODE
+                return CODE
+            else:
+                # Para otros servicios (flujo original)
+                update.message.reply_text(
+                    apply_bold_keywords("Código QR procesado correctamente. Ahora inserte su código (solo números):"),
+                    parse_mode=ParseMode.HTML
+                )
+                context.user_data["current_state"] = CODE
+                return CODE
+            
+        except ValueError:
+            update.message.reply_text(
+                apply_bold_keywords("El formato del código QR no es válido. Por favor, intente con otro código QR."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+            
+    except Exception as e:
+        logger.error("Error al procesar QR: %s", e)
+        update.message.reply_text(
+            apply_bold_keywords("Error al procesar el código QR. Por favor, intente de nuevo."),
+            parse_mode=ParseMode.HTML
+        )
+        return SCAN_QR
+
+# =============================================================================
 # Funciones de inicio y retroceso usando el stack
 # =============================================================================
 def start_conversation(update: Update, context: CallbackContext) -> int:
@@ -139,10 +218,16 @@ def re_ask(state: int, update: Update, context: CallbackContext):
     """
     chat_id = update.effective_chat.id
 
-    if state == CODE:
+    if state == SCAN_QR:
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("¡Hola! Inserte su código (solo números):"),
+            text=apply_bold_keywords("Por favor, envíe una foto del código QR para comenzar:"),
+            parse_mode=ParseMode.HTML
+        )
+    elif state == CODE:
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=apply_bold_keywords("Inserte su código (solo números):"),
             parse_mode=ParseMode.HTML
         )
     elif state == SERVICE:
@@ -467,10 +552,10 @@ def service_selection(update: Update, context: CallbackContext) -> int:
             parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
-            text=apply_bold_keywords("Por favor, ingrese el número de orden (7 dígitos):"),
+            text=apply_bold_keywords("Por favor, envíe una foto del código QR para continuar:"),
             parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = ORDER
-        return ORDER
+        context.user_data["current_state"] = SCAN_QR
+        return SCAN_QR
     elif service_type == "Limpieza y Reparacion de Tanques":
         query.edit_message_text(
             apply_bold_keywords("Servicio seleccionado: Limpieza y Reparacion de Tanques"),
@@ -1197,6 +1282,21 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
+    
+    # Incluir datos del QR solo para fumigaciones
+    if service == "Fumigaciones":
+        if "orden_trabajo" in user_data:
+            lines.append(f"Orden de trabajo (QR): {user_data['orden_trabajo']}")
+        if "administrador" in user_data:
+            lines.append(f"Administrador (QR): {user_data['administrador']}")
+        if "codigo_admin" in user_data:
+            lines.append(f"Código de admin (QR): {user_data['codigo_admin']}")
+        if "direccion_qr" in user_data:
+            lines.append(f"Dirección (QR): {user_data['direccion_qr']}")
+        if "fecha_orden" in user_data:
+            lines.append(f"Fecha de orden (QR): {user_data['fecha_orden']}")
+        lines.append("")  # Línea en blanco para separar datos QR de datos formulario
+    
     # Se eliminó la fecha automática según requerimiento
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
@@ -1307,8 +1407,14 @@ def main():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(Filters.regex("(?i)^hola$"), start_conversation)],
+        entry_points=[
+            CommandHandler("start", start_conversation),
+            MessageHandler(Filters.regex("(?i)^hola$"), start_conversation)
+        ],
         states={
+            SCAN_QR: [
+                MessageHandler(Filters.photo, scan_qr)
+            ],
             CODE: [
                 MessageHandler(Filters.text & ~Filters.command, get_code)
             ],
