@@ -141,21 +141,74 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         else:
             gray = img_array
         
-        # Detectar y decodificar códigos QR
+        # Mejorar la imagen para mejor detección
+        # Aplicar filtro gaussiano para reducir ruido
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Aplicar umbralización adaptativa
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        
+        # Intentar con múltiples detectores y métodos
+        data = None
+        vertices = None
+        
+        # Método 1: Detector QR de OpenCV con imagen original
         qr_detector = cv2.QRCodeDetector()
         data, vertices, _ = qr_detector.detectAndDecode(gray)
         
+        # Método 2: Si no funciona, intentar con imagen umbralizada
         if not data:
+            data, vertices, _ = qr_detector.detectAndDecode(thresh)
+        
+        # Método 3: Intentar con imagen invertida
+        if not data:
+            inverted = cv2.bitwise_not(gray)
+            data, vertices, _ = qr_detector.detectAndDecode(inverted)
+        
+        # Método 4: Intentar redimensionar la imagen
+        if not data:
+            height, width = gray.shape
+            if width > 1000 or height > 1000:
+                scale = 800 / max(width, height)
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                resized = cv2.resize(gray, (new_width, new_height))
+                data, vertices, _ = qr_detector.detectAndDecode(resized)
+        
+        if not data:
+            logger.warning("No se pudo decodificar el código QR con ningún método")
             update.message.reply_text(
-                apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara."),
+                apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara o mejor iluminada."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
         
+        logger.info(f"QR decodificado exitosamente: {data}")
+        
         # Extraer y separar el payload (pipe-delimited)
-        payload = data
+        payload = data.strip()
+        logger.info(f"Payload del QR: '{payload}'")
+        
         try:
-            orden, admin, cod_admin, direccion, fecha = payload.split("|")
+            # Verificar si el payload contiene pipes
+            if "|" not in payload:
+                logger.warning(f"El QR no contiene el formato esperado (sin pipes): {payload}")
+                update.message.reply_text(
+                    apply_bold_keywords("El formato del código QR no es válido. Debe contener datos separados por '|'. Por favor, intente con otro código QR."),
+                    parse_mode=ParseMode.HTML
+                )
+                return SCAN_QR
+            
+            parts = payload.split("|")
+            if len(parts) != 5:
+                logger.warning(f"El QR no tiene 5 partes separadas por pipes. Tiene {len(parts)} partes: {parts}")
+                update.message.reply_text(
+                    apply_bold_keywords(f"El formato del código QR no es válido. Se esperan 5 campos separados por '|', pero se encontraron {len(parts)}. Por favor, intente con otro código QR."),
+                    parse_mode=ParseMode.HTML
+                )
+                return SCAN_QR
+            
+            orden, admin, cod_admin, direccion, fecha = parts
             
             # Guardar los datos en user_data SIN mostrarlos
             context.user_data.update({
@@ -165,6 +218,8 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 "direccion_qr": direccion,
                 "fecha_orden": fecha,
             })
+            
+            logger.info(f"Datos del QR guardados exitosamente: orden={orden}, admin={admin}")
             
             # Verificar si es fumigación para continuar al siguiente estado apropiado
             service = context.user_data.get("service")
@@ -184,9 +239,10 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 context.user_data["current_state"] = CODE
                 return CODE
             
-        except ValueError:
+        except ValueError as e:
+            logger.error(f"Error al procesar el payload del QR: {e}")
             update.message.reply_text(
-                apply_bold_keywords("El formato del código QR no es válido. Por favor, intente con otro código QR."),
+                apply_bold_keywords("Error al procesar el contenido del código QR. Por favor, intente con otro código QR."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
