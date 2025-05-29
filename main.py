@@ -9,9 +9,9 @@ from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
                           ConversationHandler, CallbackContext, CommandHandler)
-import cv2
 import numpy as np
 from PIL import Image
+from pyzbar import pyzbar
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -132,99 +132,71 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
 
         logger.info("Imagen del QR descargada exitosamente")
 
-        # Decodificar la imagen con OpenCV
+        # Procesar imagen con PIL
         img = Image.open(bio)
-        img_array = np.array(img)
+        logger.info(f"Imagen cargada: {img.format}, {img.size}, {img.mode}")
 
-        logger.info(f"Imagen procesada: dimensiones {img_array.shape}")
+        # Convertir a RGB si es necesario
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
 
-        # Convertir a escala de grises si es necesario
-        if len(img_array.shape) == 3:
-            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-        else:
-            gray = img_array
-
-        # Lista de métodos de procesamiento para intentar
-        processing_methods = []
-
-        # Método 1: Imagen original
-        processing_methods.append(("original", gray))
-
-        # Método 2: Con filtro gaussiano
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        processing_methods.append(("blurred", blurred))
-
-        # Método 3: Umbralización adaptativa
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        processing_methods.append(("adaptive_thresh", thresh))
-
-        # Método 4: Umbralización simple
-        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-        processing_methods.append(("binary_thresh", binary))
-
-        # Método 5: Imagen invertida
-        inverted = cv2.bitwise_not(gray)
-        processing_methods.append(("inverted", inverted))
-
-        # Método 6: Redimensionada si es muy grande
-        height, width = gray.shape
-        if width > 1000 or height > 1000:
-            scale = 800 / max(width, height)
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            resized = cv2.resize(gray, (new_width, new_height))
-            processing_methods.append(("resized", resized))
-
-        # Crear múltiples detectores QR
-        qr_detectors = [
-            cv2.QRCodeDetector(),
-            cv2.wechat_qrcode.WeChatQRCode() if hasattr(cv2, 'wechat_qrcode') else None
-        ]
-
-        # Filtrar detectores válidos
-        qr_detectors = [d for d in qr_detectors if d is not None]
-
-        # Intentar con cada método y detector
+        # Usar pyzbar para detectar códigos QR
+        logger.info("Intentando detectar QR con pyzbar...")
+        barcodes = pyzbar.decode(img)
+        
         data = None
-        successful_method = None
+        successful_method = "pyzbar_direct"
 
-        for method_name, processed_img in processing_methods:
-            for detector_idx, qr_detector in enumerate(qr_detectors):
+        if barcodes:
+            # Tomar el primer código QR encontrado
+            barcode = barcodes[0]
+            data = barcode.data.decode('utf-8').strip()
+            logger.info(f"QR detectado exitosamente con pyzbar: {data}")
+        else:
+            # Si no funciona directamente, intentar con diferentes procesamientos
+            logger.info("No se detectó QR directamente, intentando con procesamientos...")
+            
+            # Convertir a array numpy para procesamiento
+            img_array = np.array(img)
+            
+            # Convertir a escala de grises
+            from PIL import ImageEnhance, ImageFilter
+            
+            # Lista de procesamientos a intentar
+            processing_methods = [
+                ("original", img),
+                ("grayscale", img.convert('L')),
+                ("enhanced_contrast", ImageEnhance.Contrast(img).enhance(2.0)),
+                ("enhanced_brightness", ImageEnhance.Brightness(img).enhance(1.5)),
+                ("enhanced_sharpness", ImageEnhance.Sharpness(img).enhance(2.0)),
+                ("filtered", img.filter(ImageFilter.EDGE_ENHANCE)),
+            ]
+            
+            # Intentar redimensionar si la imagen es muy grande
+            width, height = img.size
+            if width > 1000 or height > 1000:
+                scale = 800 / max(width, height)
+                new_size = (int(width * scale), int(height * scale))
+                resized = img.resize(new_size, Image.Resampling.LANCZOS)
+                processing_methods.append(("resized", resized))
+            
+            for method_name, processed_img in processing_methods:
                 try:
-                    detector_name = f"{method_name}_detector_{detector_idx}"
-                    logger.info(f"Intentando método: {detector_name}")
-
-                    if hasattr(qr_detector, 'detectAndDecode'):
-                        # OpenCV QRCodeDetector
-                        detected_data, vertices, _ = qr_detector.detectAndDecode(processed_img)
-
-                        if detected_data and detected_data.strip():
-                            data = detected_data.strip()
-                            successful_method = detector_name
-                            logger.info(f"QR detectado exitosamente con método '{detector_name}': {data}")
-                            break
-                    elif hasattr(qr_detector, 'detectAndDecodeMulti'):
-                        # WeChat QR Detector
-                        result, decoded_info, points = qr_detector.detectAndDecodeMulti(processed_img)
-
-                        if result and decoded_info:
-                            for info in decoded_info:
-                                if info and info.strip():
-                                    data = info.strip()
-                                    successful_method = detector_name
-                                    logger.info(f"QR detectado exitosamente con método '{detector_name}': {data}")
-                                    break
-                            if data:
-                                break
-
-                    logger.debug(f"Método '{detector_name}' no detectó QR válido")
-
+                    logger.info(f"Intentando método: {method_name}")
+                    barcodes = pyzbar.decode(processed_img)
+                    
+                    if barcodes:
+                        barcode = barcodes[0]
+                        data = barcode.data.decode('utf-8').strip()
+                        successful_method = f"pyzbar_{method_name}"
+                        logger.info(f"QR detectado exitosamente con método '{successful_method}': {data}")
+                        break
+                    else:
+                        logger.debug(f"Método '{method_name}' no detectó QR válido")
+                        
                 except Exception as method_error:
-                    logger.warning(f"Error en método '{detector_name}': {method_error}")
+                    logger.warning(f"Error en método '{method_name}': {method_error}")
                     continue
-
-            if data:
-                break
 
         if not data:
             logger.warning("No se pudo decodificar el código QR con ningún método")
