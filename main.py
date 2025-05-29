@@ -131,9 +131,13 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         file.download(out=bio)
         bio.seek(0)
         
+        logger.info("Imagen del QR descargada exitosamente")
+        
         # Decodificar la imagen con OpenCV
         img = Image.open(bio)
         img_array = np.array(img)
+        
+        logger.info(f"Imagen procesada: dimensiones {img_array.shape}")
         
         # Convertir a escala de grises si es necesario
         if len(img_array.shape) == 3:
@@ -141,116 +145,152 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         else:
             gray = img_array
         
-        # Mejorar la imagen para mejor detección
-        # Aplicar filtro gaussiano para reducir ruido
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Aplicar umbralización adaptativa
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        
-        # Intentar con múltiples detectores y métodos
-        data = None
-        vertices = None
-        
-        # Método 1: Detector QR de OpenCV con imagen original
+        # Crear detector QR
         qr_detector = cv2.QRCodeDetector()
-        data, vertices, _ = qr_detector.detectAndDecode(gray)
         
-        # Método 2: Si no funciona, intentar con imagen umbralizada
-        if not data:
-            data, vertices, _ = qr_detector.detectAndDecode(thresh)
+        # Lista de métodos de procesamiento para intentar
+        processing_methods = []
         
-        # Método 3: Intentar con imagen invertida
-        if not data:
-            inverted = cv2.bitwise_not(gray)
-            data, vertices, _ = qr_detector.detectAndDecode(inverted)
+        # Método 1: Imagen original
+        processing_methods.append(("original", gray))
         
-        # Método 4: Intentar redimensionar la imagen
-        if not data:
-            height, width = gray.shape
-            if width > 1000 or height > 1000:
-                scale = 800 / max(width, height)
-                new_width = int(width * scale)
-                new_height = int(height * scale)
-                resized = cv2.resize(gray, (new_width, new_height))
-                data, vertices, _ = qr_detector.detectAndDecode(resized)
+        # Método 2: Con filtro gaussiano
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        processing_methods.append(("blurred", blurred))
+        
+        # Método 3: Umbralización adaptativa
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        processing_methods.append(("adaptive_thresh", thresh))
+        
+        # Método 4: Umbralización simple
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+        processing_methods.append(("binary_thresh", binary))
+        
+        # Método 5: Imagen invertida
+        inverted = cv2.bitwise_not(gray)
+        processing_methods.append(("inverted", inverted))
+        
+        # Método 6: Redimensionada si es muy grande
+        height, width = gray.shape
+        if width > 1000 or height > 1000:
+            scale = 800 / max(width, height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            resized = cv2.resize(gray, (new_width, new_height))
+            processing_methods.append(("resized", resized))
+        
+        # Intentar con cada método
+        data = None
+        successful_method = None
+        
+        for method_name, processed_img in processing_methods:
+            try:
+                logger.info(f"Intentando método: {method_name}")
+                detected_data, vertices, _ = qr_detector.detectAndDecode(processed_img)
+                
+                if detected_data and detected_data.strip():
+                    data = detected_data.strip()
+                    successful_method = method_name
+                    logger.info(f"QR detectado exitosamente con método '{method_name}': {data}")
+                    break
+                else:
+                    logger.debug(f"Método '{method_name}' no detectó QR válido")
+                    
+            except Exception as method_error:
+                logger.warning(f"Error en método '{method_name}': {method_error}")
+                continue
         
         if not data:
             logger.warning("No se pudo decodificar el código QR con ningún método")
             update.message.reply_text(
-                apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara o mejor iluminada."),
+                apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara, mejor iluminada, o tome la foto desde una distancia diferente."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
         
-        logger.info(f"QR decodificado exitosamente: {data}")
+        logger.info(f"QR decodificado exitosamente con método '{successful_method}': {data}")
         
-        # Extraer y separar el payload (pipe-delimited)
+        # Extraer y separar el payload
         payload = data.strip()
-        logger.info(f"Payload del QR: '{payload}'")
+        logger.info(f"Payload completo del QR: '{payload}'")
+        logger.info(f"Longitud del payload: {len(payload)} caracteres")
         
-        try:
-            # Verificar si el payload contiene pipes
-            if "|" not in payload:
-                logger.warning(f"El QR no contiene el formato esperado (sin pipes): {payload}")
-                update.message.reply_text(
-                    apply_bold_keywords("El formato del código QR no es válido. Debe contener datos separados por '|'. Por favor, intente con otro código QR."),
-                    parse_mode=ParseMode.HTML
-                )
-                return SCAN_QR
-            
-            parts = payload.split("|")
-            if len(parts) != 5:
-                logger.warning(f"El QR no tiene 5 partes separadas por pipes. Tiene {len(parts)} partes: {parts}")
-                update.message.reply_text(
-                    apply_bold_keywords(f"El formato del código QR no es válido. Se esperan 5 campos separados por '|', pero se encontraron {len(parts)}. Por favor, intente con otro código QR."),
-                    parse_mode=ParseMode.HTML
-                )
-                return SCAN_QR
-            
-            orden, admin, cod_admin, direccion, fecha = parts
-            
-            # Guardar los datos en user_data SIN mostrarlos
-            context.user_data.update({
-                "orden_trabajo": orden,
-                "administrador": admin,
-                "codigo_admin": cod_admin,
-                "direccion_qr": direccion,
-                "fecha_orden": fecha,
-            })
-            
-            logger.info(f"Datos del QR guardados exitosamente: orden={orden}, admin={admin}")
-            
-            # Verificar si es fumigación para continuar al siguiente estado apropiado
-            service = context.user_data.get("service")
-            if service == "Fumigaciones":
-                update.message.reply_text(
-                    apply_bold_keywords("Código QR procesado correctamente. Ahora inserte su código (solo números):"),
-                    parse_mode=ParseMode.HTML
-                )
-                context.user_data["current_state"] = CODE
-                return CODE
-            else:
-                # Para otros servicios (flujo original)
-                update.message.reply_text(
-                    apply_bold_keywords("Código QR procesado correctamente. Ahora inserte su código (solo números):"),
-                    parse_mode=ParseMode.HTML
-                )
-                context.user_data["current_state"] = CODE
-                return CODE
-            
-        except ValueError as e:
-            logger.error(f"Error al procesar el payload del QR: {e}")
+        # Para casos de prueba, si el QR contiene una URL o texto simple, mostrar mensaje específico
+        if payload.startswith(('http://', 'https://', 'www.')):
+            logger.info("QR detectado contiene una URL")
             update.message.reply_text(
-                apply_bold_keywords("Error al procesar el contenido del código QR. Por favor, intente con otro código QR."),
+                apply_bold_keywords("El código QR detectado contiene una URL, pero se esperan datos de orden de trabajo separados por '|'. Por favor, use el código QR correcto para órdenes de trabajo."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
+        
+        # Verificar si el payload contiene pipes para el formato esperado
+        if "|" not in payload:
+            logger.warning(f"El QR no contiene el formato esperado (sin pipes): '{payload}'")
+            logger.info("Caracteres en el payload:")
+            for i, char in enumerate(payload):
+                logger.info(f"  Posición {i}: '{char}' (ASCII: {ord(char)})")
+            
+            update.message.reply_text(
+                apply_bold_keywords(f"El código QR fue leído correctamente, pero no tiene el formato esperado de orden de trabajo.\n\nContenido detectado: {payload[:50]}{'...' if len(payload) > 50 else ''}\n\nSe esperan datos separados por '|'. Por favor, verifique que está usando el código QR correcto."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+        
+        # Separar las partes del payload
+        parts = payload.split("|")
+        logger.info(f"Partes separadas por pipes: {len(parts)} partes")
+        for i, part in enumerate(parts):
+            logger.info(f"  Parte {i+1}: '{part}'")
+        
+        if len(parts) != 5:
+            logger.warning(f"El QR no tiene 5 partes separadas por pipes. Tiene {len(parts)} partes")
+            update.message.reply_text(
+                apply_bold_keywords(f"El formato del código QR no es válido. Se esperan exactamente 5 campos separados por '|', pero se encontraron {len(parts)} campos.\n\nContenido: {payload}\n\nPor favor, verifique que está usando el código QR correcto para órdenes de trabajo."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+        
+        orden, admin, cod_admin, direccion, fecha = parts
+        
+        # Guardar los datos en user_data
+        context.user_data.update({
+            "orden_trabajo": orden,
+            "administrador": admin,
+            "codigo_admin": cod_admin,
+            "direccion_qr": direccion,
+            "fecha_orden": fecha,
+        })
+        
+        logger.info(f"Datos del QR guardados exitosamente:")
+        logger.info(f"  Orden: '{orden}'")
+        logger.info(f"  Administrador: '{admin}'")
+        logger.info(f"  Código admin: '{cod_admin}'")
+        logger.info(f"  Dirección: '{direccion}'")
+        logger.info(f"  Fecha: '{fecha}'")
+        
+        # Continuar al siguiente estado
+        service = context.user_data.get("service")
+        if service == "Fumigaciones":
+            update.message.reply_text(
+                apply_bold_keywords("✅ Código QR procesado correctamente.\n\nAhora inserte su código (solo números):"),
+                parse_mode=ParseMode.HTML
+            )
+            context.user_data["current_state"] = CODE
+            return CODE
+        else:
+            # Para otros servicios (flujo original)
+            update.message.reply_text(
+                apply_bold_keywords("✅ Código QR procesado correctamente.\n\nAhora inserte su código (solo números):"),
+                parse_mode=ParseMode.HTML
+            )
+            context.user_data["current_state"] = CODE
+            return CODE
             
     except Exception as e:
-        logger.error("Error al procesar QR: %s", e)
+        logger.error("Error general al procesar QR: %s", str(e), exc_info=True)
         update.message.reply_text(
-            apply_bold_keywords("Error al procesar el código QR. Por favor, intente de nuevo."),
+            apply_bold_keywords("❌ Error al procesar el código QR. Por favor, intente de nuevo con una imagen más clara."),
             parse_mode=ParseMode.HTML
         )
         return SCAN_QR
