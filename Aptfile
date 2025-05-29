@@ -4,3 +4,4 @@ libxext6
 libxrender-dev
 libgomp1
 libgtk-3-0
+libzbar0
