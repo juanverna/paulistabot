@@ -10,7 +10,8 @@ from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
                           ConversationHandler, CallbackContext, CommandHandler)
-from pyzbar import pyzbar
+import cv2
+import numpy as np
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -130,11 +131,21 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         file.download(out=bio)
         bio.seek(0)
         
-        # Decodificar la imagen
+        # Decodificar la imagen con OpenCV
         img = Image.open(bio)
-        result = pyzbar.decode(img)
+        img_array = np.array(img)
         
-        if not result:
+        # Convertir a escala de grises si es necesario
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = img_array
+        
+        # Detectar y decodificar códigos QR
+        qr_detector = cv2.QRCodeDetector()
+        data, vertices, _ = qr_detector.detectAndDecode(gray)
+        
+        if not data:
             update.message.reply_text(
                 apply_bold_keywords("No pude leer el código QR. Por favor, intente de nuevo con una imagen más clara."),
                 parse_mode=ParseMode.HTML
@@ -142,7 +153,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             return SCAN_QR
         
         # Extraer y separar el payload (pipe-delimited)
-        payload = result[0].data.decode()
+        payload = data
         try:
             orden, admin, cod_admin, direccion, fecha = payload.split("|")
             
