@@ -27,3 +27,4 @@ opencv-python-headless
 python-dotenv
 numpy
 opencv-python
+pyzbar
