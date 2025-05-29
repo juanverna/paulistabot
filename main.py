@@ -12,6 +12,10 @@ from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler
                           ConversationHandler, CallbackContext, CommandHandler)
 from pyzbar import pyzbar
 from PIL import Image
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # =============================================================================
 # Función auxiliar para aplicar negritas a palabras clave
