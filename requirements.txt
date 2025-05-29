@@ -23,5 +23,5 @@ google-auth-oauthlib
 pandas
 telegram
 pillow
-pyzbar
+opencv-python
 python-dotenv
