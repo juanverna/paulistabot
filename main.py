@@ -241,7 +241,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         parts = payload.split("|")
         logger.info(f"Partes separadas por pipes: {len(parts)} partes")
         for i, part in enumerate(parts):
-            logger.info(f"  Parte {i+1}: '{part}'")
+            logger.info(f"  Parte {i+1}: '{part}' (longitud: {len(part)})")
         
         if len(parts) != 5:
             logger.warning(f"El QR no tiene 5 partes separadas por pipes. Tiene {len(parts)} partes")
@@ -253,6 +253,22 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         
         orden, admin, cod_admin, direccion, fecha = parts
         
+        # Limpiar espacios en blanco de cada campo
+        orden = orden.strip()
+        admin = admin.strip()
+        cod_admin = cod_admin.strip()
+        direccion = direccion.strip()
+        fecha = fecha.strip()
+        
+        # Validar que ningún campo esté vacío
+        if not orden or not admin or not cod_admin or not direccion or not fecha:
+            logger.warning("Uno o más campos del QR están vacíos")
+            update.message.reply_text(
+                apply_bold_keywords("El código QR tiene campos vacíos. Por favor, verifique que está usando un código QR válido con todos los datos completos."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+        
         # Guardar los datos en user_data
         context.user_data.update({
             "orden_trabajo": orden,
@@ -263,11 +279,11 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         })
         
         logger.info(f"Datos del QR guardados exitosamente:")
-        logger.info(f"  Orden: '{orden}'")
-        logger.info(f"  Administrador: '{admin}'")
-        logger.info(f"  Código admin: '{cod_admin}'")
-        logger.info(f"  Dirección: '{direccion}'")
-        logger.info(f"  Fecha: '{fecha}'")
+        logger.info(f"  Orden: '{orden}' (longitud: {len(orden)})")
+        logger.info(f"  Administrador: '{admin}' (longitud: {len(admin)})")
+        logger.info(f"  Código admin: '{cod_admin}' (longitud: {len(cod_admin)})")
+        logger.info(f"  Dirección: '{direccion}' (longitud: {len(direccion)})")
+        logger.info(f"  Fecha: '{fecha}' (longitud: {len(fecha)}) - Contiene '/': {'/' in fecha}")
         
         # Continuar al siguiente estado
         service = context.user_data.get("service")
