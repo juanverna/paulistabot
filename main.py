@@ -224,6 +224,15 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             )
             return SCAN_QR
         
+        # Detectar QR con solo números (probablemente QR de prueba o incorrecto)
+        if payload.isdigit() and len(payload) <= 5:
+            logger.info(f"QR detectado contiene solo un número simple: {payload}")
+            update.message.reply_text(
+                apply_bold_keywords(f"El código QR detectado contiene solo el número '{payload}', pero se esperan datos de orden de trabajo separados por '|'.\n\nEste parece ser un QR de prueba o diferente. Por favor, use el código QR específico de la orden de trabajo que contiene los datos completos."),
+                parse_mode=ParseMode.HTML
+            )
+            return SCAN_QR
+        
         # Verificar si el payload contiene pipes para el formato esperado
         if "|" not in payload:
             logger.warning(f"El QR no contiene el formato esperado (sin pipes): '{payload}'")
@@ -231,8 +240,16 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             for i, char in enumerate(payload):
                 logger.info(f"  Posición {i}: '{char}' (ASCII: {ord(char)})")
             
+            # Mensaje más específico según el tipo de contenido
+            if payload.isdigit():
+                error_msg = f"El código QR contiene solo el número '{payload}', pero se esperan datos de orden de trabajo en formato: ORDEN|ADMIN|CODIGO|DIRECCION|FECHA"
+            elif len(payload) < 10:
+                error_msg = f"El código QR contiene texto muy corto: '{payload}'. Se esperan datos completos de orden de trabajo separados por '|'"
+            else:
+                error_msg = f"El código QR fue leído correctamente, pero no tiene el formato esperado de orden de trabajo.\n\nContenido detectado: {payload[:50]}{'...' if len(payload) > 50 else ''}\n\nSe esperan datos separados por '|'"
+            
             update.message.reply_text(
-                apply_bold_keywords(f"El código QR fue leído correctamente, pero no tiene el formato esperado de orden de trabajo.\n\nContenido detectado: {payload[:50]}{'...' if len(payload) > 50 else ''}\n\nSe esperan datos separados por '|'. Por favor, verifique que está usando el código QR correcto."),
+                apply_bold_keywords(f"{error_msg}\n\n🔍 **Formato esperado:**\nORDEN|ADMINISTRADOR|CODIGO_ADMIN|DIRECCION|FECHA\n\n⚠️ Verifique que está usando el QR correcto de la orden de trabajo."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
