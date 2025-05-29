@@ -23,5 +23,6 @@ google-auth-oauthlib
 pandas
 telegram
 pillow
-opencv-python
+opencv-python-headless
 python-dotenv
+numpy
