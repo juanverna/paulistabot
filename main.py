@@ -1,4 +1,3 @@
-
 import logging
 import os
 import smtplib
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Variables de configuración
 # =============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TU_TOKEN_AQUI")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 
@@ -123,53 +122,50 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             parse_mode=ParseMode.HTML
         )
         return SCAN_QR
-    
+
     try:
         # Descargar la foto del QR
         file = update.message.photo[-1].get_file()
         bio = BytesIO()
         file.download(out=bio)
         bio.seek(0)
-        
+
         logger.info("Imagen del QR descargada exitosamente")
-        
+
         # Decodificar la imagen con OpenCV
         img = Image.open(bio)
         img_array = np.array(img)
-        
+
         logger.info(f"Imagen procesada: dimensiones {img_array.shape}")
-        
+
         # Convertir a escala de grises si es necesario
         if len(img_array.shape) == 3:
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
         else:
             gray = img_array
-        
-        # Crear detector QR
-        qr_detector = cv2.QRCodeDetector()
-        
+
         # Lista de métodos de procesamiento para intentar
         processing_methods = []
-        
+
         # Método 1: Imagen original
         processing_methods.append(("original", gray))
-        
+
         # Método 2: Con filtro gaussiano
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         processing_methods.append(("blurred", blurred))
-        
+
         # Método 3: Umbralización adaptativa
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
         processing_methods.append(("adaptive_thresh", thresh))
-        
+
         # Método 4: Umbralización simple
         _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
         processing_methods.append(("binary_thresh", binary))
-        
+
         # Método 5: Imagen invertida
         inverted = cv2.bitwise_not(gray)
         processing_methods.append(("inverted", inverted))
-        
+
         # Método 6: Redimensionada si es muy grande
         height, width = gray.shape
         if width > 1000 or height > 1000:
@@ -178,28 +174,58 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             new_height = int(height * scale)
             resized = cv2.resize(gray, (new_width, new_height))
             processing_methods.append(("resized", resized))
-        
-        # Intentar con cada método
+
+        # Crear múltiples detectores QR
+        qr_detectors = [
+            cv2.QRCodeDetector(),
+            cv2.wechat_qrcode.WeChatQRCode() if hasattr(cv2, 'wechat_qrcode') else None
+        ]
+
+        # Filtrar detectores válidos
+        qr_detectors = [d for d in qr_detectors if d is not None]
+
+        # Intentar con cada método y detector
         data = None
         successful_method = None
-        
+
         for method_name, processed_img in processing_methods:
-            try:
-                logger.info(f"Intentando método: {method_name}")
-                detected_data, vertices, _ = qr_detector.detectAndDecode(processed_img)
-                
-                if detected_data and detected_data.strip():
-                    data = detected_data.strip()
-                    successful_method = method_name
-                    logger.info(f"QR detectado exitosamente con método '{method_name}': {data}")
-                    break
-                else:
-                    logger.debug(f"Método '{method_name}' no detectó QR válido")
-                    
-            except Exception as method_error:
-                logger.warning(f"Error en método '{method_name}': {method_error}")
-                continue
-        
+            for detector_idx, qr_detector in enumerate(qr_detectors):
+                try:
+                    detector_name = f"{method_name}_detector_{detector_idx}"
+                    logger.info(f"Intentando método: {detector_name}")
+
+                    if hasattr(qr_detector, 'detectAndDecode'):
+                        # OpenCV QRCodeDetector
+                        detected_data, vertices, _ = qr_detector.detectAndDecode(processed_img)
+
+                        if detected_data and detected_data.strip():
+                            data = detected_data.strip()
+                            successful_method = detector_name
+                            logger.info(f"QR detectado exitosamente con método '{detector_name}': {data}")
+                            break
+                    elif hasattr(qr_detector, 'detectAndDecodeMulti'):
+                        # WeChat QR Detector
+                        result, decoded_info, points = qr_detector.detectAndDecodeMulti(processed_img)
+
+                        if result and decoded_info:
+                            for info in decoded_info:
+                                if info and info.strip():
+                                    data = info.strip()
+                                    successful_method = detector_name
+                                    logger.info(f"QR detectado exitosamente con método '{detector_name}': {data}")
+                                    break
+                            if data:
+                                break
+
+                    logger.debug(f"Método '{detector_name}' no detectó QR válido")
+
+                except Exception as method_error:
+                    logger.warning(f"Error en método '{detector_name}': {method_error}")
+                    continue
+
+            if data:
+                break
+
         if not data:
             logger.warning("No se pudo decodificar el código QR con ningún método")
             update.message.reply_text(
@@ -207,14 +233,14 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         logger.info(f"QR decodificado exitosamente con método '{successful_method}': {data}")
-        
+
         # Extraer y separar el payload
         payload = data.strip()
         logger.info(f"Payload completo del QR: '{payload}'")
         logger.info(f"Longitud del payload: {len(payload)} caracteres")
-        
+
         # Para casos de prueba, si el QR contiene una URL o texto simple, mostrar mensaje específico
         if payload.startswith(('http://', 'https://', 'www.')):
             logger.info("QR detectado contiene una URL")
@@ -223,7 +249,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         # Detectar QR con solo números (probablemente QR de prueba o incorrecto)
         if payload.isdigit() and len(payload) <= 5:
             logger.info(f"QR detectado contiene solo un número simple: {payload}")
@@ -232,14 +258,14 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         # Verificar si el payload contiene pipes para el formato esperado
         if "|" not in payload:
             logger.warning(f"El QR no contiene el formato esperado (sin pipes): '{payload}'")
             logger.info("Caracteres en el payload:")
             for i, char in enumerate(payload):
                 logger.info(f"  Posición {i}: '{char}' (ASCII: {ord(char)})")
-            
+
             # Mensaje más específico según el tipo de contenido
             if payload.isdigit():
                 error_msg = f"El código QR contiene solo el número '{payload}', pero se esperan datos de orden de trabajo en formato: ORDEN|ADMIN|CODIGO|DIRECCION|FECHA"
@@ -247,19 +273,19 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 error_msg = f"El código QR contiene texto muy corto: '{payload}'. Se esperan datos completos de orden de trabajo separados por '|'"
             else:
                 error_msg = f"El código QR fue leído correctamente, pero no tiene el formato esperado de orden de trabajo.\n\nContenido detectado: {payload[:50]}{'...' if len(payload) > 50 else ''}\n\nSe esperan datos separados por '|'"
-            
+
             update.message.reply_text(
                 apply_bold_keywords(f"{error_msg}\n\n🔍 **Formato esperado:**\nORDEN|ADMINISTRADOR|CODIGO_ADMIN|DIRECCION|FECHA\n\n⚠️ Verifique que está usando el QR correcto de la orden de trabajo."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         # Separar las partes del payload
         parts = payload.split("|")
         logger.info(f"Partes separadas por pipes: {len(parts)} partes")
         for i, part in enumerate(parts):
             logger.info(f"  Parte {i+1}: '{part}' (longitud: {len(part)})")
-        
+
         if len(parts) != 5:
             logger.warning(f"El QR no tiene 5 partes separadas por pipes. Tiene {len(parts)} partes")
             update.message.reply_text(
@@ -267,16 +293,16 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         orden, admin, cod_admin, direccion, fecha = parts
-        
+
         # Limpiar espacios en blanco de cada campo
         orden = orden.strip()
         admin = admin.strip()
         cod_admin = cod_admin.strip()
         direccion = direccion.strip()
         fecha = fecha.strip()
-        
+
         # Validar que ningún campo esté vacío
         if not orden or not admin or not cod_admin or not direccion or not fecha:
             logger.warning("Uno o más campos del QR están vacíos")
@@ -286,13 +312,13 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             if not cod_admin: empty_fields.append("Código Admin")
             if not direccion: empty_fields.append("Dirección")
             if not fecha: empty_fields.append("Fecha")
-            
+
             update.message.reply_text(
                 apply_bold_keywords(f"El código QR tiene campos vacíos: {', '.join(empty_fields)}.\n\nPor favor, verifique que está usando un código QR válido con todos los datos completos."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
-        
+
         # Guardar los datos en user_data
         context.user_data.update({
             "orden_trabajo": orden,
@@ -301,7 +327,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             "direccion_qr": direccion,
             "fecha_orden": fecha,
         })
-        
+
         logger.info(f"✅ Datos del QR guardados exitosamente:")
         logger.info(f"  📋 Orden: '{orden}' (longitud: {len(orden)})")
         logger.info(f"  👤 Administrador: '{admin}' (longitud: {len(admin)})")
@@ -309,7 +335,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         logger.info(f"  📍 Dirección: '{direccion}' (longitud: {len(direccion)})")
         logger.info(f"  📅 Fecha: '{fecha}' (longitud: {len(fecha)}) - Contiene '/': {'/' in fecha}")
         logger.info(f"  🎯 Servicio: {context.user_data.get('service', 'No definido')}")
-        
+
         # Mostrar datos extraídos para confirmación
         confirmation_text = f"""✅ **Código QR procesado correctamente**
 
@@ -328,7 +354,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         )
         context.user_data["current_state"] = CODE
         return CODE
-            
+
     except Exception as e:
         logger.error("Error general al procesar QR: %s", str(e), exc_info=True)
         update.message.reply_text(
@@ -1435,7 +1461,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
-    
+
     # Incluir datos del QR solo para fumigaciones
     if service == "Fumigaciones":
         if "orden_trabajo" in user_data:
@@ -1449,7 +1475,7 @@ def send_email(user_data, update: Update, context: CallbackContext):
         if "fecha_orden" in user_data:
             lines.append(f"Fecha de orden (QR): {user_data['fecha_orden']}")
         lines.append("")  # Línea en blanco para separar datos QR de datos formulario
-    
+
     # Se eliminó la fecha automática según requerimiento
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
