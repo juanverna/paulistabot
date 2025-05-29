@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Variables de configuración
 # =============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TU_TOKEN_AQUI")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7650702859:AAHZfGk5ff5bfPbV3VzMK-XPKOkerjliM8M")
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "botpaulista25@gmail.com")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
 
@@ -280,8 +280,15 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         # Validar que ningún campo esté vacío
         if not orden or not admin or not cod_admin or not direccion or not fecha:
             logger.warning("Uno o más campos del QR están vacíos")
+            empty_fields = []
+            if not orden: empty_fields.append("Orden")
+            if not admin: empty_fields.append("Administrador") 
+            if not cod_admin: empty_fields.append("Código Admin")
+            if not direccion: empty_fields.append("Dirección")
+            if not fecha: empty_fields.append("Fecha")
+            
             update.message.reply_text(
-                apply_bold_keywords("El código QR tiene campos vacíos. Por favor, verifique que está usando un código QR válido con todos los datos completos."),
+                apply_bold_keywords(f"El código QR tiene campos vacíos: {', '.join(empty_fields)}.\n\nPor favor, verifique que está usando un código QR válido con todos los datos completos."),
                 parse_mode=ParseMode.HTML
             )
             return SCAN_QR
@@ -295,30 +302,32 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
             "fecha_orden": fecha,
         })
         
-        logger.info(f"Datos del QR guardados exitosamente:")
-        logger.info(f"  Orden: '{orden}' (longitud: {len(orden)})")
-        logger.info(f"  Administrador: '{admin}' (longitud: {len(admin)})")
-        logger.info(f"  Código admin: '{cod_admin}' (longitud: {len(cod_admin)})")
-        logger.info(f"  Dirección: '{direccion}' (longitud: {len(direccion)})")
-        logger.info(f"  Fecha: '{fecha}' (longitud: {len(fecha)}) - Contiene '/': {'/' in fecha}")
+        logger.info(f"✅ Datos del QR guardados exitosamente:")
+        logger.info(f"  📋 Orden: '{orden}' (longitud: {len(orden)})")
+        logger.info(f"  👤 Administrador: '{admin}' (longitud: {len(admin)})")
+        logger.info(f"  🔢 Código admin: '{cod_admin}' (longitud: {len(cod_admin)})")
+        logger.info(f"  📍 Dirección: '{direccion}' (longitud: {len(direccion)})")
+        logger.info(f"  📅 Fecha: '{fecha}' (longitud: {len(fecha)}) - Contiene '/': {'/' in fecha}")
+        logger.info(f"  🎯 Servicio: {context.user_data.get('service', 'No definido')}")
         
-        # Continuar al siguiente estado
-        service = context.user_data.get("service")
-        if service == "Fumigaciones":
-            update.message.reply_text(
-                apply_bold_keywords("✅ Código QR procesado correctamente.\n\nAhora inserte su código (solo números):"),
-                parse_mode=ParseMode.HTML
-            )
-            context.user_data["current_state"] = CODE
-            return CODE
-        else:
-            # Para otros servicios (flujo original)
-            update.message.reply_text(
-                apply_bold_keywords("✅ Código QR procesado correctamente.\n\nAhora inserte su código (solo números):"),
-                parse_mode=ParseMode.HTML
-            )
-            context.user_data["current_state"] = CODE
-            return CODE
+        # Mostrar datos extraídos para confirmación
+        confirmation_text = f"""✅ **Código QR procesado correctamente**
+
+📋 **Datos extraídos:**
+• **Orden:** {orden}
+• **Administrador:** {admin}
+• **Código Admin:** {cod_admin}
+• **Dirección:** {direccion}
+• **Fecha:** {fecha}
+
+✏️ Ahora inserte su código (solo números):"""
+
+        update.message.reply_text(
+            apply_bold_keywords(confirmation_text),
+            parse_mode=ParseMode.HTML
+        )
+        context.user_data["current_state"] = CODE
+        return CODE
             
     except Exception as e:
         logger.error("Error general al procesar QR: %s", str(e), exc_info=True)
