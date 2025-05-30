@@ -9,8 +9,8 @@ from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
                           ConversationHandler, CallbackContext)
-from PIL import Image
-from pyzbar.pyzbar import decode
+import cv2
+import numpy as np
 from io import BytesIO
 
 
