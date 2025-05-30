@@ -1204,6 +1204,22 @@ def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
     lines = []
+    # Si vienen datos del QR, los agregamos primero con su título
+    if "numero_evento" in user_data:
+        lines.append(f"Número de evento: {user_data['numero_evento']}")
+    if "direccion_qr" in user_data:
+        lines.append(f"Dirección: {user_data['direccion_qr']}")
+    if "codigo_interno" in user_data:
+        lines.append(f"Código interno: {user_data['codigo_interno']}")
+    if "tipo_evento" in user_data:
+        lines.append(f"Tipo de evento: {user_data['tipo_evento']}")
+
+    # Ahora agregamos el resto de campos como antes…
+    # (por ejemplo, order, address, start_time, etc.)
+    # …
+    # finalmente:
+    body = "Detalles del reporte:\n" + "\n".join(lines)
+    # … resto de tu envío SMTP …
     # Se eliminó la fecha automática según requerimiento
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
@@ -1322,33 +1338,33 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-    # Detecta y decodifica el QR
+    # 1) Decodifica el QR con OpenCV
     detector = cv2.QRCodeDetector()
     data, points, _ = detector.detectAndDecode(img)
     if not data:
-        update.message.reply_text("No encontré un QR válido. Por favor prueba de nuevo.")
+        update.message.reply_text("No encontré un QR válido. Por favor, prueba de nuevo.")
         return SCAN_QR
 
-    # Parseamos tu formato
+    # 2) Ahora sí parsea esa variable `data`
     try:
         numero_evt, direccion_evt, codigo_evt, tipo_evt = data.split("|")
     except ValueError:
         update.message.reply_text("El contenido del QR no tenía el formato correcto.")
         return SCAN_QR
 
-    # Guardamos los datos en user_data
+    # 3) Guarda en user_data con claves descriptivas
     context.user_data.update({
-        "order": numero_evt,
-        "address": direccion_evt,
-        "code_qr": codigo_evt,
-        "event_type": tipo_evt
+        "numero_evento":   numero_evt,
+        "direccion_qr":     direccion_evt,
+        "codigo_interno":   codigo_evt,
+        "tipo_evento_qr":   tipo_evt
     })
 
-    # Confirmación genérica para el usuario
-    update.message.reply_text("✅ Datos cargados con éxito.", parse_mode=ParseMode.HTML)
-
-    # Continuamos con la siguiente pregunta
+    # 4) Confirma en chat sin mostrar los datos
+    update.message.reply_text("✅ Datos cargados con éxito.")
     push_state(context, SCAN_QR)
+
+    # 5) Continúa el formulario
     update.message.reply_text(
         apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
         parse_mode=ParseMode.HTML
