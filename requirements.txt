@@ -18,3 +18,4 @@ gspread
 google-auth
 Flask
 openai
+opencv-python
