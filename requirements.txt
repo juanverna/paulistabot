@@ -18,13 +18,3 @@ gspread
 google-auth
 Flask
 openai
-google-api-python-client
-google-auth-oauthlib
-pandas
-telegram
-pillow
-opencv-python-headless
-python-dotenv
-numpy
-opencv-python
-pyzbar
