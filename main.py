@@ -461,6 +461,7 @@ def get_code(update: Update, context: CallbackContext) -> int:
 def service_selection(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
+    logger.debug("▶ service_selection callback_data=%r", query.data)
     if query.data.lower() == "back":
         return back_handler(update, context)
     push_state(context, SERVICE)
@@ -1361,9 +1362,13 @@ def main():
                 MessageHandler(Filters.text & ~Filters.command, get_code)
             ],
             SERVICE: [
-                CallbackQueryHandler(service_selection),
+                CallbackQueryHandler(service_selection, pattern='^Fumigaciones$'),
+                CallbackQueryHandler(service_selection, pattern='^Limpieza y Reparacion de Tanques$'),
+                CallbackQueryHandler(service_selection, pattern='^Presupuestos$'),
+                CallbackQueryHandler(service_selection, pattern='^Avisos$'),
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
             ],
+
             ORDER: [
                 MessageHandler(Filters.text & ~Filters.command, get_order),
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
