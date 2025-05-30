@@ -1211,8 +1211,10 @@ def send_email(user_data, update: Update, context: CallbackContext):
         lines.append(f"Dirección: {user_data['direccion_qr']}")
     if "codigo_interno" in user_data:
         lines.append(f"Código interno: {user_data['codigo_interno']}")
-    if "tipo_evento" in user_data:
-        lines.append(f"Tipo de evento: {user_data['tipo_evento']}")
+    if "tipo_evento_qr" in user_data:
+        lines.append(f"Tipo de evento: {user_data['tipo_evento_qr']}")
+
+
 
     # Ahora agregamos el resto de campos como antes…
     # (por ejemplo, order, address, start_time, etc.)
