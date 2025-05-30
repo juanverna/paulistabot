@@ -1322,7 +1322,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-    # Usa el detector de OpenCV
+    # Detecta y decodifica el QR
     detector = cv2.QRCodeDetector()
     data, points, _ = detector.detectAndDecode(img)
     if not data:
@@ -1336,25 +1336,25 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         update.message.reply_text("El contenido del QR no tenía el formato correcto.")
         return SCAN_QR
 
-    # Guardamos y seguimos
+    # Guardamos los datos en user_data
     context.user_data.update({
         "order": numero_evt,
         "address": direccion_evt,
         "code_qr": codigo_evt,
         "event_type": tipo_evt
     })
-    update.message.reply_text(
-        f"✅ Datos del QR:\n"
-        f"• Número de evento: {numero_evt}\n"
-        f"• Dirección: {direccion_evt}\n"
-        f"• Código interno: {codigo_evt}\n"
-        f"• Tipo de evento: {tipo_evt}"
-    )
-    update.message.reply_text(apply_bold_keywords("¿A qué hora empezaste el trabajo?"))
+
+    # Confirmación genérica para el usuario
+    update.message.reply_text("✅ Datos cargados con éxito.", parse_mode=ParseMode.HTML)
+
+    # Continuamos con la siguiente pregunta
     push_state(context, SCAN_QR)
+    update.message.reply_text(
+        apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = START_TIME
     return START_TIME
-
 
 
 def main():
