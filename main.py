@@ -9,6 +9,10 @@ from email.mime.image import MIMEImage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import (Updater, MessageHandler, Filters, CallbackQueryHandler,
                           ConversationHandler, CallbackContext)
+from PIL import Image
+from pyzbar.pyzbar import decode
+from io import BytesIO
+
 
 # =============================================================================
 # Función auxiliar para aplicar negritas a palabras clave
@@ -41,7 +45,7 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "fxvq jgue rkia gmtg")
  SUGGESTIONS_MAIN, ASK_SECOND, MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, SEALING_ALT1,
  REPAIR_ALT1, SUGGESTIONS_ALT1, ASK_THIRD, MEASURE_ALT2, TAPAS_INSPECCION_ALT2,
  TAPAS_ACCESO_ALT2, SEALING_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS, AVISOS_CODE,
- AVISOS_ADDRESS, AVISOS_PHOTOS) = range(35)
+ AVISOS_ADDRESS, AVISOS_PHOTOS, SCAN_QR) = range(36)
 
 # =============================================================================
 # Mapeo de estados a claves en user_data para eliminar respuesta actual al "atras"
@@ -74,6 +78,7 @@ STATE_KEYS = {
     REPAIR_ALT2: "repair_alt2",
     CONTACT: "contact",
     AVISOS_ADDRESS: "avisos_address",
+    SCAN_QR: None
 }
 
 # =============================================================================
@@ -467,10 +472,11 @@ def service_selection(update: Update, context: CallbackContext) -> int:
             parse_mode=ParseMode.HTML)
         context.bot.send_message(
             chat_id=query.message.chat.id,
-            text=apply_bold_keywords("Por favor, ingrese el número de orden (7 dígitos):"),
+            text=apply_bold_keywords("📷 Por favor, envíe la foto del código QR:"),
             parse_mode=ParseMode.HTML)
-        context.user_data["current_state"] = ORDER
-        return ORDER
+        context.user_data["current_state"] = SCAN_QR
+        return SCAN_QR
+
     elif service_type == "Limpieza y Reparacion de Tanques":
         query.edit_message_text(
             apply_bold_keywords("Servicio seleccionado: Limpieza y Reparacion de Tanques"),
@@ -1302,6 +1308,48 @@ def send_email(user_data, update: Update, context: CallbackContext):
                 chat_id=update.effective_chat.id,
                 text=apply_bold_keywords("Error al enviar correo."),
                 parse_mode=ParseMode.HTML)
+            
+def scan_qr(update: Update, context: CallbackContext) -> int:
+    # Descarga la foto
+    photo = update.message.photo[-1].get_file()
+    bio = BytesIO()
+    photo.download(out=bio)
+    bio.seek(0)
+    img = Image.open(bio)
+
+    # Decodifica
+    decoded = decode(img)
+    if not decoded:
+        update.message.reply_text("No encontré un QR válido. Por favor prueba de nuevo.")
+        return SCAN_QR
+
+    # Extrae datos
+    data = decoded[0].data.decode("utf-8")
+    numero_evt, direccion_evt, codigo_evt, tipo_evt = data.split("|")
+
+    # Guarda en user_data
+    context.user_data["order"]   = numero_evt
+    context.user_data["address"] = direccion_evt
+    context.user_data["code_qr"] = codigo_evt
+    context.user_data["event_type"] = tipo_evt
+
+    # Confirma al usuario
+    update.message.reply_text(
+        f"✅ Datos del QR:\n"
+        f"• Número de evento: {numero_evt}\n"
+        f"• Dirección: {direccion_evt}\n"
+        f"• Código interno: {codigo_evt}\n"
+        f"• Tipo de evento: {tipo_evt}"
+    )
+
+    # Continúa con el flujo normal (p. ej. hora de inicio)
+    update.message.reply_text(
+        apply_bold_keywords("¿A qué hora empezaste el trabajo?")
+    )
+    push_state(context, SCAN_QR)
+    context.user_data["current_state"] = START_TIME
+    return START_TIME
+
 
 def main():
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
@@ -1418,7 +1466,11 @@ def main():
             AVISOS_ADDRESS: [
                 MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler),
                 MessageHandler(Filters.text & ~Filters.command, get_avisos_address)
-            ]
+            ],
+            SCAN_QR: [
+                MessageHandler(Filters.photo & ~Filters.command, scan_qr)
+            ],
+
         },
         fallbacks=[]
     )

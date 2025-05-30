@@ -18,3 +18,5 @@ gspread
 google-auth
 Flask
 openai
+Pillow
+pyzbar
