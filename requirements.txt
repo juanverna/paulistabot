@@ -18,5 +18,5 @@ gspread
 google-auth
 Flask
 openai
-Pillow
-pyzbar
+opencv-python
+numpy

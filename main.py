@@ -1310,31 +1310,39 @@ def send_email(user_data, update: Update, context: CallbackContext):
                 text=apply_bold_keywords("Error al enviar correo."),
                 parse_mode=ParseMode.HTML)
             
+import cv2
+import numpy as np
+from io import BytesIO
+
 def scan_qr(update: Update, context: CallbackContext) -> int:
     # Descarga la foto
-    photo = update.message.photo[-1].get_file()
+    file = update.message.photo[-1].get_file()
     bio = BytesIO()
-    photo.download(out=bio)
-    bio.seek(0)
-    img = Image.open(bio)
+    file.download(out=bio)
+    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-    # Decodifica
-    decoded = decode(img)
-    if not decoded:
+    # Usa el detector de OpenCV
+    detector = cv2.QRCodeDetector()
+    data, points, _ = detector.detectAndDecode(img)
+    if not data:
         update.message.reply_text("No encontré un QR válido. Por favor prueba de nuevo.")
         return SCAN_QR
 
-    # Extrae datos
-    data = decoded[0].data.decode("utf-8")
-    numero_evt, direccion_evt, codigo_evt, tipo_evt = data.split("|")
+    # Parseamos tu formato
+    try:
+        numero_evt, direccion_evt, codigo_evt, tipo_evt = data.split("|")
+    except ValueError:
+        update.message.reply_text("El contenido del QR no tenía el formato correcto.")
+        return SCAN_QR
 
-    # Guarda en user_data
-    context.user_data["order"]   = numero_evt
-    context.user_data["address"] = direccion_evt
-    context.user_data["code_qr"] = codigo_evt
-    context.user_data["event_type"] = tipo_evt
-
-    # Confirma al usuario
+    # Guardamos y seguimos
+    context.user_data.update({
+        "order": numero_evt,
+        "address": direccion_evt,
+        "code_qr": codigo_evt,
+        "event_type": tipo_evt
+    })
     update.message.reply_text(
         f"✅ Datos del QR:\n"
         f"• Número de evento: {numero_evt}\n"
@@ -1342,14 +1350,11 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         f"• Código interno: {codigo_evt}\n"
         f"• Tipo de evento: {tipo_evt}"
     )
-
-    # Continúa con el flujo normal (p. ej. hora de inicio)
-    update.message.reply_text(
-        apply_bold_keywords("¿A qué hora empezaste el trabajo?")
-    )
+    update.message.reply_text(apply_bold_keywords("¿A qué hora empezaste el trabajo?"))
     push_state(context, SCAN_QR)
     context.user_data["current_state"] = START_TIME
     return START_TIME
+
 
 
 def main():
