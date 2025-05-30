@@ -18,4 +18,5 @@ gspread
 google-auth
 Flask
 openai
-opencv-python
+opencv-python-headless-headless
+
