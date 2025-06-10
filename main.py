@@ -1356,13 +1356,20 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         data = data[:-1]
 
     # 4) Separa en partes y valida que sean 4
+        # 4) Separa en partes y valida que sean 4 (con debug)
+    #    Primero muestro el contenido crudo para que puedas verlo.
+    update.message.reply_text(f"🔍 DEBUG – contenido crudo del QR:\n<pre>{data}</pre>",
+                              parse_mode=ParseMode.HTML)
+    logger.debug("Contenido crudo del QR: %r", data)
+
+    # Ahora intento partir:
     parts = data.split("|")
     if len(parts) != 4:
-        logger.debug(f"QR inesperado: {repr(data)} → partes: {parts}")
         update.message.reply_text(
-            f"El QR devolvió {len(parts)} campos en lugar de 4. Revisa el formato o vuelve a escanear."
+            f"⚠️ El QR devolvió {len(parts)} campos (esperaba 4)."
         )
         return SCAN_QR
+
 
     numero_evt, direccion_evt, codigo_evt, tipo_evt = parts
 
