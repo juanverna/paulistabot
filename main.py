@@ -1346,6 +1346,9 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     if not data:
         update.message.reply_text("No encontré un QR válido. Por favor, prueba de nuevo.")
         return SCAN_QR
+    
+    # ↓ Normalizamos eliminando un '|' final si existe
+    data = data.rstrip("|")
 
     # 2) Ahora sí parsea esa variable `data`
     try:
