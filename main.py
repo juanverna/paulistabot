@@ -1333,43 +1333,48 @@ import numpy as np
 from io import BytesIO
 
 def scan_qr(update: Update, context: CallbackContext) -> int:
-    # Descarga la foto
-    file = update.message.photo[-1].get_file()
-    bio = BytesIO()
-    file.download(out=bio)
-    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    # 0) Descarga la foto desde Telegram
+    file = update.message.photo[-1].get_file()                     # ←
+    bio = BytesIO()                                                # ←
+    file.download(out=bio)                                         # ←
 
-    # 1) Decodifica el QR con OpenCV
-    detector = cv2.QRCodeDetector()
-    data, points, _ = detector.detectAndDecode(img)
+    # 1) Convierte el buffer a un array y luego a imagen OpenCV
+    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)            # ←
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)                      # ←
+
+    # 2) Crea el detector y decodifica el QR
+    detector = cv2.QRCodeDetector()                                # ←
+    data, points, _ = detector.detectAndDecode(img)               # ahora detector e img existen
+
     if not data:
         update.message.reply_text("No encontré un QR válido. Por favor, prueba de nuevo.")
         return SCAN_QR
-    
-    # ↓ Normalizamos eliminando un '|' final si existe
-    data = data.rstrip("|")
 
-    # 2) Ahora sí parsea esa variable `data`
-    try:
-        numero_evt, direccion_evt, codigo_evt, tipo_evt = data.split("|")
-    except ValueError:
-        update.message.reply_text("El contenido del QR no tenía el formato correcto.")
+    # 3) Limpia espacios y quita un '|' final si existiera
+    data = data.strip()
+    if data.endswith("|"):
+        data = data[:-1]
+
+    # 4) Separa en partes y valida que sean 4
+    parts = data.split("|")
+    if len(parts) != 4:
+        logger.debug(f"QR inesperado: {repr(data)} → partes: {parts}")
+        update.message.reply_text(
+            f"El QR devolvió {len(parts)} campos en lugar de 4. Revisa el formato o vuelve a escanear."
+        )
         return SCAN_QR
 
-    # 3) Guarda en user_data con claves descriptivas
-    context.user_data.update({
-        "numero_evento":   numero_evt,
-        "direccion_qr":     direccion_evt,
-        "codigo_interno":   codigo_evt,
-        "tipo_evento_qr":   tipo_evt
-    })
+    numero_evt, direccion_evt, codigo_evt, tipo_evt = parts
 
-    # 4) Confirma en chat sin mostrar los datos
+    # 5) Guarda en user_data y continúa
+    context.user_data.update({
+        "numero_evento":  numero_evt,
+        "direccion_qr":   direccion_evt,
+        "codigo_interno": codigo_evt,
+        "tipo_evento_qr": tipo_evt
+    })
     update.message.reply_text("✅ Datos cargados con éxito.")
     push_state(context, SCAN_QR)
-
-    # 5) Continúa el formulario
     update.message.reply_text(
         apply_bold_keywords("¿A qué hora empezaste el trabajo?"),
         parse_mode=ParseMode.HTML
