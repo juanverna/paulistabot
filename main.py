@@ -1333,47 +1333,36 @@ import numpy as np
 from io import BytesIO
 
 def scan_qr(update: Update, context: CallbackContext) -> int:
-    # 0) Descarga la foto desde Telegram
-    file = update.message.photo[-1].get_file()                     # ←
-    bio = BytesIO()                                                # ←
-    file.download(out=bio)                                         # ←
+    # 0) Descarga la foto
+    file = update.message.photo[-1].get_file()
+    bio = BytesIO()
+    file.download(out=bio)
 
-    # 1) Convierte el buffer a un array y luego a imagen OpenCV
-    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)            # ←
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)                      # ←
+    # 1) Buffer → array → imagen OpenCV
+    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-    # 2) Crea el detector y decodifica el QR
-    detector = cv2.QRCodeDetector()                                # ←
-    data, points, _ = detector.detectAndDecode(img)               # ahora detector e img existen
-
+    # 2) Decodifica QR
+    detector = cv2.QRCodeDetector()
+    data, points, _ = detector.detectAndDecode(img)
     if not data:
         update.message.reply_text("No encontré un QR válido. Por favor, prueba de nuevo.")
         return SCAN_QR
 
-    # 3) Limpia espacios y quita un '|' final si existiera
+    # 3) Limpia y quita pipe final si existe
     data = data.strip()
     if data.endswith("|"):
         data = data[:-1]
 
-    # 4) Separa en partes y valida que sean 4
-        # 4) Separa en partes y valida que sean 4 (con debug)
-    #    Primero muestro el contenido crudo para que puedas verlo.
-    update.message.reply_text(f"🔍 DEBUG – contenido crudo del QR:\n<pre>{data}</pre>",
-                              parse_mode=ParseMode.HTML)
-    logger.debug("Contenido crudo del QR: %r", data)
-
-    # Ahora intento partir:
+    # 4) Split y validación
     parts = data.split("|")
     if len(parts) != 4:
-        update.message.reply_text(
-            f"⚠️ El QR devolvió {len(parts)} campos (esperaba 4)."
-        )
+        update.message.reply_text("El contenido del QR no tenía el formato correcto.")
         return SCAN_QR
-
 
     numero_evt, direccion_evt, codigo_evt, tipo_evt = parts
 
-    # 5) Guarda en user_data y continúa
+    # 5) Guarda y continúa
     context.user_data.update({
         "numero_evento":  numero_evt,
         "direccion_qr":   direccion_evt,
@@ -1388,6 +1377,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     )
     context.user_data["current_state"] = START_TIME
     return START_TIME
+
 
 
 def main():
