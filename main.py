@@ -1203,8 +1203,9 @@ def get_contact(update: Update, context: CallbackContext) -> int:
 def send_email(user_data, update: Update, context: CallbackContext):
     service = user_data.get("service", "")
     subject = "Reporte de Servicio: " + service
+
+    # Construcción del cuerpo
     lines = []
-    # Si vienen datos del QR, los agregamos primero con su título
     if "numero_evento" in user_data:
         lines.append(f"Número de evento: {user_data['numero_evento']}")
     if "direccion_qr" in user_data:
@@ -1213,18 +1214,9 @@ def send_email(user_data, update: Update, context: CallbackContext):
         lines.append(f"Código interno: {user_data['codigo_interno']}")
     if "tipo_evento_qr" in user_data:
         lines.append(f"Tipo de evento: {user_data['tipo_evento_qr']}")
-
-
-
-    # Ahora agregamos el resto de campos como antes…
-    # (por ejemplo, order, address, start_time, etc.)
-    # …
-    # finalmente:
-    body = "Detalles del reporte:\n" + "\n".join(lines)
-    # … resto de tu envío SMTP …
-    # Se eliminó la fecha automática según requerimiento
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
+
     if service == "Avisos":
         if "avisos_address" in user_data:
             lines.append(f"Dirección/es: {user_data['avisos_address']}")
@@ -1278,14 +1270,21 @@ def send_email(user_data, update: Update, context: CallbackContext):
         for key, label in ordered_fields:
             if key in user_data:
                 lines.append(f"{label}: {user_data[key]}")
+
     body = "Detalles del reporte:\n" + "\n".join(lines)
 
+    # Construcción del mensaje MIME
     msg = MIMEMultipart()
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = EMAIL_ADDRESS
+    # Leemos la variable CC_EMAIL desde entorno
+    cc_email = os.getenv("CC_EMAIL")
+    if cc_email:
+        msg["Cc"] = cc_email
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
+    # Adjuntamos fotos
     photos = user_data.get("photos", [])
     for idx, file_id in enumerate(photos):
         try:
@@ -1294,39 +1293,37 @@ def send_email(user_data, update: Update, context: CallbackContext):
             file.download(out=bio)
             bio.seek(0)
             image = MIMEImage(bio.read(), _subtype="jpeg")
-            image.add_header('Content-Disposition', 'attachment', filename=f"foto_{idx+1}.jpg")
+            image.add_header("Content-Disposition", "attachment", filename=f"foto_{idx+1}.jpg")
             msg.attach(image)
         except Exception as e:
             logger.error("Error al descargar/adjuntar imagen: %s", e)
 
+    # Envío SMTP
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(msg)
+
+        # Preparamos lista de destinatarios para envelope
+        recipients = [EMAIL_ADDRESS]
+        if cc_email:
+            recipients.append(cc_email)
+
+        server.sendmail(EMAIL_ADDRESS, recipients, msg.as_string())
         server.quit()
+
         logger.info("Correo enviado exitosamente.")
-        if update.message:
-            update.message.reply_text(
-                apply_bold_keywords("Correo enviado exitosamente."),
-                parse_mode=ParseMode.HTML)
-        else:
-            context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=apply_bold_keywords("Correo enviado exitosamente."),
-                parse_mode=ParseMode.HTML
-            )
+        reply = apply_bold_keywords("Correo enviado exitosamente.")
     except Exception as e:
         logger.error("Error al enviar email: %s", e)
-        if update.message:
-            update.message.reply_text(
-                apply_bold_keywords("Error al enviar correo."),
-                parse_mode=ParseMode.HTML)
-        else:
-            context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=apply_bold_keywords("Error al enviar correo."),
-                parse_mode=ParseMode.HTML)
+        reply = apply_bold_keywords("Error al enviar correo.")
+
+    # Respondemos al usuario en Telegram
+    if update.message:
+        update.message.reply_text(reply, parse_mode=ParseMode.HTML)
+    else:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=reply, parse_mode=ParseMode.HTML)
+
             
 import cv2
 import numpy as np
