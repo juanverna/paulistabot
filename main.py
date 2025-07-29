@@ -398,7 +398,7 @@ def re_ask(state: int, update: Update, context: CallbackContext):
         if service == "Fumigaciones":
             context.bot.send_message(
                 chat_id=chat_id,
-                text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+                text=apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, LISTADO y PORTERO ELECTRICO:"),
                 parse_mode=ParseMode.HTML
             )
         elif service == "Avisos":
@@ -1106,10 +1106,11 @@ def handle_photos(update: Update, context: CallbackContext) -> int:
         file_id = update.message.photo[-1].file_id
         photos.append(file_id)
         context.user_data["photos"] = photos
-        if len(photos) < 2:
+        if len(photos) < 3:
             update.message.reply_text(
-                apply_bold_keywords("Por favor cargue la segunda foto."),
-                parse_mode=ParseMode.HTML)
+                apply_bold_keywords(f"Foto recibida. Por favor cargue la foto número {len(photos)+1}."),
+                 parse_mode=ParseMode.HTML
+)
             return PHOTOS
         else:
             send_email(context.user_data, update, context)
