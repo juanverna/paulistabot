@@ -1184,7 +1184,7 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     service = context.user_data.get("service")
     if service == "Fumigaciones":
         update.message.reply_text(
-            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO y PORTERO ELECTRICO:"),
+            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, LISTADO y PORTERO ELECTRICO:"),
             parse_mode=ParseMode.HTML)
         context.user_data["current_state"] = PHOTOS
         return PHOTOS
