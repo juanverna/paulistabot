@@ -2,6 +2,9 @@ import logging
 import os
 import smtplib
 import re
+from telegram.utils.request import Request
+from telegram.error import TimedOut
+
 from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -1376,11 +1379,23 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     context.user_data["current_state"] = START_TIME
     return START_TIME
 
+def error_handler(update: Update, context: CallbackContext):
+    err = context.error
+    try:
+        raise err
+    except TimedOut:
+        logger.warning("TimedOut hacia Telegram; PTB reintenta solo.")
+        return
+    except Exception:
+        logger.exception("Error no controlado en handler")
 
 
 def main():
-    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    request = Request(con_pool_size=8, connect_timeout=20, read_timeout=20)
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True, request=request)
     dp = updater.dispatcher
+    dp.add_error_handler(error_handler)
+
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(Filters.regex("(?i)^hola$"), start_conversation)],
         states={
@@ -1507,8 +1522,9 @@ def main():
     )
     dp.add_handler(conv_handler)
     logger.debug("Iniciando polling...")
-    updater.start_polling()
+    updater.start_polling(timeout=30, read_latency=5, drop_pending_updates=True)
     updater.idle()
+
 
 if __name__ == "__main__":
     main()
