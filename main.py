@@ -21,6 +21,15 @@ def apply_bold_keywords(text: str) -> str:
     pattern = r"(?i)\b(CISTERNA|RESERVA|INTERMEDIARIO)\b"
     return re.sub(pattern, lambda m: f"<b>{m.group(0)}</b>", text)
 
+def is_valid_time(text: str) -> bool:
+    """
+    Valida que la hora tenga formato HH:MM en 24 horas (00:00 a 23:59).
+    """
+    text = text.strip()
+    pattern = r"^([01]\d|2[0-3]):([0-5]\d)$"
+    return re.match(pattern, text) is not None
+
+
 # =============================================================================
 # Configuración del logging
 # =============================================================================
@@ -547,29 +556,56 @@ def get_start_time(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
+
     if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
-    context.user_data['start_time'] = text
+
+    # Validación de formato HH:MM
+    if not is_valid_time(text):
+        update.message.reply_text(
+            apply_bold_keywords(
+                "Formato de hora inválido. Usá el formato HH:MM, por ejemplo 14:30."
+            ),
+            parse_mode=ParseMode.HTML
+        )
+        return START_TIME
+
+    context.user_data['start_time'] = text.strip()
     push_state(context, START_TIME)
     update.message.reply_text(
         apply_bold_keywords("¿A qué hora terminaste el trabajo?"),
-        parse_mode=ParseMode.HTML)
+        parse_mode=ParseMode.HTML
+    )
     context.user_data["current_state"] = END_TIME
     return END_TIME
+
 
 def get_end_time(update: Update, context: CallbackContext) -> int:
     text = update.message.text
     if check_special_commands(text, update, context):
         return ConversationHandler.END
+
     if text.lower().replace("á", "a").strip() == "atras":
         return back_handler(update, context)
-    context.user_data['end_time'] = text
+
+    # Validación de formato HH:MM
+    if not is_valid_time(text):
+        update.message.reply_text(
+            apply_bold_keywords(
+                "Formato de hora inválido. Usá el formato HH:MM, por ejemplo 14:30."
+            ),
+            parse_mode=ParseMode.HTML
+        )
+        return END_TIME
+
+    context.user_data['end_time'] = text.strip()
     push_state(context, END_TIME)
     service = context.user_data.get("service")
     if service == "Fumigaciones":
         update.message.reply_text(
             apply_bold_keywords("¿Qué unidades contienen insectos?"),
-            parse_mode=ParseMode.HTML)
+            parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = FUMIGATION
         return FUMIGATION
     elif service in ["Limpieza y Reparacion de Tanques", "Presupuestos"]:
@@ -584,9 +620,11 @@ def get_end_time(update: Update, context: CallbackContext) -> int:
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.message.reply_text(
             apply_bold_keywords("Seleccione el tipo de tanque:"),
-            reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            reply_markup=reply_markup, parse_mode=ParseMode.HTML
+        )
         context.user_data["current_state"] = TANK_TYPE
         return TANK_TYPE
+
 
 def fumigation_data(update: Update, context: CallbackContext) -> int:
     text = update.message.text
