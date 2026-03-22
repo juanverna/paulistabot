@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 def handle_tank_type(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
+
+    # Botones MANUAL / NOTA DE VOZ
+    if query.data in ("input_manual", "input_voice"):
+        from bot.handlers.voice_handler import handle_input_method
+        return handle_input_method(update, context)
+
+    # Confirmación / reintento de resumen de voz
+    if query.data in ("voice_confirm", "voice_retry"):
+        from bot.handlers.voice_handler import handle_voice_confirm
+        return handle_voice_confirm(update, context)
+
     if query.data.lower() == "back":
         return back_handler(update, context)
 
@@ -31,15 +42,26 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         apply_bold_keywords(f"Tipo de tanque seleccionado: {selected.capitalize()}"),
         parse_mode=ParseMode.HTML,
     )
+
+    # Mostrar botonera MANUAL / NOTA DE VOZ
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✍️ MANUAL",      callback_data="input_manual"),
+            InlineKeyboardButton("🎤 NOTA DE VOZ", callback_data="input_voice"),
+        ]
+    ])
     context.bot.send_message(
         chat_id=query.message.chat.id,
         text=apply_bold_keywords(
-            f"Indique la medida del tanque de {selected.capitalize()} (ALTO, ANCHO, PROFUNDO):"
+            "¿Cómo querés completar el reporte?\n\n"
+            "• <b>MANUAL</b>: el bot te va preguntando de a uno\n"
+            "• <b>NOTA DE VOZ</b>: mandás un audio y la IA procesa todo"
         ),
+        reply_markup=keyboard,
         parse_mode=ParseMode.HTML,
     )
-    context.user_data["current_state"] = MEASURE_MAIN
-    return MEASURE_MAIN
+    context.user_data["current_state"] = TANK_TYPE
+    return TANK_TYPE
 
 
 # =============================================================================
