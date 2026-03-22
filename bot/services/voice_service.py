@@ -27,44 +27,86 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # =============================================================================
 def _build_extraction_prompt(selected: str, alt1: str, alt2: str) -> str:
     return f"""
-Sos un asistente que procesa reportes de operarios de limpieza de tanques de agua.
-El operario seleccionó como tanque principal: {selected}.
-Los otros tanques posibles son: {alt1} y {alt2}.
+Sos un asistente que procesa reportes de operarios de limpieza de tanques de agua en Argentina.
+Los operarios hablan de manera coloquial — interpretá lo que dicen con sentido común.
 
-Tu tarea es extraer del texto los siguientes campos y devolver un JSON.
+Tanque principal: {selected}. Tanques alternativos: {alt1} y {alt2}.
 
-CAMPOS REQUERIDOS para el tanque {selected}:
-- medida_{selected.lower()}: Tres números separados por coma representando ALTO, ANCHO y PROFUNDO en metros. Ejemplo válido: "1.40, 2.40, 2.50". Si no son tres números, dejarlo null.
-- tapas_inspeccion_{selected.lower()}: Uno o más números que representen medidas de tapas de inspección. Ejemplo válido: "50" o "2 TI 30". Si no hay números, dejarlo null.
-- tapas_acceso_{selected.lower()}: Uno o más números que representen medidas de tapas de acceso. Ejemplo válido: "54" o "2 TA 56". Si no hay números, dejarlo null.
-- sellado_{selected.lower()}: Material usado para sellar. Ejemplos válidos: "masilla", "burlete", "silicona". Si no es un material concreto, dejarlo null.
-- reparaciones_{selected.lower()}: Reparaciones a realizar. ESTE CAMPO ES OPCIONAL, puede quedar null si no se menciona.
-- sugerencias_{selected.lower()}: Sugerencias para la próxima limpieza. Ejemplos: "desagotar con manga corta". Si no se menciona nada, dejarlo null.
+Extraé la información y devolvé un JSON. Solo dejá null si realmente no se mencionó.
+No inventes datos, pero interpretá con criterio cualquier forma de expresión coloquial.
 
-CAMPOS OPCIONALES (solo si el operario los menciona):
-- medida_{alt1.lower()}: igual que arriba pero para {alt1}
-- tapas_inspeccion_{alt1.lower()}: igual
-- tapas_acceso_{alt1.lower()}: igual
-- sellado_{alt1.lower()}: igual
-- reparaciones_{alt1.lower()}: igual (opcional)
-- sugerencias_{alt1.lower()}: igual
-- medida_{alt2.lower()}: igual que arriba pero para {alt2}
-- tapas_inspeccion_{alt2.lower()}: igual
-- tapas_acceso_{alt2.lower()}: igual
-- sellado_{alt2.lower()}: igual
-- reparaciones_{alt2.lower()}: igual (opcional)
-- sugerencias_{alt2.lower()}: igual
+Campos para {selected}:
+- medida_{selected.lower()}: medidas alto, ancho, profundo. Puede venir como "2 por 2 por 2",
+  "uno cuarenta por dos por dos cincuenta", en palabras, con comas, como sea.
+  Formato de salida: "X.XX, X.XX, X.XX"
+- tapas_inspeccion_{selected.lower()}: medida/s de tapas de inspección
+- tapas_acceso_{selected.lower()}: medida/s de tapas de acceso
+- sellado_{selected.lower()}: material usado para sellar (masilla, burlete, silicona, etc.)
+- reparaciones_{selected.lower()}: reparaciones a realizar (OPCIONAL — puede ser null)
+- sugerencias_{selected.lower()}: sugerencias para la próxima limpieza
 
-CAMPO SIEMPRE REQUERIDO:
-- contacto: Nombre y teléfono del encargado. Ejemplo: "Marcelo 1158472093". Si no se menciona, dejarlo null.
+Si menciona {alt1}, extraé los mismos campos con sufijo _{alt1.lower()}.
+Si menciona {alt2}, extraé los mismos campos con sufijo _{alt2.lower()}.
 
-REGLAS IMPORTANTES:
-- Solo extraé lo que el operario realmente dijo. No inventes datos.
-- Si un valor no tiene sentido para el campo (ej: una palabra random donde debería haber una medida), dejalo null.
-- Devolvé SOLO el JSON, sin texto adicional, sin markdown, sin explicaciones.
+- contacto: nombre y teléfono del encargado
+
+Devolvé SOLO el JSON, sin markdown ni explicaciones.
 
 Texto del operario:
 """
+
+# =============================================================================
+# Prompt para re-extracción de múltiples campos faltantes
+# =============================================================================
+def _build_reprompt_extraction(missing_fields: list, selected: str, alt1: str, alt2: str) -> str:
+    fields_str = "\n".join(f"- {f}" for f in missing_fields)
+    return f"""
+Sos un asistente que procesa respuestas de operarios de limpieza de tanques de agua en Argentina.
+
+El operario está respondiendo a preguntas sobre campos faltantes de su reporte.
+Los campos que debe completar son:
+{fields_str}
+
+REGLAS:
+- Los operarios hablan coloquialmente. "Por" separa medidas: "2 por 2 por 2" = "2, 2, 2"
+- Números en palabras son válidos: "dos" = 2, "cincuenta" = 50
+- Extraé solo lo que realmente dijo. No inventes.
+- Para campos de medida: formato "X.XX, X.XX, X.XX"
+- Devolvé SOLO el JSON con los campos que pudiste extraer, null para los que no encontraste.
+- Sin markdown, sin explicaciones.
+
+Texto del operario:
+"""
+
+# =============================================================================
+# Etiquetas legibles para cada campo
+# =============================================================================
+FIELD_LABELS = {
+    "medida":           "Medida (ALTO, ANCHO, PROFUNDO en metros, ej: 1.40, 2.40, 2.50)",
+    "tapas_inspeccion": "Tapas de inspección (ej: 50, 30, 80)",
+    "tapas_acceso":     "Tapas de acceso (ej: 54, 56)",
+    "sellado":          "Sellado (ej: masilla, burlete, silicona)",
+    "reparaciones":     "Reparaciones (si no hay, escribí 'ninguna')",
+    "sugerencias":      "Sugerencias para la próxima limpieza",
+    "contacto":         "Nombre y teléfono del encargado",
+}
+
+def get_label_for_field(field_key: str, tank_name: str) -> str:
+    for key, label in FIELD_LABELS.items():
+        if field_key.startswith(key):
+            if field_key == "contacto":
+                return label
+            return f"{label} — tanque {tank_name.capitalize()}"
+    return field_key
+
+def get_tank_for_field(field_key: str, selected: str, alt1: str, alt2: str) -> str:
+    if field_key.endswith(selected.lower()):
+        return selected
+    if field_key.endswith(alt1.lower()):
+        return alt1
+    if field_key.endswith(alt2.lower()):
+        return alt2
+    return selected
 
 # =============================================================================
 # Campos requeridos y opcionales
@@ -80,47 +122,14 @@ def get_required_fields(selected: str) -> list:
         "contacto",
     ]
 
-def get_optional_fields(selected: str) -> list:
-    s = selected.lower()
-    return [f"reparaciones_{s}"]
-
-FIELD_QUESTIONS = {
-    "medida": "¿Cuál es la medida del tanque de {tank}? (ALTO, ANCHO, PROFUNDO en metros, ej: 1.40, 2.40, 2.50)",
-    "tapas_inspeccion": "¿Cuál es la medida de las tapas de inspección de {tank}? (ej: 50, 30, 80)",
-    "tapas_acceso": "¿Cuál es la medida de las tapas de acceso de {tank}? (ej: 54, 56)",
-    "sellado": "¿Con qué selló el tanque de {tank}? (ej: masilla, burlete, silicona)",
-    "reparaciones": "¿Hay reparaciones a realizar en {tank}? Si no hay ninguna, escribí 'ninguna'.",
-    "sugerencias": "¿Qué sugerencias tenés para la próxima limpieza de {tank}? (ej: desagotar con manga corta)",
-    "contacto": "¿Cuál es el nombre y teléfono del encargado?",
-}
-
-def get_question_for_field(field_key: str, tank_name: str) -> str:
-    """Devuelve la pregunta correspondiente a un campo faltante."""
-    for key, question in FIELD_QUESTIONS.items():
-        if field_key.startswith(key):
-            return question.format(tank=tank_name.capitalize())
-    return f"¿Podés completar el campo '{field_key}'?"
-
-def get_tank_for_field(field_key: str, selected: str, alt1: str, alt2: str) -> str:
-    """Devuelve el nombre del tanque al que pertenece el campo."""
-    if field_key.endswith(selected.lower()):
-        return selected
-    if field_key.endswith(alt1.lower()):
-        return alt1
-    if field_key.endswith(alt2.lower()):
-        return alt2
-    return selected
-
 # =============================================================================
 # Transcripción con Whisper
 # =============================================================================
-def transcribe_audio(file_bytes: bytes, filename: str = "audio.ogg") -> Optional[str]:
-    """Transcribe audio usando Whisper."""
+def transcribe_audio(file_bytes: bytes) -> Optional[str]:
     try:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
-
         with open(tmp_path, "rb") as audio_file:
             response = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -138,7 +147,6 @@ def transcribe_audio(file_bytes: bytes, filename: str = "audio.ogg") -> Optional
 # Extracción de campos con GPT-4o
 # =============================================================================
 def extract_fields(transcript: str, selected: str, alt1: str, alt2: str) -> dict:
-    """Extrae campos del texto transcripto usando GPT-4o."""
     prompt = _build_extraction_prompt(selected, alt1, alt2)
     try:
         response = client.chat.completions.create(
@@ -150,13 +158,32 @@ def extract_fields(transcript: str, selected: str, alt1: str, alt2: str) -> dict
             temperature=0,
         )
         raw = response.choices[0].message.content.strip()
-        # Limpiar posibles markdown fences
         raw = raw.replace("```json", "").replace("```", "").strip()
         fields = json.loads(raw)
         logger.info("Campos extraídos: %s", fields)
         return fields
     except Exception as e:
         logger.error("Error extrayendo campos: %s", e)
+        return {}
+
+def extract_missing_from_text(text: str, missing_fields: list,
+                               selected: str, alt1: str, alt2: str) -> dict:
+    """Extrae múltiples campos faltantes de una respuesta libre."""
+    prompt = _build_reprompt_extraction(missing_fields, selected, alt1, alt2)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": text},
+            ],
+            temperature=0,
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
+    except Exception as e:
+        logger.error("Error extrayendo campos faltantes: %s", e)
         return {}
 
 # =============================================================================
@@ -167,7 +194,6 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
 
     def add_tank_section(tank: str):
         t = tank.lower()
-        section = []
         field_map = {
             f"medida_{t}":            "Medida",
             f"tapas_inspeccion_{t}":  "Tapas inspección",
@@ -176,22 +202,19 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
             f"reparaciones_{t}":      "Reparaciones",
             f"sugerencias_{t}":       "Sugerencias",
         }
-        for key, label in field_map.items():
-            val = fields.get(key)
-            if val:
-                section.append(f"  • {label}: {val}")
+        section = [(label, fields[key]) for key, label in field_map.items() if fields.get(key)]
         if section:
             lines.append(f"*{tank.capitalize()}:*")
-            lines.extend(section)
+            for label, val in section:
+                lines.append(f"  • {label}: {val}")
             lines.append("")
 
     add_tank_section(selected)
     add_tank_section(alt1)
     add_tank_section(alt2)
 
-    contacto = fields.get("contacto")
-    if contacto:
-        lines.append(f"*Contacto:* {contacto}")
+    if fields.get("contacto"):
+        lines.append(f"*Contacto:* {fields['contacto']}")
 
     return "\n".join(lines)
 
@@ -199,31 +222,18 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
 # Determinar campos faltantes
 # =============================================================================
 def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str) -> list:
-    """
-    Devuelve lista de campos faltantes.
-    - Siempre verifica los campos requeridos del tanque principal.
-    - Para alt1 y alt2: si se mencionó algún campo, verifica todos los requeridos de ese tanque.
-    """
     missing = []
 
-    # Tanque principal — siempre requerido
     for field in get_required_fields(selected):
         if not fields.get(field):
             missing.append(field)
 
-    # Contacto
-    if not fields.get("contacto"):
-        if "contacto" not in missing:
-            missing.append("contacto")
-
-    # Tanques alternativos — solo si se mencionó algo de ese tanque
     for alt in [alt1, alt2]:
         t = alt.lower()
-        alt_fields = [f"medida_{t}", f"tapas_inspeccion_{t}", f"tapas_acceso_{t}",
-                      f"sellado_{t}", f"sugerencias_{t}"]
-        mentioned = any(fields.get(f) for f in alt_fields)
-        if mentioned:
-            for field in alt_fields:
+        alt_keys = [f"medida_{t}", f"tapas_inspeccion_{t}", f"tapas_acceso_{t}",
+                    f"sellado_{t}", f"sugerencias_{t}"]
+        if any(fields.get(f) for f in alt_keys):
+            for field in alt_keys:
                 if not fields.get(field) and field not in missing:
                     missing.append(field)
 
@@ -233,7 +243,6 @@ def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str) -> lis
 # Descargar audio de Telegram
 # =============================================================================
 def download_voice(update: Update, context: CallbackContext) -> Optional[bytes]:
-    """Descarga audio de voz o archivo de audio de Telegram."""
     try:
         if update.message.voice:
             file_obj = context.bot.get_file(update.message.voice.file_id)
