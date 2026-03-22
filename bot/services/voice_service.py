@@ -150,7 +150,7 @@ def extract_fields(transcript: str, selected: str, alt1: str, alt2: str) -> dict
     prompt = _build_extraction_prompt(selected, alt1, alt2)
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": transcript},
@@ -172,7 +172,7 @@ def extract_missing_from_text(text: str, missing_fields: list,
     prompt = _build_reprompt_extraction(missing_fields, selected, alt1, alt2)
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
