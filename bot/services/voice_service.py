@@ -35,7 +35,11 @@ Tanque principal: {selected}. Tanques alternativos: {alt1} y {alt2}.
 Extraé la información y devolvé un JSON. Solo dejá null si realmente no se mencionó.
 No inventes datos, pero interpretá con criterio cualquier forma de expresión coloquial.
 
-Campos para {selected}:
+Campos a extraer:
+- hora_inicio: hora en que empezó el trabajo. Puede venir como "empecé a las 8", "arranqué 9 y media", etc.
+  Formato de salida: "HH:MM"
+- hora_fin: hora en que terminó el trabajo. Puede venir como "terminé a las 13", "salí a las 2 de la tarde", etc.
+  Formato de salida: "HH:MM"
 - medida_{selected.lower()}: medidas alto, ancho, profundo. Puede venir como "2 por 2 por 2",
   "uno cuarenta por dos por dos cincuenta", en palabras, con comas, como sea.
   Formato de salida: "X.XX, X.XX, X.XX"
@@ -82,6 +86,8 @@ Texto del operario:
 # Etiquetas legibles para cada campo
 # =============================================================================
 FIELD_LABELS = {
+    "hora_inicio":      "Hora de inicio del trabajo (ej: 08:00)",
+    "hora_fin":         "Hora de finalización del trabajo (ej: 13:00)",
     "medida":           "Medida (ALTO, ANCHO, PROFUNDO en metros, ej: 1.40, 2.40, 2.50)",
     "tapas_inspeccion": "Tapas de inspección (ej: 50, 30, 80)",
     "tapas_acceso":     "Tapas de acceso (ej: 54, 56)",
@@ -114,6 +120,8 @@ def get_tank_for_field(field_key: str, selected: str, alt1: str, alt2: str) -> s
 def get_required_fields(selected: str) -> list:
     s = selected.lower()
     return [
+        "hora_inicio",
+        "hora_fin",
         f"medida_{s}",
         f"tapas_inspeccion_{s}",
         f"tapas_acceso_{s}",
@@ -213,6 +221,10 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
     add_tank_section(alt1)
     add_tank_section(alt2)
 
+    if fields.get("hora_inicio"):
+        lines.append(f"*Hora inicio:* {fields['hora_inicio']}")
+    if fields.get("hora_fin"):
+        lines.append(f"*Hora fin:* {fields['hora_fin']}")
     if fields.get("contacto"):
         lines.append(f"*Contacto:* {fields['contacto']}")
 

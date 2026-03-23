@@ -66,11 +66,11 @@ def service_selection(update: Update, context: CallbackContext) -> int:
     elif service == "Limpieza y Reparacion de Tanques":
         context.bot.send_message(
             chat_id=chat_id,
-            text=apply_bold_keywords("Ingrese el número de orden (7 dígitos):"),
+            text=apply_bold_keywords("📷 Por favor, envíe la foto del código QR de la orden:"),
             parse_mode=ParseMode.HTML,
         )
-        context.user_data["current_state"] = ORDER
-        return ORDER
+        context.user_data["current_state"] = SCAN_QR
+        return SCAN_QR
 
     elif service == "Presupuestos":
         context.bot.send_message(
@@ -121,6 +121,16 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["address"] = text
     push_state(context, ADDRESS)
+    service = context.user_data.get("service")
+    # Presupuestos → pide hora (no tiene QR ni nota de voz)
+    if service == "Presupuestos":
+        update.message.reply_text(
+            apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
+            parse_mode=ParseMode.HTML,
+        )
+        context.user_data["current_state"] = START_TIME
+        return START_TIME
+    # Otros → no debería llegar acá, pero por las dudas
     update.message.reply_text(
         apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
         parse_mode=ParseMode.HTML,

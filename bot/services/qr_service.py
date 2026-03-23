@@ -3,15 +3,19 @@ import numpy as np
 import cv2
 from io import BytesIO
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import CallbackContext
-from telegram import ParseMode
 
-from bot.states import SCAN_QR, START_TIME
+from bot.states import SCAN_QR, TANK_TYPE
 from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import push_state
 
 logger = logging.getLogger(__name__)
+
+
+def _fix_encoding(text: str) -> str:
+    """Corrige caracteres mal codificados en el QR (ej: # → Ñ)."""
+    return text.replace("#", "Ñ")
 
 
 def scan_qr(update: Update, context: CallbackContext) -> int:
@@ -42,19 +46,50 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         )
         return SCAN_QR
 
-    numero_evt, direccion_evt, codigo_evt, tipo_evt = parts
+    numero_orden, direccion, codigo_cliente, tipo_trabajo = [_fix_encoding(p) for p in parts]
+    service = context.user_data.get("service", "")
+
+    # Guardar campos del QR — mismo formato para Fumigaciones y Limpieza
     context.user_data.update({
-        "numero_evento":  numero_evt,
-        "direccion_qr":   direccion_evt,
-        "codigo_interno": codigo_evt,
-        "tipo_evento_qr": tipo_evt,
+        "numero_evento":  numero_orden,
+        "direccion_qr":   direccion,
+        "codigo_interno": codigo_cliente,
+        "tipo_evento_qr": tipo_trabajo,
     })
 
-    update.message.reply_text("✅ Datos del QR cargados con éxito.")
     push_state(context, SCAN_QR)
     update.message.reply_text(
-        apply_bold_keywords("¿A qué hora empezaste el trabajo? (formato HH:MM)"),
+        apply_bold_keywords(
+            f"✅ QR leído correctamente:\n"
+            f"• Orden: {numero_orden}\n"
+            f"• Dirección: {direccion}\n"
+            f"• Código: {codigo_cliente}\n"
+            f"• Tipo: {tipo_trabajo}"
+        ),
         parse_mode=ParseMode.HTML,
     )
-    context.user_data["current_state"] = START_TIME
-    return START_TIME
+
+    # Fumigaciones → sigue con hora de inicio (flujo original)
+    if service == "Fumigaciones":
+        from bot.states import START_TIME
+        update.message.reply_text(
+            apply_bold_keywords("¿A qué hora empezaste el trabajo? (formato HH:MM)"),
+            parse_mode=ParseMode.HTML,
+        )
+        context.user_data["current_state"] = START_TIME
+        return START_TIME
+
+    # Limpieza de Tanques → muestra botonera tipo de tanque primero
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
+         InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
+         InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
+        [InlineKeyboardButton("ATRAS",         callback_data="back")],
+    ])
+    update.message.reply_text(
+        apply_bold_keywords("Seleccione el tipo de tanque:"),
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML,
+    )
+    context.user_data["current_state"] = TANK_TYPE
+    return TANK_TYPE

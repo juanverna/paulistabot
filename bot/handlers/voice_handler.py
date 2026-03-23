@@ -291,6 +291,10 @@ def _save_voice_fields(context: CallbackContext) -> None:
 
     if fields.get("contacto"):
         context.user_data["contact"] = fields["contacto"]
+    if fields.get("hora_inicio"):
+        context.user_data["start_time"] = fields["hora_inicio"]
+    if fields.get("hora_fin"):
+        context.user_data["end_time"] = fields["hora_fin"]
 
     for key in ["voice_fields", "voice_missing", "voice_flow_state", "voice_transcript"]:
         context.user_data.pop(key, None)
