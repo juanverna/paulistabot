@@ -58,16 +58,7 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     })
 
     push_state(context, SCAN_QR)
-    update.message.reply_text(
-        apply_bold_keywords(
-            f"✅ QR leído correctamente:\n"
-            f"• Orden: {numero_orden}\n"
-            f"• Dirección: {direccion}\n"
-            f"• Código: {codigo_cliente}\n"
-            f"• Tipo: {tipo_trabajo}"
-        ),
-        parse_mode=ParseMode.HTML,
-    )
+    update.message.reply_text("✅ QR leído correctamente.")
 
     # Fumigaciones → sigue con hora de inicio (flujo original)
     if service == "Fumigaciones":
