@@ -313,21 +313,32 @@ def handle_tank_photos(update: Update, context: CallbackContext) -> int:
         )
         return PHOTOS
 
-    if update.message.photo or update.message.document:
-        file_id = (update.message.photo[-1].file_id
-                   if update.message.photo
-                   else update.message.document.file_id)
+    if update.message.photo:
+        update.message.reply_text(
+            apply_bold_keywords(
+                "⚠️ Solo se aceptan archivos, no fotos comprimidas.\n\n"
+                "Para enviarla como archivo:\n"
+                "1. Tocá el sujetapapeles 📎\n"
+                "2. Seleccioná <b>Archivo</b>\n"
+                "3. Elegí la foto desde tu galería"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        return PHOTOS
+
+    if update.message.document:
+        file_id = update.message.document.file_id
         photos = context.user_data.get("photos", [])
         photos.append(file_id)
         context.user_data["photos"] = photos
         update.message.reply_text(
-            apply_bold_keywords("Foto recibida. Puede enviar más fotos o escriba 'Listo' para finalizar."),
+            apply_bold_keywords("✅ Archivo recibido. Podés enviar más o escribir <b>Listo</b> para finalizar."),
             parse_mode=ParseMode.HTML,
         )
         return PHOTOS
 
     update.message.reply_text(
-        apply_bold_keywords("Por favor, envíe una foto o escriba 'Listo' para finalizar."),
+        apply_bold_keywords("Por favor, envíe las fotos como <b>Archivo</b> o escriba <b>Listo</b> para finalizar."),
         parse_mode=ParseMode.HTML,
     )
     return PHOTOS

@@ -83,8 +83,8 @@ def build_conversation_handler() -> ConversationHandler:
 
             PHOTOS: [
                 BACK,
-                MessageHandler(Filters.photo,    handle_tank_photos),
-                MessageHandler(Filters.document, handle_tank_photos),
+                MessageHandler(Filters.photo,    handle_tank_photos),  # rechazadas con aviso
+                MessageHandler(Filters.document, handle_tank_photos),  # aceptadas
                 MessageHandler(TEXT,             handle_tank_photos),
             ],
 
