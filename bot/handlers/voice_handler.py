@@ -120,11 +120,14 @@ def handle_voice_message(update: Update, context: CallbackContext) -> int:
     processing_msg.delete()
 
     summary = build_summary(fields, selected, alt1, alt2)
-    missing_main = get_missing_fields(fields, selected, alt1, alt2, only_main=True)
 
-    if missing_main:
-        summary += f"\n\n⚠️ *Datos faltantes del tanque principal:*\n"
-        summary += "\n".join(f"  • {get_label_for_field(f, selected)}" for f in missing_main)
+    # Mostrar TODOS los campos faltantes de todos los tanques mencionados
+    all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
+    if all_missing:
+        summary += f"\n\n⚠️ *Datos faltantes:*\n"
+        for f in all_missing:
+            tank = get_tank_for_field(f, selected, alt1, alt2)
+            summary += f"  • {get_label_for_field(f, tank)}\n"
 
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Confirmar", callback_data="voice_confirm"),
@@ -160,19 +163,19 @@ def handle_voice_confirm(update: Update, context: CallbackContext) -> int:
         alt1     = context.user_data.get("alternative_1", "RESERVA")
         alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
 
-        missing_main = get_missing_fields(fields, selected, alt1, alt2, only_main=True)
+        # Validar TODOS los campos faltantes (tanque principal + alternativos mencionados)
+        all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
 
-        if missing_main:
-            context.user_data["voice_missing"] = missing_main
+        if all_missing:
+            context.user_data["voice_missing"] = all_missing
             context.user_data["voice_flow_state"] = VOICE_REPROMPT
             query.edit_message_text(
-                apply_bold_keywords("✅ Confirmado. Completá los datos que faltaron del tanque principal."),
+                apply_bold_keywords("✅ Confirmado. Completá los datos que faltaron."),
                 parse_mode=ParseMode.HTML,
             )
             return _ask_all_missing(update, context)
         else:
-            query.edit_message_text(apply_bold_keywords("✅ Datos del tanque principal completos."), parse_mode=ParseMode.HTML)
-            # Pasar a verificar tanques alternativos
+            query.edit_message_text(apply_bold_keywords("✅ Datos completos."), parse_mode=ParseMode.HTML)
             context.user_data["voice_alts_pending"] = [alt1, alt2]
             return _check_next_alt(update, context)
 
@@ -249,7 +252,7 @@ def handle_reprompt_response(update: Update, context: CallbackContext) -> int:
             fields[field] = extracted[field]
     context.user_data["voice_fields"] = fields
 
-    still_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=True)
+    still_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
     if still_missing:
         if update.message:
             update.message.reply_text("✅ Guardado lo que pude extraer.", parse_mode=ParseMode.HTML)
@@ -257,7 +260,7 @@ def handle_reprompt_response(update: Update, context: CallbackContext) -> int:
         return _ask_all_missing(update, context)
     else:
         if update.message:
-            update.message.reply_text("✅ Tanque principal completo.", parse_mode=ParseMode.HTML)
+            update.message.reply_text("✅ ¡Todo completo!", parse_mode=ParseMode.HTML)
         context.user_data["voice_alts_pending"] = [alt1, alt2]
         return _check_next_alt(update, context)
 
