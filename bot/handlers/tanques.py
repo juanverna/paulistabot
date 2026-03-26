@@ -22,8 +22,8 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         from bot.handlers.voice_handler import handle_input_method
         return handle_input_method(update, context)
 
-    # Confirmación / reintento de resumen de voz
-    if query.data in ("voice_confirm", "voice_retry"):
+    # Todos los callbacks del flujo de voz
+    if query.data in ("voice_confirm", "voice_retry", "voice_alt_si", "voice_alt_no"):
         from bot.handlers.voice_handler import handle_voice_confirm
         return handle_voice_confirm(update, context)
 

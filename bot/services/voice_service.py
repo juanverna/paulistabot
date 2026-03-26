@@ -118,6 +118,7 @@ def get_tank_for_field(field_key: str, selected: str, alt1: str, alt2: str) -> s
 # Campos requeridos y opcionales
 # =============================================================================
 def get_required_fields(selected: str) -> list:
+    """Campos requeridos del tanque principal + horas + contacto."""
     s = selected.lower()
     return [
         "hora_inicio",
@@ -128,6 +129,17 @@ def get_required_fields(selected: str) -> list:
         f"sellado_{s}",
         f"sugerencias_{s}",
         "contacto",
+    ]
+
+def get_required_alt_fields(tank: str) -> list:
+    """Campos requeridos para un tanque alternativo (sin horas ni contacto)."""
+    t = tank.lower()
+    return [
+        f"medida_{t}",
+        f"tapas_inspeccion_{t}",
+        f"tapas_acceso_{t}",
+        f"sellado_{t}",
+        f"sugerencias_{t}",
     ]
 
 # =============================================================================
@@ -256,17 +268,25 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
 # =============================================================================
 # Determinar campos faltantes
 # =============================================================================
-def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str) -> list:
+def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str,
+                        only_main: bool = False) -> list:
+    """
+    Devuelve campos faltantes.
+    only_main=True: solo verifica tanque principal + horas + contacto.
+    only_main=False: verifica todo incluyendo alternativos que tengan datos parciales.
+    """
     missing = []
 
     for field in get_required_fields(selected):
         if not fields.get(field):
             missing.append(field)
 
+    if only_main:
+        return missing
+
     for alt in [alt1, alt2]:
         t = alt.lower()
-        alt_keys = [f"medida_{t}", f"tapas_inspeccion_{t}", f"tapas_acceso_{t}",
-                    f"sellado_{t}", f"sugerencias_{t}"]
+        alt_keys = get_required_alt_fields(alt)
         if any(fields.get(f) for f in alt_keys):
             for field in alt_keys:
                 if not fields.get(field) and field not in missing:
