@@ -197,8 +197,32 @@ def extract_missing_from_text(text: str, missing_fields: list,
 # =============================================================================
 # Construir resumen para mostrar al operario
 # =============================================================================
+def _clean_contact(raw: str) -> str:
+    """Convierte JSON/dict de contacto a texto legible si viene mal formateado."""
+    import re, json as _json
+    if not raw:
+        return raw
+    # Si viene como dict string: {'nombre': 'Carlos', 'telefono': '11-35-45-60-67'}
+    try:
+        cleaned = raw.replace("'", '"')
+        data = _json.loads(cleaned)
+        if isinstance(data, dict):
+            nombre = data.get("nombre", data.get("name", ""))
+            tel = data.get("telefono", data.get("telefono", data.get("phone", data.get("tel", ""))))
+            return f"{nombre} {tel}".strip()
+    except Exception:
+        pass
+    return raw
+
+
 def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
     lines = ["📋 *Esto es lo que entendí de tu nota de voz:*\n"]
+
+    # Horas al principio como bullets generales
+    if fields.get("hora_inicio"):
+        lines.append(f"  • Hora de inicio: {fields['hora_inicio']}")
+    if fields.get("hora_fin"):
+        lines.append(f"  • Hora de finalización: {fields['hora_fin']}")
 
     def add_tank_section(tank: str):
         t = tank.lower()
@@ -212,21 +236,20 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
         }
         section = [(label, fields[key]) for key, label in field_map.items() if fields.get(key)]
         if section:
+            lines.append("")
             lines.append(f"*{tank.capitalize()}:*")
             for label, val in section:
                 lines.append(f"  • {label}: {val}")
-            lines.append("")
 
     add_tank_section(selected)
     add_tank_section(alt1)
     add_tank_section(alt2)
 
-    if fields.get("hora_inicio"):
-        lines.append(f"*Hora inicio:* {fields['hora_inicio']}")
-    if fields.get("hora_fin"):
-        lines.append(f"*Hora fin:* {fields['hora_fin']}")
-    if fields.get("contacto"):
-        lines.append(f"*Contacto:* {fields['contacto']}")
+    # Contacto como bullet al final
+    contacto_raw = fields.get("contacto")
+    if contacto_raw:
+        contacto = _clean_contact(str(contacto_raw))
+        lines.append(f"  • Contacto: {contacto}")
 
     return "\n".join(lines)
 
