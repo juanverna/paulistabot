@@ -52,13 +52,13 @@ def handle_input_method(update: Update, context: CallbackContext) -> int:
         query.edit_message_text(
             apply_bold_keywords(
                 f"🎤 Enviá una nota de voz contando todo sobre el trabajo.\n\n"
-                f"Incluí:\n"
-                f"• Medidas del tanque <b>{selected}</b> (alto, ancho, profundo)\n"
+                f"Incluí para <b>cada tanque</b> que trabajaste (<b>{selected}</b>, <b>{alt1}</b> o <b>{alt2}</b>):\n"
+                f"• Hora de inicio y hora de finalización del servicio\n"
+                f"• Medidas (alto, ancho, profundo)\n"
                 f"• Tapas de inspección y acceso\n"
                 f"• Cómo sellaste\n"
                 f"• Reparaciones (si hay)\n"
                 f"• Sugerencias para la próxima visita\n"
-                f"• Si trabajaste también con <b>{alt1}</b> o <b>{alt2}</b>, mencionalo\n"
                 f"• Nombre y teléfono del encargado\n\n"
                 f"Hablá con naturalidad, la IA entiende."
             ),
@@ -290,7 +290,8 @@ def _save_voice_fields(context: CallbackContext) -> None:
     _map_tank(context, fields, alt2, "alt2")
 
     if fields.get("contacto"):
-        context.user_data["contact"] = fields["contacto"]
+        from bot.services.voice_service import _clean_contact
+        context.user_data["contact"] = _clean_contact(str(fields["contacto"]))
     if fields.get("hora_inicio"):
         context.user_data["start_time"] = fields["hora_inicio"]
     if fields.get("hora_fin"):
@@ -359,8 +360,10 @@ def _go_to_photos(update: Update, context: CallbackContext) -> int:
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=apply_bold_keywords(
-            "📎 Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES.\n"
-            "Envielas como <b>Archivo</b> para conservar la fecha original.\n"
+            "📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b> como Archivo:\n\n"
+            "1. Tocá el sujetapapeles 📎\n"
+            "2. Seleccioná <b>Archivo</b>\n"
+            "3. Elegí la foto desde tu galería\n\n"
             "Cuando termine, escriba <b>Listo</b>."
         ),
         parse_mode=ParseMode.HTML,
