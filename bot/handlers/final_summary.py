@@ -58,12 +58,8 @@ def build_full_summary(user_data: dict) -> str:
 
     lines = ["📋 *RESUMEN COMPLETO DEL REPORTE*\n"]
 
-    # Datos generales
+    # Datos generales (sin datos del QR — son internos)
     lines.append("*Datos generales:*")
-    if user_data.get("numero_evento"):
-        lines.append(f"  • Orden: {user_data['numero_evento']}")
-    if user_data.get("direccion_qr"):
-        lines.append(f"  • Dirección: {user_data['direccion_qr']}")
     if user_data.get("start_time"):
         lines.append(f"  • Hora inicio: {user_data['start_time']}")
     if user_data.get("end_time"):

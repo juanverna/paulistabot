@@ -184,6 +184,52 @@ def handle_voice_confirm(update: Update, context: CallbackContext) -> int:
             context.user_data["voice_alts_pending"] = [alt1, alt2]
             return _check_next_alt(update, context)
 
+    # Resolución de conflictos
+    if query.data == "conflict_yes":
+        # Aplicar los cambios
+        all_extracted = context.user_data.pop("voice_pending_extracted", {})
+        conflicts     = context.user_data.pop("voice_conflicts", {})
+        fields        = context.user_data.get("voice_fields", {})
+        missing       = context.user_data.get("voice_missing", [])
+        for key in conflicts:
+            fields[key] = all_extracted[key]
+        _merge_extracted(fields, all_extracted, missing)
+        context.user_data["voice_fields"] = fields
+        query.edit_message_text("✅ Datos actualizados.", parse_mode=ParseMode.HTML)
+        # Continuar con el flujo normal
+        selected = context.user_data.get("selected_category", "CISTERNA")
+        alt1     = context.user_data.get("alternative_1", "RESERVA")
+        alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
+        still_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
+        if still_missing:
+            context.user_data["voice_missing"] = still_missing
+            context.user_data["voice_flow_state"] = VOICE_REPROMPT
+            return _ask_all_missing(update, context)
+        else:
+            context.user_data["voice_alts_pending"] = [alt1, alt2]
+            return _check_next_alt(update, context)
+
+    if query.data == "conflict_no":
+        # Mantener los valores anteriores, pero guardar lo nuevo que no conflictuaba
+        all_extracted = context.user_data.pop("voice_pending_extracted", {})
+        context.user_data.pop("voice_conflicts", {})
+        fields  = context.user_data.get("voice_fields", {})
+        missing = context.user_data.get("voice_missing", [])
+        _merge_extracted(fields, all_extracted, missing)
+        context.user_data["voice_fields"] = fields
+        query.edit_message_text("✅ Valores anteriores mantenidos.", parse_mode=ParseMode.HTML)
+        selected = context.user_data.get("selected_category", "CISTERNA")
+        alt1     = context.user_data.get("alternative_1", "RESERVA")
+        alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
+        still_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
+        if still_missing:
+            context.user_data["voice_missing"] = still_missing
+            context.user_data["voice_flow_state"] = VOICE_REPROMPT
+            return _ask_all_missing(update, context)
+        else:
+            context.user_data["voice_alts_pending"] = [alt1, alt2]
+            return _check_next_alt(update, context)
+
     # Respuesta a botonera de tanque alternativo
     if query.data == "voice_alt_si":
         alt = context.user_data.get("voice_current_alt", "")
@@ -256,14 +302,27 @@ def handle_reprompt_response(update: Update, context: CallbackContext) -> int:
     if not answer_text:
         return TANK_TYPE
 
-    extracted = extract_missing_from_text(answer_text, missing, selected, alt1, alt2)
+    # Extraer TODO lo que mencionó (no solo los campos que se le preguntaban)
+    all_extracted = extract_fields(answer_text, selected, alt1, alt2)
     fields = context.user_data.get("voice_fields", {})
-    for field in missing:
-        if extracted.get(field):
-            fields[field] = extracted[field]
+
+    # Detectar sobreescrituras (campos que ya tenían valor y ahora cambian)
+    conflicts = {}
+    for key, new_val in all_extracted.items():
+        if new_val and new_val != "FUERA_DE_CONTEXTO" and fields.get(key) and fields[key] != new_val:
+            conflicts[key] = {"old": fields[key], "new": new_val}
+
+    if conflicts:
+        # Guardar para resolver después y mostrar conflictos
+        context.user_data["voice_conflicts"] = conflicts
+        context.user_data["voice_pending_extracted"] = all_extracted
+        return _show_conflicts(update, context)
+
+    # Sin conflictos — actualizar campos
+    _merge_extracted(fields, all_extracted, missing)
     context.user_data["voice_fields"] = fields
 
-    # Verificar si hay campos fuera de contexto en la respuesta
+    # Verificar OOC
     ooc = has_out_of_context(fields)
     ooc_attempt = context.user_data.get("voice_ooc_attempt", 1)
     if ooc:
@@ -328,7 +387,28 @@ def _check_next_alt(update: Update, context: CallbackContext) -> int:
                 parse_mode=ParseMode.HTML,
             )
             return TANK_TYPE
-        # Si tiene datos completos → siguiente
+
+        elif has_any and not missing:
+            # Datos completos desde buffer → mostrar resumen del tanque
+            lines = [f"📋 *Según lo que mencionaste antes, entendí esto sobre {alt.capitalize()}:*\n"]
+            for f in get_required_alt_fields(alt):
+                val = fields.get(f)
+                if val:
+                    label = get_label_for_field(f, alt)
+                    lines.append(f"  ✅  {label}: {val}")
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Correcto", callback_data="voice_alt_no"),
+                InlineKeyboardButton("✏️ Corregir", callback_data="voice_alt_si"),
+            ]])
+            context.user_data["voice_current_alt"] = alt
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="\n".join(lines),
+                reply_markup=keyboard,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return TANK_TYPE
+        # Si tiene datos completos sin buffer → siguiente
 
     # Todos los tanques procesados
     _save_voice_fields(context)
@@ -351,11 +431,22 @@ def handle_alt_reprompt_response(update: Update, context: CallbackContext) -> in
     if not answer_text:
         return TANK_TYPE
 
-    extracted = extract_missing_from_text(answer_text, missing, selected, alt1, alt2)
+    # Extraer TODO lo que mencionó
+    all_extracted = extract_fields(answer_text, selected, alt1, alt2)
     fields = context.user_data.get("voice_fields", {})
-    for field in missing:
-        if extracted.get(field):
-            fields[field] = extracted[field]
+
+    # Detectar sobreescrituras
+    conflicts = {}
+    for key, new_val in all_extracted.items():
+        if new_val and new_val != "FUERA_DE_CONTEXTO" and fields.get(key) and fields[key] != new_val:
+            conflicts[key] = {"old": fields[key], "new": new_val}
+
+    if conflicts:
+        context.user_data["voice_conflicts"] = conflicts
+        context.user_data["voice_pending_extracted"] = all_extracted
+        return _show_conflicts(update, context)
+
+    _merge_extracted(fields, all_extracted, missing)
     context.user_data["voice_fields"] = fields
 
     still_missing = [f for f in get_required_alt_fields(alt) if not fields.get(f)]
@@ -457,6 +548,59 @@ def _map_tank(context, fields, tank, suffix):
     }
     for dest_key, src_key in mapping[suffix].items():
         context.user_data[dest_key] = fields.get(src_key, "")
+
+
+# =============================================================================
+# Helpers: merge y conflictos
+# =============================================================================
+def _merge_extracted(fields: dict, all_extracted: dict, missing: list) -> None:
+    """
+    Fusiona los campos extraídos en fields.
+    - Siempre aplica los campos que estaban faltando (missing)
+    - También aplica nuevos campos de otros tanques que no tenían valor
+    - NO sobreescribe campos que ya tenían valor (esos van por _show_conflicts)
+    """
+    for key, val in all_extracted.items():
+        if not val or val == "FUERA_DE_CONTEXTO":
+            continue
+        if key in missing:
+            # Campo que se le estaba preguntando → siempre actualizar
+            fields[key] = val
+        elif not fields.get(key):
+            # Campo nuevo que no tenía valor → guardar en buffer silencioso
+            fields[key] = val
+
+
+def _show_conflicts(update: Update, context: CallbackContext) -> int:
+    """Muestra los conflictos al operario y le pregunta si quiere actualizar."""
+    conflicts = context.user_data.get("voice_conflicts", {})
+    selected  = context.user_data.get("selected_category", "CISTERNA")
+    alt1      = context.user_data.get("alternative_1", "RESERVA")
+    alt2      = context.user_data.get("alternative_2", "INTERMEDIARIO")
+
+    lines = ["⚠️ *Detecté que mencionaste datos que ya tenías guardados. ¿Querés actualizarlos?*\n"]
+
+    for key, vals in conflicts.items():
+        tank  = get_tank_for_field(key, selected, alt1, alt2)
+        label = get_label_for_field(key, tank)
+        lines.append(f"*{label}*")
+        lines.append(f"  📌 Antes:  {vals['old']}")
+        lines.append(f"  ✏️  Ahora:  {vals['new']}")
+        lines.append("")
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Sí, actualizar", callback_data="conflict_yes"),
+        InlineKeyboardButton("❌ No, mantener", callback_data="conflict_no"),
+    ]])
+
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="\n".join(lines),
+        reply_markup=keyboard,
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    context.user_data["voice_flow_state"] = "voice_conflict"
+    return TANK_TYPE
 
 
 # =============================================================================

@@ -48,6 +48,7 @@ MEDIDAS:
 - Si hay tanques con diferentes medidas: "uno de 1.80 1.80 1.80 y otro de 1.40 1.40 1.40" → "Tanque 1: 1.80, 1.80, 1.80 | Tanque 2: 1.40, 1.40, 1.40"
 - Si menciona litros SIN aclarar material → devolvé el valor con prefijo "LITROS_SIN_MATERIAL:" (ej: "LITROS_SIN_MATERIAL:2000")
 - Si menciona litros Y aclara material (plástico, cilíndrico, acero inoxidable) → aceptalo tal cual
+- IMPORTANTE: el campo medida SIEMPRE debe ser un string de texto, NUNCA un objeto JSON o diccionario. Formato correcto: "1.80, 1.80, 1.80". Formato incorrecto: {{"alto": 1.8, "ancho": 1.8}}
 
 CONOCIMIENTO TÉCNICO — USALO PARA RAZONAR:
 Tenés conocimiento sobre tanques de agua en edificios de Argentina. Usalo para inferir datos cuando el contexto lo permite:
@@ -58,18 +59,27 @@ Tenés conocimiento sobre tanques de agua en edificios de Argentina. Usalo para 
 - Cualquier respuesta explícita como "no tiene", "ninguna", "no aplica" es válida y NO es un campo faltante
 
 TAPAS DE INSPECCIÓN Y ACCESO — IMPORTANTE:
-Tenés que asociar lo que dijo el operario con el código más parecido de esta lista de artículos:
+Tenés que asociar lo que dijo el operario con el código correcto de esta lista de artículos:
 {articles}
 
-Reglas para asociar:
-- Identificá el tipo de tapa (inspección o acceso), el tipo de tanque (cisterna, reserva, intermediario), si es entrada de agua (EA) o ciego (C), y el tamaño
-- Si no aclara EA o ciego → asumí EA (entrada de agua)
-- Devolvé el CÓDIGO del artículo más cercano, no la descripción
-- Si menciona "EXA" o "entrada" → es entrada de agua. Si menciona "ciego" o "CC" → es ciego
-- Si dice un tamaño que no existe exactamente, usá el más cercano
-- Si no podés asociar con ningún código → devolvé lo que dijo textualmente
-- Si dice "no tiene" → devolvé "No tiene" (es una respuesta válida)
-- Ejemplos: "tapa de inspección de 30 entrada agua cisterna" → "TITCEA30" | "tapa acceso 49 reserva" → "TATREA" | "tmtcea 49" → "TMTCEA" | "ti 50 ciego reserva" → "TITRC50"
+Proceso de asociación:
+1. Identificá: tipo de tapa (inspección o acceso), tipo de tanque (cisterna=C, reserva=R, intermediario=H), si es entrada de agua (EA) o ciego (C)
+2. Si no aclara EA o ciego → asumí EA (entrada de agua)
+3. Buscá el código base (ej: TATREA, TITCEA, TMTREA, etc.)
+4. Para el tamaño: leé las DESCRIPCIONES del CSV para ver en cuál encaja la medida mencionada
+   - Si la medida encaja en una descripción → devolvé CODIGO + medida (ej: "TATREA 56.5", "TITCEA 30")
+   - Si el operario menciona "punta recortada" o "octagonal" → incluilo (ej: "TATREA 56.5 punta recortada")
+   - Si la medida no encaja en ninguna descripción → devolvé CODIGO + lo que dijo (ej: "TATREA 45")
+5. Si no podés determinar el código base → devolvé lo que dijo textualmente
+6. Si dice "no tiene" → devolvé "No tiene"
+
+Ejemplos:
+- "tapa inspección 30 cisterna entrada" → "TITCEA 30"
+- "tapa acceso 49 reserva" → "TATREA 49"
+- "tapa acceso 56.5 punta recortada cisterna" → "TATCEA 56.5 punta recortada"
+- "tmtcea 49" → "TMTCEA 49"
+- "tapa inspección reserva ciego 60" → "TITRC 60"
+- "una tapa de acceso de entrada de agua del intermediario de 58" → "TATHEA 58"
 
 REPARACIONES:
 - Igual que tapas: si mencionan códigos o descripciones de artículos, asocialos con el código correcto de la lista
@@ -89,6 +99,9 @@ SUGERENCIAS:
 
 CONTACTO:
 - Nombre y teléfono del encargado
+- El teléfono argentino tiene 10 dígitos (con código de área) o 9 dígitos sin el 0 inicial
+- Juntá todos los dígitos sin espacios: "Daniel 1135456067" no "Daniel 11 35 45 60 67"
+- Si el operario lo dice en partes ("once treinta y cinco...") transcribilo junto: "1135..."
 - Devolvé como texto plano: "Nombre Teléfono"
 
 CONTENIDO FUERA DE CONTEXTO:
@@ -280,18 +293,25 @@ def extract_missing_from_text(text: str, missing_fields: list,
 # =============================================================================
 def _clean_contact(raw: str) -> str:
     import re
+    import json as _json
     if not raw:
         return raw
+    # Si viene como dict/JSON
     try:
         cleaned = raw.replace("'", '"')
-        import json as _json
         data = _json.loads(cleaned)
         if isinstance(data, dict):
             nombre = data.get("nombre", data.get("name", ""))
             tel = data.get("telefono", data.get("phone", data.get("tel", "")))
-            return f"{nombre} {tel}".strip()
+            raw = f"{nombre} {tel}".strip()
     except Exception:
         pass
+    # Normalizar teléfono: juntar dígitos separados por espacios
+    # Busca secuencias de números separados por espacios y los une
+    def join_phone(match):
+        return match.group(0).replace(" ", "")
+    # Une grupos de 2+ dígitos separados por espacios (ej: "11 35 45 60 67" → "1135456067")
+    raw = re.sub(r'(\d{2,})(\s+\d{2,})+', join_phone, raw)
     return raw
 
 

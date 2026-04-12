@@ -32,6 +32,11 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         from bot.handlers.voice_handler import handle_litros_material
         return handle_litros_material(update, context)
 
+    # Callbacks de conflictos y buffer
+    if query.data in ("conflict_yes", "conflict_no"):
+        from bot.handlers.voice_handler import handle_voice_confirm
+        return handle_voice_confirm(update, context)
+
     if query.data.lower() == "back":
         return back_handler(update, context)
 
