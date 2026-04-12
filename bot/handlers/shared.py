@@ -224,9 +224,8 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     else:
         update.message.reply_text(
             apply_bold_keywords(
-                "📎 Adjunte fotos de ORDEN DE TRABAJO, FICHA y TANQUES.\n"
-                "Envielas como <b>Archivo</b> para conservar la fecha original.\n"
-                "Cuando termine, escriba 'Listo'."
+                "📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b>.\n"
+                "Cuando termine, escriba <b>Listo</b>."
             ),
             parse_mode=ParseMode.HTML,
         )

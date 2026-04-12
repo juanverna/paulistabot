@@ -297,6 +297,8 @@ def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
 
 # =============================================================================
 # Fotos (Limpieza / Presupuestos) — ilimitadas hasta "Listo"
+# Acepta tanto fotos comprimidas como archivos.
+# Acumula los mensajes y responde una sola vez al final del grupo.
 # =============================================================================
 def handle_tank_photos(update: Update, context: CallbackContext) -> int:
     if update.message.text:
@@ -313,37 +315,60 @@ def handle_tank_photos(update: Update, context: CallbackContext) -> int:
             send_email(context.user_data, update, context)
             return ConversationHandler.END
         update.message.reply_text(
-            apply_bold_keywords("Por favor, envíe una foto o escriba 'Listo' para finalizar."),
+            apply_bold_keywords("Por favor, envíe una foto o escriba <b>Listo</b> para finalizar."),
             parse_mode=ParseMode.HTML,
         )
         return PHOTOS
+
+    # Acumular fotos recibidas en este grupo de mensajes
+    pending = context.user_data.get("photos_pending", [])
 
     if update.message.photo:
-        update.message.reply_text(
-            apply_bold_keywords(
-                "⚠️ Solo se aceptan archivos, no fotos comprimidas.\n\n"
-                "Para enviarla como archivo:\n"
-                "1. Tocá el sujetapapeles 📎\n"
-                "2. Seleccioná <b>Archivo</b>\n"
-                "3. Elegí la foto desde tu galería"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
-        return PHOTOS
+        # Foto comprimida — aceptada
+        file_id = update.message.photo[-1].file_id
+        photos = context.user_data.get("photos", [])
+        photos.append(file_id)
+        context.user_data["photos"] = photos
+        idx = len(photos)
+        pending.append(("ok", idx))
+        context.user_data["photos_pending"] = pending
 
-    if update.message.document:
+    elif update.message.document:
+        # Archivo — aceptado
         file_id = update.message.document.file_id
         photos = context.user_data.get("photos", [])
         photos.append(file_id)
         context.user_data["photos"] = photos
+        idx = len(photos)
+        pending.append(("ok", idx))
+        context.user_data["photos_pending"] = pending
+
+    else:
         update.message.reply_text(
-            apply_bold_keywords("✅ Archivo recibido. Podés enviar más o escribir <b>Listo</b> para finalizar."),
+            apply_bold_keywords("Por favor, envíe una foto o escriba <b>Listo</b> para finalizar."),
             parse_mode=ParseMode.HTML,
         )
         return PHOTOS
 
+    # Telegram agrupa medias enviadas juntas — esperamos 1 seg para acumular
+    # Si el media_group_id es el mismo, no respondemos todavía
+    media_group_id = getattr(update.message, "media_group_id", None)
+    last_group = context.user_data.get("last_media_group")
+
+    if media_group_id and media_group_id == last_group:
+        # Mismo grupo, no responder todavía
+        return PHOTOS
+
+    # Nuevo grupo o foto suelta — responder con resumen
+    context.user_data["last_media_group"] = media_group_id
+
+    total = len(context.user_data.get("photos", []))
     update.message.reply_text(
-        apply_bold_keywords("Por favor, envíe las fotos como <b>Archivo</b> o escriba <b>Listo</b> para finalizar."),
+        apply_bold_keywords(
+            f"✅ {len(pending)} foto(s) recibida(s). Total cargadas: {total}.\n"
+            f"Podés enviar más o escribir <b>Listo</b> para finalizar."
+        ),
         parse_mode=ParseMode.HTML,
     )
+    context.user_data["photos_pending"] = []
     return PHOTOS

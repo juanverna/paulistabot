@@ -134,14 +134,6 @@ def handle_voice_message(update: Update, context: CallbackContext) -> int:
 
     summary = build_summary(fields, selected, alt1, alt2)
 
-    # Mostrar TODOS los campos faltantes
-    all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
-    if all_missing:
-        summary += f"\n\n⚠️ *Datos faltantes:*\n"
-        for f in all_missing:
-            tank = get_tank_for_field(f, selected, alt1, alt2)
-            summary += f"  • {get_label_for_field(f, tank)}\n"
-
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Confirmar", callback_data="voice_confirm"),
         InlineKeyboardButton("🔄 Grabar de nuevo", callback_data="voice_retry"),
@@ -540,12 +532,6 @@ def _show_summary(update: Update, context: CallbackContext) -> int:
     alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
 
     summary = build_summary(fields, selected, alt1, alt2)
-    all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
-    if all_missing:
-        summary += f"\n\n⚠️ *Datos faltantes:*\n"
-        for f in all_missing:
-            tank = get_tank_for_field(f, selected, alt1, alt2)
-            summary += f"  • {get_label_for_field(f, tank)}\n"
 
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Confirmar", callback_data="voice_confirm"),
@@ -673,10 +659,7 @@ def _go_to_photos(update: Update, context: CallbackContext) -> int:
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=apply_bold_keywords(
-            "📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b> como Archivo:\n\n"
-            "1. Tocá el sujetapapeles 📎\n"
-            "2. Seleccioná <b>Archivo</b>\n"
-            "3. Elegí la foto desde tu galería\n\n"
+            "📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b>.\n"
             "Cuando termine, escriba <b>Listo</b>."
         ),
         parse_mode=ParseMode.HTML,
