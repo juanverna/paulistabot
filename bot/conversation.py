@@ -21,6 +21,8 @@ from bot.handlers.tanques   import (handle_tank_type,
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
 from bot.handlers.voice_handler import (handle_voice_message, handle_reprompt_response,
                                          handle_alt_reprompt_response, handle_admin_code_response)
+from bot.handlers.final_summary import (show_final_summary, handle_final_summary_callback,
+                                         handle_final_edit_response)
 from bot.services.qr_service    import scan_qr
 
 BACK = MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
@@ -92,6 +94,13 @@ def build_conversation_handler() -> ConversationHandler:
             AVISOS_ADDRESS: [BACK, MessageHandler(TEXT, get_avisos_address)],
 
             SCAN_QR: [MessageHandler(Filters.photo & ~Filters.command, scan_qr)],
+
+            FINAL_SUMMARY: [
+                CallbackQueryHandler(handle_final_summary_callback,
+                    pattern="^(final_send|final_edit)$"),
+                MessageHandler(VOICE, handle_final_edit_response),
+                MessageHandler(TEXT,  handle_final_edit_response),
+            ],
         },
         fallbacks=[],
     )
