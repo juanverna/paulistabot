@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 def main():
     logger.info("Iniciando bot...")
+    from bot.services.articles_service import load_articles
+    load_articles()
     updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
     updater.dispatcher.add_handler(build_conversation_handler())
     updater.start_polling()

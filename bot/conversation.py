@@ -19,7 +19,8 @@ from bot.handlers.tanques   import (handle_tank_type,
                                      get_repair_alt2, get_suggestions_alt2,
                                      handle_tank_photos)
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
-from bot.handlers.voice_handler import handle_voice_message, handle_reprompt_response
+from bot.handlers.voice_handler import (handle_voice_message, handle_reprompt_response,
+                                         handle_alt_reprompt_response, handle_admin_code_response)
 from bot.services.qr_service    import scan_qr
 
 BACK = MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)

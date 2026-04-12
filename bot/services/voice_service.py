@@ -1,11 +1,7 @@
 """
 voice_service.py
 ----------------
-Maneja el flujo de nota de voz para Limpieza y Reparación de Tanques:
-  1. Descarga el audio de Telegram
-  2. Transcribe con Whisper
-  3. Extrae y valida campos con GPT-4o
-  4. Devuelve campos encontrados y faltantes
+Maneja el flujo de nota de voz para Limpieza y Reparación de Tanques.
 """
 
 import os
@@ -22,77 +18,123 @@ from telegram.ext import CallbackContext
 logger = logging.getLogger(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
 # =============================================================================
-# Prompt de extracción
+# Prompt de extracción principal
 # =============================================================================
 def _build_extraction_prompt(selected: str, alt1: str, alt2: str) -> str:
+    from bot.services.articles_service import get_articles_context
+    articles = get_articles_context()
+
     return f"""
 Sos un asistente que procesa reportes de operarios de limpieza de tanques de agua en Argentina.
 Los operarios hablan de manera coloquial — interpretá lo que dicen con sentido común.
+Este es un contexto de trabajo técnico de fontanería/plomería. Si el operario dice algo completamente fuera de ese contexto (insultos, texto aleatorio, cosas sin sentido), marcá el campo como "FUERA_DE_CONTEXTO" en vez de null.
 
 Tanque principal: {selected}. Tanques alternativos: {alt1} y {alt2}.
 
-Extraé la información y devolvé un JSON. Solo dejá null si realmente no se mencionó.
-No inventes datos, pero interpretá con criterio cualquier forma de expresión coloquial.
+REGLAS DE EXTRACCIÓN:
 
-Campos a extraer:
-- hora_inicio: hora en que empezó el trabajo. Puede venir como "empecé a las 8", "arranqué 9 y media", etc.
-  Formato de salida: "HH:MM"
-- hora_fin: hora en que terminó el trabajo. Puede venir como "terminé a las 13", "salí a las 2 de la tarde", etc.
-  Formato de salida: "HH:MM"
-- medida_{selected.lower()}: medidas alto, ancho, profundo. Puede venir como "2 por 2 por 2",
-  "uno cuarenta por dos por dos cincuenta", en palabras, con comas, como sea.
-  Formato de salida: "X.XX, X.XX, X.XX"
-- tapas_inspeccion_{selected.lower()}: medida/s de tapas de inspección
-- tapas_acceso_{selected.lower()}: medida/s de tapas de acceso
-- sellado_{selected.lower()}: material usado para sellar (masilla, burlete, silicona, etc.)
-- reparaciones_{selected.lower()}: reparaciones a realizar (OPCIONAL — puede ser null)
-- sugerencias_{selected.lower()}: sugerencias para la próxima limpieza
+HORAS:
+- Extraé hora de inicio y fin del servicio (son únicas para todo el trabajo, no por tanque)
+- Convertí siempre a formato HH:MM en 24 horas
+- Ejemplos: "empecé a las 8" → "08:00", "arranqué 9 y media" → "09:30", "terminé a las 2 de la tarde" → "14:00", "salí a las 13" → "13:00"
 
-Si menciona {alt1}, extraé los mismos campos con sufijo _{alt1.lower()}.
-Si menciona {alt2}, extraé los mismos campos con sufijo _{alt2.lower()}.
+MEDIDAS:
+- Convertí siempre a metros con decimales (2 cifras decimales)
+- Si vienen en centímetros (números grandes como 150, 230, 180), convertí dividiendo por 100
+- Ejemplos: "2 por 2 por 2" → "2.00, 2.00, 2.00" | "150 230 180" → "1.50, 2.30, 1.80" | "uno cuarenta por dos por dos cincuenta" → "1.40, 2.00, 2.50"
+- Si menciona cantidad de tanques: "2 tanques de 1.80 1.80 1.80" → "2 tanques: 1.80, 1.80, 1.80"
+- Si hay tanques con diferentes medidas: "uno de 1.80 1.80 1.80 y otro de 1.40 1.40 1.40" → "Tanque 1: 1.80, 1.80, 1.80 | Tanque 2: 1.40, 1.40, 1.40"
+- Si menciona litros SIN aclarar material → devolvé el valor con prefijo "LITROS_SIN_MATERIAL:" (ej: "LITROS_SIN_MATERIAL:2000")
+- Si menciona litros Y aclara material (plástico, cilíndrico, acero inoxidable) → aceptalo tal cual
 
-- contacto: nombre y teléfono del encargado
+TAPAS DE INSPECCIÓN Y ACCESO — IMPORTANTE:
+Tenés que asociar lo que dijo el operario con el código más parecido de esta lista de artículos:
+{articles}
+
+Reglas para asociar:
+- Identificá el tipo de tapa (inspección o acceso), el tipo de tanque (cisterna, reserva, intermediario), si es entrada de agua (EA) o ciego (C), y el tamaño
+- Devolvé el CÓDIGO del artículo más cercano, no la descripción
+- Si menciona "EXA" o "entrada" → es entrada de agua. Si menciona "ciego" o "CC" → es ciego
+- Si dice un tamaño que no existe exactamente, usá el más cercano
+- Si no podés asociar con ningún código → devolvé lo que dijo textualmente
+- Ejemplos: "tapa de inspección de 30 entrada agua cisterna" → "TITCEA30" | "tapa acceso 49 reserva" → "TATREA" | "tmtcea 49" → "TMTCEA" | "ti 50 ciego reserva" → "TITRC50"
+
+REPARACIONES:
+- Igual que tapas: si mencionan códigos o descripciones de artículos, asocialos con el código correcto de la lista
+- Es texto libre, aceptá cualquier descripción técnica del rubro
+- Si no se puede asociar, dejalo como texto libre
+
+SELLADO:
+- Texto libre corto: masilla, burlete, silicona, etc.
+- "M" = masilla, "B" = burlete
+- Aceptá cualquier material de sellado
+
+SUGERENCIAS:
+- Texto libre completamente
+- Aceptá cualquier descripción operativa
+
+CONTACTO:
+- Nombre y teléfono del encargado
+- Devolvé como texto plano: "Nombre Teléfono"
+
+CONTENIDO FUERA DE CONTEXTO:
+- Si un campo contiene información que claramente no tiene nada que ver con limpieza de tanques, plomería, medidas, o trabajo técnico → marcalo como "FUERA_DE_CONTEXTO"
+- No marques como FUERA_DE_CONTEXTO cosas técnicas aunque sean abreviadas o coloquiales
+
+Campos a devolver en el JSON:
+- hora_inicio, hora_fin
+- medida_{selected.lower()}, tapas_inspeccion_{selected.lower()}, tapas_acceso_{selected.lower()}, sellado_{selected.lower()}, reparaciones_{selected.lower()}, sugerencias_{selected.lower()}
+- Si menciona {alt1}: mismos campos con sufijo _{alt1.lower()}
+- Si menciona {alt2}: mismos campos con sufijo _{alt2.lower()}
+- contacto
 
 Devolvé SOLO el JSON, sin markdown ni explicaciones.
 
 Texto del operario:
 """
 
+
 # =============================================================================
-# Prompt para re-extracción de múltiples campos faltantes
+# Prompt para re-extracción de campos faltantes
 # =============================================================================
 def _build_reprompt_extraction(missing_fields: list, selected: str, alt1: str, alt2: str) -> str:
+    from bot.services.articles_service import get_articles_context
+    articles = get_articles_context()
     fields_str = "\n".join(f"- {f}" for f in missing_fields)
     return f"""
-Sos un asistente que procesa respuestas de operarios de limpieza de tanques de agua en Argentina.
+Sos un asistente que procesa respuestas de operarios de limpieza de tanques en Argentina.
+Contexto técnico de fontanería/plomería.
 
-El operario está respondiendo a preguntas sobre campos faltantes de su reporte.
-Los campos que debe completar son:
+Campos a completar:
 {fields_str}
 
+Lista de artículos para asociar tapas y reparaciones:
+{articles}
+
 REGLAS:
-- Los operarios hablan coloquialmente. "Por" separa medidas: "2 por 2 por 2" = "2, 2, 2"
-- Números en palabras son válidos: "dos" = 2, "cincuenta" = 50
-- Extraé solo lo que realmente dijo. No inventes.
-- Para campos de medida: formato "X.XX, X.XX, X.XX"
-- Devolvé SOLO el JSON con los campos que pudiste extraer, null para los que no encontraste.
-- Sin markdown, sin explicaciones.
+- Horas → siempre HH:MM en 24hs
+- Medidas → siempre metros con decimales. Centímetros → dividir por 100
+- Tapas y reparaciones → asociar con código de la lista si es posible
+- Contenido sin sentido o fuera de contexto → "FUERA_DE_CONTEXTO"
+- Devolvé SOLO el JSON, null para lo que no encontraste.
 
 Texto del operario:
 """
 
+
 # =============================================================================
-# Etiquetas legibles para cada campo
+# Etiquetas legibles
 # =============================================================================
 FIELD_LABELS = {
     "hora_inicio":      "Hora de inicio del trabajo (ej: 08:00)",
     "hora_fin":         "Hora de finalización del trabajo (ej: 13:00)",
-    "medida":           "Medida (ALTO, ANCHO, PROFUNDO en metros, ej: 1.40, 2.40, 2.50)",
-    "tapas_inspeccion": "Tapas de inspección (ej: 50, 30, 80)",
-    "tapas_acceso":     "Tapas de acceso (ej: 54, 56)",
-    "sellado":          "Sellado (ej: masilla, burlete, silicona)",
-    "reparaciones":     "Reparaciones (si no hay, escribí 'ninguna')",
+    "medida":           "Medida del tanque (alto, ancho, profundo en metros)",
+    "tapas_inspeccion": "Tapas de inspección",
+    "tapas_acceso":     "Tapas de acceso",
+    "sellado":          "Sellado (ej: masilla, burlete)",
+    "reparaciones":     "Reparaciones a realizar",
     "sugerencias":      "Sugerencias para la próxima limpieza",
     "contacto":         "Nombre y teléfono del encargado",
 }
@@ -114,11 +156,11 @@ def get_tank_for_field(field_key: str, selected: str, alt1: str, alt2: str) -> s
         return alt2
     return selected
 
+
 # =============================================================================
-# Campos requeridos y opcionales
+# Campos requeridos
 # =============================================================================
 def get_required_fields(selected: str) -> list:
-    """Campos requeridos del tanque principal + horas + contacto."""
     s = selected.lower()
     return [
         "hora_inicio",
@@ -132,7 +174,6 @@ def get_required_fields(selected: str) -> list:
     ]
 
 def get_required_alt_fields(tank: str) -> list:
-    """Campos requeridos para un tanque alternativo (sin horas ni contacto)."""
     t = tank.lower()
     return [
         f"medida_{t}",
@@ -141,6 +182,20 @@ def get_required_alt_fields(tank: str) -> list:
         f"sellado_{t}",
         f"sugerencias_{t}",
     ]
+
+
+# =============================================================================
+# Detectar campos con problemas
+# =============================================================================
+def has_out_of_context(fields: dict) -> list:
+    """Devuelve lista de campos marcados como FUERA_DE_CONTEXTO."""
+    return [k for k, v in fields.items() if v == "FUERA_DE_CONTEXTO"]
+
+def has_liters_without_material(fields: dict) -> list:
+    """Devuelve lista de campos con medidas en litros sin material especificado."""
+    return [k for k, v in fields.items()
+            if isinstance(v, str) and v.startswith("LITROS_SIN_MATERIAL:")]
+
 
 # =============================================================================
 # Transcripción con Whisper
@@ -163,8 +218,9 @@ def transcribe_audio(file_bytes: bytes) -> Optional[str]:
         logger.error("Error transcribiendo audio: %s", e)
         return None
 
+
 # =============================================================================
-# Extracción de campos con GPT-4o
+# Extracción de campos con GPT-4.1-mini
 # =============================================================================
 def extract_fields(transcript: str, selected: str, alt1: str, alt2: str) -> dict:
     prompt = _build_extraction_prompt(selected, alt1, alt2)
@@ -186,9 +242,9 @@ def extract_fields(transcript: str, selected: str, alt1: str, alt2: str) -> dict
         logger.error("Error extrayendo campos: %s", e)
         return {}
 
+
 def extract_missing_from_text(text: str, missing_fields: list,
                                selected: str, alt1: str, alt2: str) -> dict:
-    """Extrae múltiples campos faltantes de una respuesta libre."""
     prompt = _build_reprompt_extraction(missing_fields, selected, alt1, alt2)
     try:
         response = client.chat.completions.create(
@@ -206,21 +262,21 @@ def extract_missing_from_text(text: str, missing_fields: list,
         logger.error("Error extrayendo campos faltantes: %s", e)
         return {}
 
+
 # =============================================================================
-# Construir resumen para mostrar al operario
+# Construir resumen
 # =============================================================================
 def _clean_contact(raw: str) -> str:
-    """Convierte JSON/dict de contacto a texto legible si viene mal formateado."""
-    import re, json as _json
+    import re
     if not raw:
         return raw
-    # Si viene como dict string: {'nombre': 'Carlos', 'telefono': '11-35-45-60-67'}
     try:
         cleaned = raw.replace("'", '"')
+        import json as _json
         data = _json.loads(cleaned)
         if isinstance(data, dict):
             nombre = data.get("nombre", data.get("name", ""))
-            tel = data.get("telefono", data.get("telefono", data.get("phone", data.get("tel", ""))))
+            tel = data.get("telefono", data.get("phone", data.get("tel", "")))
             return f"{nombre} {tel}".strip()
     except Exception:
         pass
@@ -230,7 +286,6 @@ def _clean_contact(raw: str) -> str:
 def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
     lines = ["📋 *Esto es lo que entendí de tu nota de voz:*\n"]
 
-    # Horas al principio como bullets generales
     if fields.get("hora_inicio"):
         lines.append(f"  • Hora de inicio: {fields['hora_inicio']}")
     if fields.get("hora_fin"):
@@ -246,56 +301,57 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
             f"reparaciones_{t}":      "Reparaciones",
             f"sugerencias_{t}":       "Sugerencias",
         }
-        section = [(label, fields[key]) for key, label in field_map.items() if fields.get(key)]
+        section = [(label, fields[key]) for key, label in field_map.items()
+                   if fields.get(key) and fields[key] not in ("FUERA_DE_CONTEXTO",)]
         if section:
             lines.append("")
             lines.append(f"*{tank.capitalize()}:*")
             for label, val in section:
-                lines.append(f"  • {label}: {val}")
+                display = val
+                if isinstance(val, str) and val.startswith("LITROS_SIN_MATERIAL:"):
+                    display = f"⚠️ {val.replace('LITROS_SIN_MATERIAL:', '')} lts (falta aclarar material)"
+                lines.append(f"  • {label}: {display}")
 
     add_tank_section(selected)
     add_tank_section(alt1)
     add_tank_section(alt2)
 
-    # Contacto como bullet al final
     contacto_raw = fields.get("contacto")
-    if contacto_raw:
+    if contacto_raw and contacto_raw != "FUERA_DE_CONTEXTO":
         contacto = _clean_contact(str(contacto_raw))
         lines.append(f"  • Contacto: {contacto}")
 
     return "\n".join(lines)
 
+
 # =============================================================================
-# Determinar campos faltantes
+# Campos faltantes
 # =============================================================================
 def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str,
                         only_main: bool = False) -> list:
-    """
-    Devuelve campos faltantes.
-    only_main=True: solo verifica tanque principal + horas + contacto.
-    only_main=False: verifica todo incluyendo alternativos que tengan datos parciales.
-    """
     missing = []
-
     for field in get_required_fields(selected):
-        if not fields.get(field):
+        val = fields.get(field)
+        if not val or val == "FUERA_DE_CONTEXTO" or (isinstance(val, str) and val.startswith("LITROS_SIN_MATERIAL:")):
             missing.append(field)
 
     if only_main:
         return missing
 
     for alt in [alt1, alt2]:
-        t = alt.lower()
         alt_keys = get_required_alt_fields(alt)
         if any(fields.get(f) for f in alt_keys):
             for field in alt_keys:
-                if not fields.get(field) and field not in missing:
-                    missing.append(field)
+                val = fields.get(field)
+                if not val or val == "FUERA_DE_CONTEXTO" or (isinstance(val, str) and val.startswith("LITROS_SIN_MATERIAL:")):
+                    if field not in missing:
+                        missing.append(field)
 
     return missing
 
+
 # =============================================================================
-# Descargar audio de Telegram
+# Descargar audio
 # =============================================================================
 def download_voice(update: Update, context: CallbackContext) -> Optional[bytes]:
     try:

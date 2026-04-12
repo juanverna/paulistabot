@@ -27,6 +27,11 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         from bot.handlers.voice_handler import handle_voice_confirm
         return handle_voice_confirm(update, context)
 
+    # Callbacks de material para litros
+    if query.data in ("mat_plastico", "mat_cilindrico", "mat_acero"):
+        from bot.handlers.voice_handler import handle_litros_material
+        return handle_litros_material(update, context)
+
     if query.data.lower() == "back":
         return back_handler(update, context)
 

@@ -27,15 +27,20 @@ from bot.services.voice_service import (
     transcribe_audio, extract_fields, extract_missing_from_text,
     build_summary, get_missing_fields, get_required_alt_fields,
     get_label_for_field, get_tank_for_field, download_voice, _clean_contact,
+    has_out_of_context, has_liters_without_material,
 )
+from bot.services.admin_code_service import validate_code
 
 logger = logging.getLogger(__name__)
 
-VOICE_WAITING     = "voice_waiting"
-VOICE_CONFIRM     = "voice_confirm"
-VOICE_REPROMPT    = "voice_reprompt"
-VOICE_ASK_ALT     = "voice_ask_alt"
+VOICE_WAITING      = "voice_waiting"
+VOICE_CONFIRM      = "voice_confirm"
+VOICE_REPROMPT     = "voice_reprompt"
+VOICE_ASK_ALT      = "voice_ask_alt"
 VOICE_ALT_REPROMPT = "voice_alt_reprompt"
+VOICE_OOC          = "voice_out_of_context"      # fuera de contexto
+VOICE_ADMIN_CODE   = "voice_admin_code"          # esperando código de admin
+VOICE_LITROS       = "voice_litros_sin_material" # esperando tipo de material
 
 
 # =============================================================================
@@ -119,9 +124,17 @@ def handle_voice_message(update: Update, context: CallbackContext) -> int:
     context.user_data["voice_fields"] = fields
     processing_msg.delete()
 
+    # Verificar litros sin material antes del resumen
+    litros_fields = has_liters_without_material(fields)
+    if litros_fields:
+        context.user_data["voice_litros_fields"] = litros_fields
+        context.user_data["voice_litros_index"] = 0
+        context.user_data["voice_flow_state"] = VOICE_LITROS
+        return _ask_litros_material(update, context)
+
     summary = build_summary(fields, selected, alt1, alt2)
 
-    # Mostrar TODOS los campos faltantes de todos los tanques mencionados
+    # Mostrar TODOS los campos faltantes
     all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
     if all_missing:
         summary += f"\n\n⚠️ *Datos faltantes:*\n"
@@ -231,8 +244,14 @@ def _ask_all_missing(update: Update, context: CallbackContext) -> int:
 
 
 def handle_reprompt_response(update: Update, context: CallbackContext) -> int:
-    """Respuesta a campos faltantes del tanque principal."""
+    """Respuesta a campos faltantes — también enruta admin code y alt reprompt."""
     voice_state = context.user_data.get("voice_flow_state")
+
+    # Enrutamiento según estado
+    if voice_state == VOICE_ADMIN_CODE:
+        return handle_admin_code_response(update, context)
+    if voice_state == VOICE_ALT_REPROMPT:
+        return handle_alt_reprompt_response(update, context)
     if voice_state != VOICE_REPROMPT:
         return TANK_TYPE
 
@@ -251,6 +270,12 @@ def handle_reprompt_response(update: Update, context: CallbackContext) -> int:
         if extracted.get(field):
             fields[field] = extracted[field]
     context.user_data["voice_fields"] = fields
+
+    # Verificar si hay campos fuera de contexto en la respuesta
+    ooc = has_out_of_context(fields)
+    ooc_attempt = context.user_data.get("voice_ooc_attempt", 1)
+    if ooc:
+        return _handle_out_of_context(update, context, ooc, ooc_attempt)
 
     still_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
     if still_missing:
@@ -440,6 +465,193 @@ def _map_tank(context, fields, tank, suffix):
     }
     for dest_key, src_key in mapping[suffix].items():
         context.user_data[dest_key] = fields.get(src_key, "")
+
+
+# =============================================================================
+# Litros sin material especificado
+# =============================================================================
+def _ask_litros_material(update: Update, context: CallbackContext) -> int:
+    """Pregunta el tipo de material cuando el operario dijo litros sin aclararlo."""
+    litros_fields = context.user_data.get("voice_litros_fields", [])
+    idx = context.user_data.get("voice_litros_index", 0)
+
+    if idx >= len(litros_fields):
+        # Terminó de aclarar todos → continuar al resumen
+        context.user_data.pop("voice_litros_fields", None)
+        context.user_data.pop("voice_litros_index", None)
+        return _show_summary(update, context)
+
+    field = litros_fields[idx]
+    fields = context.user_data.get("voice_fields", {})
+    litros_val = fields.get(field, "").replace("LITROS_SIN_MATERIAL:", "")
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Plástico",           callback_data="mat_plastico"),
+        InlineKeyboardButton("Cilíndrico",         callback_data="mat_cilindrico"),
+        InlineKeyboardButton("Acero inoxidable",   callback_data="mat_acero"),
+    ]])
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=apply_bold_keywords(
+            f"Mencionaste un tanque de <b>{litros_val} litros</b>. ¿De qué material es?"
+        ),
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML,
+    )
+    context.user_data["voice_current_litros_field"] = field
+    return TANK_TYPE
+
+
+def handle_litros_material(update: Update, context: CallbackContext) -> int:
+    """Recibe la selección de material para tanques en litros."""
+    query = update.callback_query
+    query.answer()
+
+    material_map = {
+        "mat_plastico":   "plástico",
+        "mat_cilindrico": "cilíndrico",
+        "mat_acero":      "acero inoxidable",
+    }
+    material = material_map.get(query.data, "")
+    if not material:
+        return TANK_TYPE
+
+    field = context.user_data.get("voice_current_litros_field", "")
+    fields = context.user_data.get("voice_fields", {})
+    litros_val = fields.get(field, "").replace("LITROS_SIN_MATERIAL:", "")
+    fields[field] = f"{litros_val} lts ({material})"
+    context.user_data["voice_fields"] = fields
+
+    # Siguiente campo de litros si hay más
+    idx = context.user_data.get("voice_litros_index", 0) + 1
+    context.user_data["voice_litros_index"] = idx
+    query.edit_message_text(
+        apply_bold_keywords(f"✅ Guardado: {litros_val} lts ({material})"),
+        parse_mode=ParseMode.HTML,
+    )
+    return _ask_litros_material(update, context)
+
+
+def _show_summary(update: Update, context: CallbackContext) -> int:
+    """Muestra el resumen después de resolver litros."""
+    fields   = context.user_data.get("voice_fields", {})
+    selected = context.user_data.get("selected_category", "CISTERNA")
+    alt1     = context.user_data.get("alternative_1", "RESERVA")
+    alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
+
+    summary = build_summary(fields, selected, alt1, alt2)
+    all_missing = get_missing_fields(fields, selected, alt1, alt2, only_main=False)
+    if all_missing:
+        summary += f"\n\n⚠️ *Datos faltantes:*\n"
+        for f in all_missing:
+            tank = get_tank_for_field(f, selected, alt1, alt2)
+            summary += f"  • {get_label_for_field(f, tank)}\n"
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Confirmar", callback_data="voice_confirm"),
+        InlineKeyboardButton("🔄 Grabar de nuevo", callback_data="voice_retry"),
+    ]])
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=summary,
+        reply_markup=keyboard,
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    context.user_data["voice_flow_state"] = VOICE_CONFIRM
+    return TANK_TYPE
+
+
+# =============================================================================
+# Fuera de contexto → re-pregunta → código de admin
+# =============================================================================
+def _handle_out_of_context(update: Update, context: CallbackContext,
+                            ooc_fields: list, attempt: int = 1) -> int:
+    """Avisa al operario que hubo contenido fuera de contexto y re-pregunta."""
+    selected = context.user_data.get("selected_category", "CISTERNA")
+    alt1     = context.user_data.get("alternative_1", "RESERVA")
+    alt2     = context.user_data.get("alternative_2", "INTERMEDIARIO")
+
+    labels = []
+    for f in ooc_fields:
+        tank  = get_tank_for_field(f, selected, alt1, alt2)
+        label = get_label_for_field(f, tank)
+        labels.append(f"  • {label}")
+
+    if attempt == 1:
+        msg = (
+            "⚠️ Algunos campos tienen información que no corresponde al trabajo. "
+            "Por favor respondé de nuevo solo esos campos:\n\n" +
+            "\n".join(labels)
+        )
+        context.user_data["voice_flow_state"] = VOICE_REPROMPT
+        context.user_data["voice_missing"] = ooc_fields
+        context.user_data["voice_ooc_attempt"] = 2
+    else:
+        # Segundo intento fallido → pedir código de admin
+        msg = (
+            "⛔ El contenido sigue siendo inválido.\n\n"
+            "Si querés enviar el reporte igual, pedile el código de hoy al administrador "
+            "e ingresalo acá (texto o nota de voz):"
+        )
+        context.user_data["voice_flow_state"] = VOICE_ADMIN_CODE
+        context.user_data["voice_ooc_fields"] = ooc_fields
+
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=apply_bold_keywords(msg),
+        parse_mode=ParseMode.HTML,
+    )
+    return TANK_TYPE
+
+
+def handle_admin_code_response(update: Update, context: CallbackContext) -> int:
+    """Valida el código de administrador ingresado por el operario."""
+    voice_state = context.user_data.get("voice_flow_state")
+    if voice_state != VOICE_ADMIN_CODE:
+        return TANK_TYPE
+
+    # Obtener el código — texto o audio
+    code_text = None
+    if update.message and update.message.text:
+        code_text = update.message.text.strip()
+    elif update.message and (update.message.voice or update.message.audio):
+        processing = context.bot.send_message(
+            chat_id=update.effective_chat.id, text="⏳ Procesando..."
+        )
+        audio_bytes = download_voice(update, context)
+        processing.delete()
+        if audio_bytes:
+            transcribed = transcribe_audio(audio_bytes)
+            if transcribed:
+                # Extraer solo números de la transcripción
+                import re
+                nums = re.findall(r'[0-9]+', transcribed)
+                code_text = "".join(nums)[:4] if nums else None
+
+    if not code_text:
+        update.message.reply_text("❌ No pude leer el código. Intentá de nuevo.")
+        return TANK_TYPE
+
+    if validate_code(code_text):
+        # Código correcto → limpiar campos fuera de contexto y continuar
+        ooc_fields = context.user_data.get("voice_ooc_fields", [])
+        fields = context.user_data.get("voice_fields", {})
+        for f in ooc_fields:
+            fields[f] = None  # los deja vacíos pero no bloquea
+        context.user_data["voice_fields"] = fields
+        context.user_data["voice_flow_state"] = VOICE_CONFIRM
+        update.message.reply_text("✅ Código correcto. Continuando con el reporte.")
+        context.user_data["voice_alts_pending"] = [
+            context.user_data.get("alternative_1", "RESERVA"),
+            context.user_data.get("alternative_2", "INTERMEDIARIO"),
+        ]
+        _save_voice_fields(context)
+        return _go_to_contact(update, context)
+    else:
+        update.message.reply_text(
+            "❌ Código incorrecto. Pedile el código de hoy al administrador e intentá de nuevo."
+        )
+        return TANK_TYPE
 
 
 # =============================================================================
