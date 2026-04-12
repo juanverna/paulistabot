@@ -49,26 +49,38 @@ MEDIDAS:
 - Si menciona litros SIN aclarar material → devolvé el valor con prefijo "LITROS_SIN_MATERIAL:" (ej: "LITROS_SIN_MATERIAL:2000")
 - Si menciona litros Y aclara material (plástico, cilíndrico, acero inoxidable) → aceptalo tal cual
 
+CONOCIMIENTO TÉCNICO — USALO PARA RAZONAR:
+Tenés conocimiento sobre tanques de agua en edificios de Argentina. Usalo para inferir datos cuando el contexto lo permite:
+- Los tanques cilíndricos, de plástico o de acero inoxidable generalmente solo tienen tapa de inspección, no de acceso, y por ende no se sellan
+- Si el operario dice "no tiene tapa de acceso" o "no tiene sellado" → esos campos son "No tiene" (válido, no faltante)
+- Si no aclara si la tapa es de entrada de agua (EA) o ciego (C), asumí entrada de agua por ser la más común, salvo que el contexto indique lo contrario
+- Si hay un solo tanque en el edificio y dice que tiene una sola tapa de inspección, es de entrada de agua
+- Cualquier respuesta explícita como "no tiene", "ninguna", "no aplica" es válida y NO es un campo faltante
+
 TAPAS DE INSPECCIÓN Y ACCESO — IMPORTANTE:
 Tenés que asociar lo que dijo el operario con el código más parecido de esta lista de artículos:
 {articles}
 
 Reglas para asociar:
 - Identificá el tipo de tapa (inspección o acceso), el tipo de tanque (cisterna, reserva, intermediario), si es entrada de agua (EA) o ciego (C), y el tamaño
+- Si no aclara EA o ciego → asumí EA (entrada de agua)
 - Devolvé el CÓDIGO del artículo más cercano, no la descripción
 - Si menciona "EXA" o "entrada" → es entrada de agua. Si menciona "ciego" o "CC" → es ciego
 - Si dice un tamaño que no existe exactamente, usá el más cercano
 - Si no podés asociar con ningún código → devolvé lo que dijo textualmente
+- Si dice "no tiene" → devolvé "No tiene" (es una respuesta válida)
 - Ejemplos: "tapa de inspección de 30 entrada agua cisterna" → "TITCEA30" | "tapa acceso 49 reserva" → "TATREA" | "tmtcea 49" → "TMTCEA" | "ti 50 ciego reserva" → "TITRC50"
 
 REPARACIONES:
 - Igual que tapas: si mencionan códigos o descripciones de artículos, asocialos con el código correcto de la lista
 - Es texto libre, aceptá cualquier descripción técnica del rubro
 - Si no se puede asociar, dejalo como texto libre
+- "No", "ninguna", "nada" son respuestas válidas
 
 SELLADO:
 - Texto libre corto: masilla, burlete, silicona, etc.
 - "M" = masilla, "B" = burlete
+- "No tiene", "no se selló", "no aplica" son respuestas válidas (tanques sin tapa de acceso no se sellan)
 - Aceptá cualquier material de sellado
 
 SUGERENCIAS:
@@ -327,6 +339,23 @@ def build_summary(fields: dict, selected: str, alt1: str, alt2: str) -> str:
 # =============================================================================
 # Campos faltantes
 # =============================================================================
+def _is_missing(val) -> bool:
+    """Determina si un valor de campo se considera faltante."""
+    if not val:
+        return True
+    if val == "FUERA_DE_CONTEXTO":
+        return True
+    if isinstance(val, str) and val.startswith("LITROS_SIN_MATERIAL:"):
+        return True
+    # Respuestas explícitas válidas de "no tiene" no son faltantes
+    val_lower = str(val).lower().strip()
+    no_tiene = {"no tiene", "no aplica", "ninguna", "ninguno", "no", "nada", "no se selló",
+                "no se sello", "no lo selle", "no lo selló", "sin sellado", "-", "."}
+    if val_lower in no_tiene:
+        return False  # es una respuesta válida
+    return False
+
+
 def get_missing_fields(fields: dict, selected: str, alt1: str, alt2: str,
                         only_main: bool = False) -> list:
     missing = []
