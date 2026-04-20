@@ -176,6 +176,19 @@ def get_end_time(update: Update, context: CallbackContext) -> int:
     context.user_data["end_time"] = text.strip()
     push_state(context, END_TIME)
     service = context.user_data.get("service")
+
+    # Si viene del flujo manual post-QR → ir directo a medidas
+    if context.user_data.pop("manual_after_qr", False):
+        selected = context.user_data.get("selected_category", "").capitalize()
+        update.message.reply_text(
+            apply_bold_keywords(
+                f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        context.user_data["current_state"] = MEASURE_MAIN
+        return MEASURE_MAIN
+
     if service == "Fumigaciones":
         update.message.reply_text(
             apply_bold_keywords("¿Qué unidades contienen insectos?"),

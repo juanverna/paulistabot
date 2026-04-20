@@ -53,13 +53,15 @@ def handle_input_method(update: Update, context: CallbackContext) -> int:
 
     if query.data == "input_manual":
         context.user_data.pop("voice_flow_state", None)
-        selected = context.user_data.get("selected_category", "").capitalize()
+        # Marcar que después del END_TIME hay que ir a MEASURE_MAIN (no a TANK_TYPE)
+        context.user_data["manual_after_qr"] = True
         query.edit_message_text(
-            apply_bold_keywords(f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):"),
+            apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
             parse_mode=ParseMode.HTML,
         )
-        context.user_data["current_state"] = MEASURE_MAIN
-        return MEASURE_MAIN
+        from bot.states import START_TIME
+        context.user_data["current_state"] = START_TIME
+        return START_TIME
 
     elif query.data == "input_voice":
         context.user_data["voice_flow_state"] = VOICE_WAITING
