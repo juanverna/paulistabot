@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import cv2
 from io import BytesIO
+from PIL import Image
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import CallbackContext
@@ -18,20 +19,72 @@ def _fix_encoding(text: str) -> str:
     return text.replace("#", "Ñ")
 
 
+def _decode_qr_opencv(img_bytes: bytes) -> str:
+    """Intenta decodificar el QR con OpenCV."""
+    try:
+        arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        detector = cv2.QRCodeDetector()
+        data, _, _ = detector.detectAndDecode(img)
+        return data or ""
+    except Exception as e:
+        logger.warning("OpenCV QR falló: %s", e)
+        return ""
+
+
+def _decode_qr_pyzbar(img_bytes: bytes) -> str:
+    """Fallback: intenta decodificar con pyzbar."""
+    try:
+        from pyzbar.pyzbar import decode
+        img = Image.open(BytesIO(img_bytes))
+        results = decode(img)
+        if results:
+            return results[0].data.decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.warning("pyzbar QR falló: %s", e)
+    return ""
+
+
+def _decode_qr_opencv_enhanced(img_bytes: bytes) -> str:
+    """Segunda pasada de OpenCV con preprocesamiento de imagen."""
+    try:
+        arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+        # Escalar imagen si es muy pequeña
+        h, w = img.shape[:2]
+        if max(h, w) < 800:
+            scale = 800 / max(h, w)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)))
+
+        # Convertir a escala de grises y aplicar umbralización
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        detector = cv2.QRCodeDetector()
+        data, _, _ = detector.detectAndDecode(thresh)
+        return data or ""
+    except Exception as e:
+        logger.warning("OpenCV enhanced QR falló: %s", e)
+        return ""
+
+
 def scan_qr(update: Update, context: CallbackContext) -> int:
     # Descargar foto
     bio = BytesIO()
     update.message.photo[-1].get_file().download(out=bio)
+    img_bytes = bio.getvalue()
 
-    # Decodificar QR
-    arr = np.frombuffer(bio.getvalue(), dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    detector = cv2.QRCodeDetector()
-    data, _, _ = detector.detectAndDecode(img)
+    # Intentar decodificar con múltiples métodos
+    data = (
+        _decode_qr_opencv(img_bytes) or
+        _decode_qr_opencv_enhanced(img_bytes) or
+        _decode_qr_pyzbar(img_bytes)
+    )
 
     if not data:
         update.message.reply_text(
-            "No encontré un QR válido. Por favor, intentá de nuevo.",
+            "No encontré un QR válido. Intentá con mejor iluminación o más cerca del código.",
             parse_mode=ParseMode.HTML,
         )
         return SCAN_QR
@@ -49,7 +102,6 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     numero_orden, direccion, codigo_cliente, tipo_trabajo = [_fix_encoding(p) for p in parts]
     service = context.user_data.get("service", "")
 
-    # Guardar campos del QR — mismo formato para Fumigaciones y Limpieza
     context.user_data.update({
         "numero_evento":  numero_orden,
         "direccion_qr":   direccion,
@@ -60,7 +112,6 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     push_state(context, SCAN_QR)
     update.message.reply_text("✅ QR leído correctamente.")
 
-    # Fumigaciones → sigue con hora de inicio (flujo original)
     if service == "Fumigaciones":
         from bot.states import START_TIME
         update.message.reply_text(
@@ -70,7 +121,6 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
         context.user_data["current_state"] = START_TIME
         return START_TIME
 
-    # Limpieza de Tanques → muestra botonera tipo de tanque primero
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
          InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
