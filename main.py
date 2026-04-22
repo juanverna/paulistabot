@@ -14,7 +14,11 @@ def main():
     logger.info("Iniciando bot...")
     from bot.services.articles_service import load_articles
     load_articles()
-    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    updater = Updater(
+        TELEGRAM_BOT_TOKEN,
+        use_context=True,
+        request_kwargs={"read_timeout": 60, "connect_timeout": 60},
+    )
     updater.dispatcher.add_handler(build_conversation_handler())
     updater.start_polling()
     logger.info("Bot en línea. Esperando mensajes.")
