@@ -53,6 +53,7 @@ def handle_input_method(update: Update, context: CallbackContext) -> int:
 
     if query.data == "input_manual":
         context.user_data.pop("voice_flow_state", None)
+        context.user_data["modo_ingreso"] = "MANUAL"
         # Marcar que después del END_TIME hay que ir a MEASURE_MAIN (no a TANK_TYPE)
         context.user_data["manual_after_qr"] = True
         query.edit_message_text(
@@ -65,6 +66,7 @@ def handle_input_method(update: Update, context: CallbackContext) -> int:
 
     elif query.data == "input_voice":
         context.user_data["voice_flow_state"] = VOICE_WAITING
+        context.user_data["modo_ingreso"] = "NOTA DE VOZ"
         selected = context.user_data.get("selected_category", "").capitalize()
         alt1 = context.user_data.get("alternative_1", "").capitalize()
         alt2 = context.user_data.get("alternative_2", "").capitalize()

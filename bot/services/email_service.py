@@ -32,6 +32,9 @@ def _build_body(user_data: dict) -> str:
     if "code" in user_data:
         lines.append(f"Código: {user_data['code']}")
 
+    if "modo_ingreso" in user_data:
+        lines.append(f"Modo de ingreso: {user_data['modo_ingreso']}")
+
     if service == "Avisos":
         for key, label in [
             ("avisos_address", "Dirección/es"),
