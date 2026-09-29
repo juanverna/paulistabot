@@ -1,0 +1,14 @@
+# Dependencias del bot (lo que se pide). requirements.txt se GENERA desde aca, no se edita a mano:
+#   uv pip compile requirements.in -o requirements.txt --universal --python-version 3.11 \
+#     --generate-hashes --emit-build-options --only-binary :all: --no-binary tornado
+# tornado: excepcion aprobada por el dueño (ver CLAUDE.md). python-telegram-bot 13.15 exige
+# tornado==6.1, que no tiene wheel para Python 3.11: se instala desde el sdist de PyPI fijado por hash.
+python-telegram-bot==13.15
+openai>=1.0.0
+opencv-python-headless==4.8.1.78
+numpy<2
+httpx==0.28.1
+certifi==2025.1.31
+requests>=2.31.0
+pyzbar==0.1.9
+Pillow>=10.0.0

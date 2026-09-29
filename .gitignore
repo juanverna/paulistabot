@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 # Entorno virtual
 .venv/
+
+# Secretos: nunca al repo (van en variables de entorno, ver .env.example)
+.env
+credentials.json
+service_account.json
+token.json
+*client_secret*.json

@@ -1,0 +1,6 @@
+# Lo necesario para construir el sdist de tornado 6.1 (la unica excepcion a --only-binary, ver CLAUDE.md).
+# scripts/correr.sh --instalar lo instala primero, con hashes, y despues instala requirements.txt con
+# --no-build-isolation: asi pip no baja un setuptools sin verificar para construir tornado.
+#   uv pip compile requirements-build.in -c requirements.txt -o requirements-build.txt \
+#     --universal --python-version 3.11 --generate-hashes --emit-build-options --only-binary :all: --no-binary tornado
+setuptools

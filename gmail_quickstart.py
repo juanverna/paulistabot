@@ -1,5 +1,5 @@
 from __future__ import print_function
-import os.path
+import os
 import json
 
 from google.oauth2.credentials import Credentials
@@ -11,25 +11,31 @@ from googleapiclient.discovery import build
 # 1. Definimos el ámbito de permisos: solo lectura de Gmail
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
+def _env_json(key):
+    value = os.getenv(key)
+    if not value:
+        raise EnvironmentError(f"Variable de entorno requerida no encontrada: {key}")
+    return json.loads(value)
+
 def main():
     creds = None
-    # 2. Si ya tenemos un token (autenticación previa), lo cargamos
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # 2. Si ya tenemos un token (autenticación previa), lo cargamos desde GMAIL_TOKEN_JSON
+    if os.getenv('GMAIL_TOKEN_JSON'):
+        creds = Credentials.from_authorized_user_info(_env_json('GMAIL_TOKEN_JSON'), SCOPES)
 
     # 3. Si no hay credenciales válidas, iniciamos el flujo de OAuth
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())  # refrescar token expirado
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES
+            flow = InstalledAppFlow.from_client_config(
+                _env_json('GOOGLE_OAUTH_CLIENT_JSON'), SCOPES
             )
             creds = flow.run_local_server(port=0)  # abre navegador para logueo
 
-        # 4. Guardamos el token para futuros usos
-        with open('token.json', 'w') as token_file:
-            token_file.write(creds.to_json())
+            # 4. El token nuevo va a la variable de entorno, nunca a un archivo del repo
+            print('Token nuevo: guardalo en la variable de entorno GMAIL_TOKEN_JSON:')
+            print(creds.to_json())
 
     # 5. Construimos el servicio de la API de Gmail
     service = build('gmail', 'v1', credentials=creds)

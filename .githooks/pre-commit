@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Antes de cada commit: el arbol de trabajo tiene que pasar security-check.sh.
+ROOT=$(git rev-parse --show-toplevel)
+if ! bash "$ROOT/scripts/security-check.sh" "$ROOT" >/tmp/paulistabot-precommit.$$ 2>&1; then
+  cat /tmp/paulistabot-precommit.$$; rm -f /tmp/paulistabot-precommit.$$
+  printf '\n\033[31mCOMMIT BLOQUEADO: el chequeo de seguridad fallo. No commitees hasta entender que es.\033[0m\n'
+  exit 1
+fi
+rm -f /tmp/paulistabot-precommit.$$
+# Ademas, ningun archivo de texto que se este agregando puede tener lineas de mas de 3000 caracteres
+# (salvo lockfiles y minificados conocidos).
+BAD=$(git diff --cached --name-only --diff-filter=AM | grep -vE 'package-lock\.json|\.min\.(js|css)$|\.map$|\.svg$|\.lock$' | while read -r f; do
+  [ -f "$f" ] || continue
+  git show ":$f" | awk -v f="$f" 'length($0) > 3000 { printf "%s:%d: %d caracteres\n", f, FNR, length($0); exit }'
+done)
+if [ -n "$BAD" ]; then
+  printf '\033[31mCOMMIT BLOQUEADO: archivos con lineas gigantes:\n%s\033[0m\n' "$BAD"; exit 1
+fi
+exit 0

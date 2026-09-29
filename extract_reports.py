@@ -13,15 +13,12 @@ from google.oauth2.credentials import Credentials as UserCreds
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials as ServiceAccountCreds
 
 # ----------------------------------
 # 0) CONFIGURACIÓN — REEMPLAZA ESTOS VALORES
 # ----------------------------------
 TEMPLATE_DOC_ID       = '1iu940gYHMmKwuiWIgFOFeX4vmJU31pKhcbS_k6z6zO8'
 openai.api_key        = os.getenv("OPENAI_API_KEY")
-GMAIL_CRED_FILE       = 'credentials.json'
-SERVICE_ACCOUNT_FILE  = 'service_account.json'
 SPREADSHEET_ID        = '1T-metdRbD-8An2_-urfK7_cAkPmmtmA004BPCyLeU9Q'
 SHEET_NAME            = 'REPARACIONES'
 MAPPING_CSV           = 'Articulos Python - Hoja 1.csv'
@@ -61,42 +58,51 @@ def parse_sheet_number(val_str):
 # ----------------------------------
 # 1) AUTENTICACIÓN
 # ----------------------------------
+# Las credenciales de Google se leen de variables de entorno con el JSON completo,
+# nunca de archivos del repo:
+#   GOOGLE_OAUTH_CLIENT_JSON     cliente OAuth de Gmail (antes credentials.json)
+#   GMAIL_TOKEN_JSON             token de usuario de Gmail (antes token.json)
+#   GOOGLE_SERVICE_ACCOUNT_JSON  cuenta de servicio para Sheets/Drive/Docs (antes service_account.json)
+def _env_json(key):
+    value = os.getenv(key)
+    if not value:
+        raise EnvironmentError(f"Variable de entorno requerida no encontrada: {key}")
+    return json.loads(value)
+
+
 def authenticate_gmail():
     creds = None
-    if os.path.exists("token.json"):
-        creds = UserCreds.from_authorized_user_file("token.json", GMAIL_SCOPES)
+    if os.getenv("GMAIL_TOKEN_JSON"):
+        creds = UserCreds.from_authorized_user_info(_env_json("GMAIL_TOKEN_JSON"), GMAIL_SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                GMAIL_CRED_FILE, GMAIL_SCOPES
+            flow = InstalledAppFlow.from_client_config(
+                _env_json("GOOGLE_OAUTH_CLIENT_JSON"), GMAIL_SCOPES
             )
             creds = flow.run_local_server(port=0)
-        with open("token.json", "w") as f:
-            f.write(creds.to_json())
+            print("Token nuevo: guardalo en la variable de entorno GMAIL_TOKEN_JSON (no en un archivo del repo):")
+            print(creds.to_json())
     return build("gmail", "v1", credentials=creds)
 
 
-def get_sheets_client():
-    creds = SACreds.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SERVICE_SCOPES
+def _service_account_creds():
+    return SACreds.from_service_account_info(
+        _env_json("GOOGLE_SERVICE_ACCOUNT_JSON"), scopes=SERVICE_SCOPES
     )
-    return gspread.authorize(creds)
+
+
+def get_sheets_client():
+    return gspread.authorize(_service_account_creds())
 
 
 def get_drive_client():
-    creds = ServiceAccountCreds.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SERVICE_SCOPES
-    )
-    return build('drive', 'v3', credentials=creds)
+    return build('drive', 'v3', credentials=_service_account_creds())
 
 
 def get_docs_client():
-    creds = ServiceAccountCreds.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SERVICE_SCOPES
-    )
-    return build('docs', 'v1', credentials=creds)
+    return build('docs', 'v1', credentials=_service_account_creds())
 
 # ----------------------------------
 # 2) AUXILIARES

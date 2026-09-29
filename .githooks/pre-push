@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Antes de cada push: (1) el arbol de trabajo pasa security-check, (2) cada commit que sale
+# esta firmado por vos, (3) el arbol del commit que se sube no tiene cargadores ni payloads.
+ROOT=$(git rev-parse --show-toplevel); source "$ROOT/scripts/lib-verificar-git.sh"
+echo "pre-push: verificando antes de subir..."
+if ! bash "$ROOT/scripts/security-check.sh" "$ROOT" >/tmp/paulistabot-prepush.$$ 2>&1; then
+  cat /tmp/paulistabot-prepush.$$; rm -f /tmp/paulistabot-prepush.$$
+  printf '\n\033[31mPUSH BLOQUEADO: el chequeo de seguridad del arbol de trabajo fallo.\033[0m\n'; exit 1
+fi
+rm -f /tmp/paulistabot-prepush.$$
+# La excepcion de identidad vieja (juanverna) no puede tapar las otras señales del atacante.
+bash "$ROOT/scripts/test-verificar-git.sh" </dev/null >/dev/null 2>&1 || { bash "$ROOT/scripts/test-verificar-git.sh" </dev/null; printf '\n\033[31mPUSH BLOQUEADO: la prueba de verificar_commits fallo.\033[0m\n'; exit 1; }
+FAIL=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue   # borrado de rama
+  echo "  rama $remote_ref: commits ${remote_sha:0:7}..${local_sha:0:7}"
+  verificar_commits "$remote_sha" "$local_sha" || FAIL=1
+  verificar_arbol "$local_sha" || FAIL=1
+done
+if [ "$FAIL" -ne 0 ]; then
+  printf '\n\033[31mPUSH BLOQUEADO: hay commits con firma ajena o archivos con cargador. Revisa la evidencia de arriba.\033[0m\n'; exit 1
+fi
+printf '\033[32mpre-push: todo limpio, subiendo.\033[0m\n'
+exit 0

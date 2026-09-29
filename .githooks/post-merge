@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Despues de un pull/merge: si entro algo malo, avisar a gritos y explicar como volver atras.
+ROOT=$(git rev-parse --show-toplevel)
+if ! bash "$ROOT/scripts/security-check.sh" "$ROOT"; then
+  printf '\n\033[41;97m  ALERTA: el merge trajo archivos que fallan el chequeo de seguridad.  \033[0m\n'
+  printf '\033[31mNO corras python, pip, main.py ni ningun script. Volve atras con:\n    git reset --hard ORIG_HEAD\ny avisale a Claude o a quien te ayude con el incidente.\033[0m\n'
+  exit 1
+fi

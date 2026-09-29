@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Despues de un checkout de rama/commit (no de archivos sueltos): chequear el arbol nuevo.
+[ "$3" = "1" ] || exit 0
+ROOT=$(git rev-parse --show-toplevel)
+if ! bash "$ROOT/scripts/security-check.sh" "$ROOT" >/dev/null 2>&1; then
+  bash "$ROOT/scripts/security-check.sh" "$ROOT"
+  printf '\n\033[41;97m  ALERTA: el commit al que cambiaste falla el chequeo de seguridad.  \033[0m\n'
+  printf '\033[31mNO corras python, pip, main.py ni ningun script en este arbol. Volve con: git checkout -\033[0m\n'
+  exit 1
+fi
