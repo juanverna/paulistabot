@@ -1,7 +1,6 @@
 # Dependencias de extract_reports.py y gmail_quickstart.py (no van a Heroku).
-# Se compila con -c requirements.txt para que las versiones compartidas con el bot coincidan:
-#   uv pip compile requirements-herramientas.in -c requirements.txt -o requirements-herramientas.txt \
-#     --universal --python-version 3.11 --generate-hashes --emit-build-options --only-binary :all: --no-binary tornado
+# Se compila con -c requirements.txt para que las versiones compartidas con el bot coincidan.
+# Se genera con: bash scripts/compilar-requirements.sh
 pandas
 gspread
 google-auth

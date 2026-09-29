@@ -1,6 +1,5 @@
 # Dependencias del bot (lo que se pide). requirements.txt se GENERA desde aca, no se edita a mano:
-#   uv pip compile requirements.in -o requirements.txt --universal --python-version 3.11 \
-#     --generate-hashes --emit-build-options --only-binary :all: --no-binary tornado
+#   bash scripts/compilar-requirements.sh   (uv pip compile + orden de --only-binary/--no-binary)
 # tornado: excepcion aprobada por el dueño (ver CLAUDE.md). python-telegram-bot 13.15 exige
 # tornado==6.1, que no tiene wheel para Python 3.11: se instala desde el sdist de PyPI fijado por hash.
 python-telegram-bot==13.15
@@ -12,3 +11,6 @@ certifi==2025.1.31
 requests>=2.31.0
 pyzbar==0.1.9
 Pillow>=10.0.0
+# apscheduler 3.6.3 (lo fija python-telegram-bot 13.15) importa pkg_resources, que setuptools saco en
+# la 82: con una version mas nueva el bot no arranca (ModuleNotFoundError al importar telegram.ext).
+setuptools<82

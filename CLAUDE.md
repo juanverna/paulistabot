@@ -29,9 +29,11 @@ usuario lo pida por apuro.** Si algo falla, parar y explicar.
   de Heroku (`runtime.txt`).
 - `requirements.in` lista lo que pide el bot; `requirements-herramientas.in`, lo de
   `extract_reports.py` y `gmail_quickstart.py` (no va a Heroku); `requirements-build.in`, el
-  setuptools para construir tornado. Los `.txt` se **generan** con el comando `uv pip compile` que
-  figura en el encabezado de cada `.in` (`--universal --python-version 3.11 --generate-hashes
-  --emit-build-options --only-binary :all: --no-binary tornado`). No se editan a mano.
+  setuptools para construir tornado. Los `.txt` se **generan** con `bash scripts/compilar-requirements.sh`
+  (`uv pip compile --universal --python-version 3.11 --generate-hashes --emit-build-options
+  --only-binary :all: --no-binary tornado`). No se editan a mano. El script deja
+  `--only-binary :all:` **antes** de `--no-binary tornado`: pip aplica las opciones del archivo en
+  orden y `:all:` borra las excepciones anteriores (con el orden que emite uv, tornado 6.1 no se instalaba).
 - Un paquete sin wheel no se instala sin OK explicito del dueño.
 
 ### Excepcion aprobada: tornado 6.1 (unica)

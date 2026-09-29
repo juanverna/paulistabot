@@ -297,6 +297,9 @@ fi
 PTH_OK=(
   # setuptools 58.0.4, verificado contra el wheel de PyPI: distutils-precedence.pth (activa _distutils_hack solo si SETUPTOOLS_USE_DISTUTILS=local)
   "7ea7ffef3fe2a117ee12c68ed6553617f0d7fd2f0590257c25c484959a3b7373"
+  # setuptools 81.0.0 a 84.0.0 (mismo archivo), verificado 2026-09-29 contra los wheels de PyPI
+  # (81.0.0: sha256 fdd925d5...10d6): distutils-precedence.pth, activa _distutils_hack salvo SETUPTOOLS_USE_DISTUTILS=stdlib
+  "2638ce9e2500e572a5e0de7faed6661eb569d1b696fcba07b0dd223da5f5d224"
 )
 sha256() { { shasum -a 256 "$1" 2>/dev/null || sha256sum "$1"; } | cut -d' ' -f1; }
 VENV_BAD=""
