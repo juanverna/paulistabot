@@ -107,6 +107,12 @@ def build_full_summary(user_data: dict) -> str:
 
         section = [(label, user_data[key]) for key, label in fields.items()
                    if user_data.get(key)]
+        fotos_rep = len(user_data.get("fotos_reparaciones", {}).get(suffix, []))
+        if fotos_rep:
+            section.append(("Fotos reparaciones", fotos_rep))
+        for d in user_data.get("destrabes", []):
+            if d["tanque"] == name:
+                section.append(("Destrabado por encargado", f"{d['motivo']} ({d['hora']})"))
         if section:
             lines.append(f"*{name}:*")
             for label, val in section:
@@ -124,7 +130,7 @@ def build_full_summary(user_data: dict) -> str:
         add_tank(alt2, "alt2")
 
     total_fotos = len(user_data.get("photos", []))
-    lines.append(f"*Fotos adjuntas:* {total_fotos}")
+    lines.append(f"*Fotos generales:* {total_fotos}")
 
     return "\n".join(lines)
 

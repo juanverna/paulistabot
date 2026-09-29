@@ -6,6 +6,7 @@ from bot.states import *
 from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import push_state, back_handler, check_special_commands
 from bot.services.email_service import send_email
+from bot.handlers.fotos_reparaciones import necesita_fotos, pedir_fotos
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,22 @@ def _text_step(update, context, save_key, current_state, next_state, next_questi
     return next_state
 
 
+def _repair_step(update, context, save_key, current_state, sufijo, next_state, next_question):
+    """Como _text_step, pero si hay reparaciones pide sus fotos antes de seguir."""
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        context.user_data.pop(save_key, None)
+        return back_handler(update, context)
+    if not necesita_fotos(text):
+        context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
+        return _text_step(update, context, save_key, current_state, next_state, next_question)
+    context.user_data[save_key] = text
+    push_state(context, current_state)
+    return pedir_fotos(update, context, sufijo, "manual")
+
+
 # =============================================================================
 # Tanque principal
 # =============================================================================
@@ -121,9 +138,9 @@ def get_sealing_main(update: Update, context: CallbackContext) -> int:
 
 def get_repair_main(update: Update, context: CallbackContext) -> int:
     selected = context.user_data.get("selected_category", "").capitalize()
-    return _text_step(update, context, "repairs", REPAIR_MAIN,
-                      SUGGESTIONS_MAIN,
-                      f"Indique sugerencias p/ la próx limpieza para {selected}:")
+    return _repair_step(update, context, "repairs", REPAIR_MAIN, "main",
+                        SUGGESTIONS_MAIN,
+                        f"Indique sugerencias p/ la próx limpieza para {selected}:")
 
 def get_suggestions_main(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -204,9 +221,9 @@ def get_sealing_alt1(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt1(update: Update, context: CallbackContext) -> int:
     alt1 = context.user_data.get("alternative_1", "").capitalize()
-    return _text_step(update, context, "repair_alt1", REPAIR_ALT1,
-                      SUGGESTIONS_ALT1,
-                      f"Indique sugerencias p/ la próx limpieza para {alt1}:")
+    return _repair_step(update, context, "repair_alt1", REPAIR_ALT1, "alt1",
+                        SUGGESTIONS_ALT1,
+                        f"Indique sugerencias p/ la próx limpieza para {alt1}:")
 
 def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
     text = update.message.text
@@ -280,9 +297,9 @@ def get_sealing_alt2(update: Update, context: CallbackContext) -> int:
 
 def get_repair_alt2(update: Update, context: CallbackContext) -> int:
     alt2 = context.user_data.get("alternative_2", "").capitalize()
-    return _text_step(update, context, "repair_alt2", REPAIR_ALT2,
-                      SUGGESTIONS_ALT2,
-                      f"Indique sugerencias p/ la próx limpieza para {alt2}:")
+    return _repair_step(update, context, "repair_alt2", REPAIR_ALT2, "alt2",
+                        SUGGESTIONS_ALT2,
+                        f"Indique sugerencias p/ la próx limpieza para {alt2}:")
 
 def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
     text = update.message.text

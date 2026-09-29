@@ -94,7 +94,31 @@ def _build_body(user_data: dict) -> str:
             if key in user_data:
                 lines.append(f"{label}: {user_data[key]}")
 
+        # Ninguna de estas líneas puede empezar con "Reparaciones": extract_reports.py
+        # toma esas claves como ítems a cotizar.
+        for sufijo, fotos in user_data.get("fotos_reparaciones", {}).items():
+            if fotos:
+                lines.append(f"Fotos reparaciones {_tank_name(user_data, sufijo)}: {len(fotos)}")
+        for d in user_data.get("destrabes", []):
+            lines.append(f"Destrabado por encargado ({d['tanque']}, {d['item']}): "
+                         f"{d['motivo']} - {d['fecha']} {d['hora']}")
+
     return "Detalles del reporte:\n" + "\n".join(lines)
+
+
+def _tank_name(user_data: dict, sufijo: str) -> str:
+    key = {"main": "selected_category", "alt1": "alternative_1", "alt2": "alternative_2"}[sufijo]
+    return user_data.get(key, "").capitalize()
+
+
+def _photo_attachments(user_data: dict) -> list:
+    """(file_id, nombre base) de cada foto: primero las de reparaciones por tanque, después las generales."""
+    items = []
+    for sufijo, fotos in user_data.get("fotos_reparaciones", {}).items():
+        tanque = _tank_name(user_data, sufijo).lower() or sufijo
+        items += [(fid, f"reparaciones_{tanque}_{i + 1}") for i, fid in enumerate(fotos)]
+    items += [(fid, f"foto_{i + 1}") for i, fid in enumerate(user_data.get("photos", []))]
+    return items
 
 
 def send_email(user_data: dict, update: Update, context: CallbackContext) -> None:
@@ -111,7 +135,7 @@ def send_email(user_data: dict, update: Update, context: CallbackContext) -> Non
     msg.attach(MIMEText(body, "plain"))
 
     # Adjuntar fotos
-    for idx, file_id in enumerate(user_data.get("photos", [])):
+    for file_id, name in _photo_attachments(user_data):
         try:
             bio = BytesIO()
             context.bot.get_file(file_id).download(out=bio)
@@ -120,10 +144,10 @@ def send_email(user_data: dict, update: Update, context: CallbackContext) -> Non
             subtype = imghdr.what(None, h=data) or "jpeg"
             image   = MIMEImage(data, _subtype=subtype)
             image.add_header("Content-Disposition", "attachment",
-                             filename=f"foto_{idx + 1}.{subtype}")
+                             filename=f"{name}.{subtype}")
             msg.attach(image)
         except Exception as e:
-            logger.error("Error adjuntando foto %d: %s", idx + 1, e)
+            logger.error("Error adjuntando foto %s: %s", name, e)
 
     recipients = [EMAIL_ADDRESS] + ([CC_EMAIL] if CC_EMAIL else [])
 

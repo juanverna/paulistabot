@@ -19,6 +19,7 @@ from bot.handlers.tanques   import (handle_tank_type,
                                      get_repair_alt2, get_suggestions_alt2,
                                      handle_tank_photos)
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
+from bot.handlers.fotos_reparaciones import handle_repair_photos
 from bot.handlers.voice_handler import (handle_voice_message, handle_reprompt_response,
                                          handle_alt_reprompt_response, handle_admin_code_response)
 from bot.handlers.final_summary import (show_final_summary, handle_final_summary_callback,
@@ -81,6 +82,13 @@ def build_conversation_handler() -> ConversationHandler:
             SEALING_ALT2:          [MessageHandler(TEXT, get_sealing_alt2)],
             REPAIR_ALT2:           [MessageHandler(TEXT, get_repair_alt2)],
             SUGGESTIONS_ALT2:      [MessageHandler(TEXT, get_suggestions_alt2)],
+
+            # Fotos de las reparaciones de cada tanque ("atrás" lo maneja el handler)
+            REPAIR_PHOTOS: [
+                MessageHandler(Filters.photo,    handle_repair_photos),
+                MessageHandler(Filters.document, handle_repair_photos),
+                MessageHandler(TEXT,             handle_repair_photos),
+            ],
 
             CONTACT: [BACK, MessageHandler(TEXT, get_contact)],
 

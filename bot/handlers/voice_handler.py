@@ -792,6 +792,13 @@ def handle_admin_code_response(update: Update, context: CallbackContext) -> int:
 # Contacto y fotos
 # =============================================================================
 def _go_to_contact(update: Update, context: CallbackContext) -> int:
+    # Antes del contacto: fotos de las reparaciones de cada tanque que tenga
+    # (fotos_reparaciones vuelve acá al terminar cada tanque)
+    from bot.handlers.fotos_reparaciones import pendiente_voz, pedir_fotos
+    sufijo = pendiente_voz(context.user_data)
+    if sufijo:
+        return pedir_fotos(update, context, sufijo, "voz")
+
     if context.user_data.get("contact"):
         return _go_to_photos(update, context)
     context.bot.send_message(

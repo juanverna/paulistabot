@@ -152,6 +152,12 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         send(f"Indique reparaciones a realizar para {alt2}:")
     elif state == SUGGESTIONS_ALT2:
         send(f"Indique sugerencias p/ la próx limpieza para {alt2}:")
+    elif state == REPAIR_PHOTOS:
+        # Se vuelve acá con "atrás" desde sugerencias: el tope del stack es REPAIR_MAIN/ALT1/ALT2
+        from bot.handlers.fotos_reparaciones import reanudar_manual
+        stack  = context.user_data.get("state_stack", [])
+        sufijo = {REPAIR_ALT1: "alt1", REPAIR_ALT2: "alt2"}.get(stack[-1] if stack else None, "main")
+        reanudar_manual(update, context, sufijo)
     elif state == CONTACT:
         send("Ingrese el nombre y teléfono del encargado:")
     elif state == AVISOS_ADDRESS:
