@@ -82,6 +82,8 @@ Cómo reconocer cada elemento:
 - tapa_acceso: tapa grande (47 a 65 cm) por donde entra una persona al tanque. Casi siempre está en
   una PARED del tanque (vertical), muchas veces sujeta con planchuelas o parantes atornillados. Puede
   ser cuadrada, de punta recortada o de 12 agujeros. Las tapas OCTOGONALES son siempre de acceso.
+  Las cuadradas con PERNOS (espárragos) que sobresalen cerca de las esquinas, para atornillar los
+  parantes o planchuelas, también son de acceso, aunque estén sacadas o sin los parantes puestos.
   Suele ir apoyada sobre un marco.
 - tapa_inspeccion: tapa para mirar adentro, sin entrar. Casi siempre está ARRIBA, en la losa o techo
   del tanque (horizontal, se ve desde arriba). Suelen ser cuadradas metálicas (a veces de chapa con
@@ -95,7 +97,8 @@ Para decidir entre acceso e inspección pesan más la ubicación (pared vertical
 arriba, horizontal = inspección) y la forma (octogonal = acceso; plástica o circular = inspección)
 que el tamaño aparente en la foto.
 Ojo: si la tapa está SACADA (apoyada en el piso, contra una pared o sostenida con la mano), la
-ubicación no sirve: decidí por la forma, el tamaño y si tiene planchuelas o parantes; si igual no
+ubicación no sirve: una tapa apoyada en el piso siempre se ve horizontal y eso NO indica que sea de
+inspección. Decidí por la forma, el tamaño y si tiene pernos, planchuelas o parantes; si igual no
 estás seguro, tipo_tapa_seguro = false.
 Las tapas de inspección grandes (60 u 80 cm) pueden medir lo mismo que una de acceso. Si es una tapa
 pero no podés distinguir con seguridad si es de acceso o de inspección, poné tipo_tapa_seguro = false.
