@@ -114,6 +114,30 @@ def codigos_de_otro_tanque(texto: str, tanque: str) -> list:
             if _TANQUE_CODIGO[m.group(2).upper()] != tanque]
 
 
+def mensaje_codigos_de_otro_tanque(texto: str, tanque: str):
+    """
+    Si el texto tiene códigos de otro tanque, el mensaje para que el operario los corrija
+    (con el código que correspondería a este tanque). None si están todos bien.
+    """
+    tanque = (tanque or "").upper()
+    letra = {v: k for k, v in _TANQUE_CODIGO.items()}.get(tanque)
+    lineas = []
+    for m in _RE_CODIGO.finditer(texto or ""):
+        de = _TANQUE_CODIGO[m.group(2).upper()]
+        if de == tanque:
+            continue
+        codigo = m.group(0).strip().upper()
+        linea = f"• {codigo} es de {de.capitalize()}"
+        if letra:
+            medida = (m.group(4) or "").strip()
+            linea += f": para {tanque.capitalize()} es {m.group(1).upper()}{letra}{m.group(3).upper()}{medida}"
+        lineas.append(linea)
+    if not lineas:
+        return None
+    return ("⛔ Hay códigos que no son de este tanque:\n" + "\n".join(lineas) +
+            f"\n\nEscribí de nuevo las reparaciones de {tanque.capitalize()} con el código correcto.")
+
+
 def etiqueta(grupo: str, cantidad: int = 1) -> str:
     base = ETIQUETAS.get(grupo, grupo)
     return f"{base} (x{cantidad})" if cantidad > 1 else base

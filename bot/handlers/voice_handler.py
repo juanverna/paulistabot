@@ -56,13 +56,9 @@ def handle_input_method(update: Update, context: CallbackContext) -> int:
         context.user_data["modo_ingreso"] = "MANUAL"
         # Marcar que después del END_TIME hay que ir a MEASURE_MAIN (no a TANK_TYPE)
         context.user_data["manual_after_qr"] = True
-        query.edit_message_text(
-            apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
-            parse_mode=ParseMode.HTML,
-        )
-        from bot.states import START_TIME
-        context.user_data["current_state"] = START_TIME
-        return START_TIME
+        query.edit_message_text("✍️ Carga MANUAL")
+        from bot.handlers.shared import pedir_hora
+        return pedir_hora(update, context, "inicio")
 
     elif query.data == "input_voice":
         context.user_data["voice_flow_state"] = VOICE_WAITING

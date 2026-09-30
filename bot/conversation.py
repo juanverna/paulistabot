@@ -3,7 +3,8 @@ from telegram.ext import (ConversationHandler, MessageHandler, CallbackQueryHand
 from bot.states import *
 from bot.handlers.common    import start_conversation, back_handler
 from bot.handlers.shared    import (get_code, service_selection, get_order, get_address,
-                                     get_start_time, get_end_time, get_contact)
+                                     get_start_time, get_end_time, get_contact,
+                                     handle_hora_boton, handle_atras_boton)
 from bot.handlers.fumigacion import fumigation_data, get_fum_obs, handle_fum_photos
 from bot.handlers.tanques   import (handle_tank_type,
                                      get_measure_main, get_tapas_inspeccion_main,
@@ -46,15 +47,20 @@ def build_conversation_handler() -> ConversationHandler:
 
             ORDER:      [BACK, MessageHandler(TEXT, get_order)],
             ADDRESS:    [BACK, MessageHandler(TEXT, get_address)],
-            START_TIME: [BACK, MessageHandler(TEXT, get_start_time)],
-            END_TIME:   [BACK, MessageHandler(TEXT, get_end_time)],
+            # Hora con botones (24 hs) o escrita
+            START_TIME: [BACK, CallbackQueryHandler(handle_hora_boton, pattern="^hora:"),
+                         CallbackQueryHandler(handle_atras_boton, pattern="^back$"),
+                         MessageHandler(TEXT, get_start_time)],
+            END_TIME:   [BACK, CallbackQueryHandler(handle_hora_boton, pattern="^hora:"),
+                         CallbackQueryHandler(handle_atras_boton, pattern="^back$"),
+                         MessageHandler(TEXT, get_end_time)],
 
             FUMIGATION: [BACK, MessageHandler(TEXT, fumigation_data)],
             FUM_OBS:    [BACK, MessageHandler(TEXT, get_fum_obs)],
 
             TANK_TYPE: [
-                # sin "rf:": los botones de fotos de un paso anterior no son una elección de tanque
-                CallbackQueryHandler(handle_tank_type, pattern="^(?!rf:)"),
+                # sin "rf:" ni "hora:": botones de pasos anteriores no son una elección de tanque
+                CallbackQueryHandler(handle_tank_type, pattern="^(?!rf:|hora:)"),
                 MessageHandler(VOICE, handle_voice_message),
                 MessageHandler(TEXT,  handle_reprompt_response),
                 BACK,
@@ -113,6 +119,6 @@ def build_conversation_handler() -> ConversationHandler:
                 MessageHandler(TEXT,  handle_final_edit_response),
             ],
         },
-        # Botón de una foto tocado cuando ese paso ya terminó
-        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^rf:")],
+        # Botón de una foto o de la hora tocado cuando ese paso ya terminó
+        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^(rf|hora):")],
     )

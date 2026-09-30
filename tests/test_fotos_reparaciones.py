@@ -133,6 +133,38 @@ class TestFlujoManual(unittest.TestCase):
         self.assertEqual(ctx.user_data["state_stack"], [REPAIR_ALT1, REPAIR_PHOTOS])
 
 
+class TestCodigoDeOtroTanque(unittest.TestCase):
+    """Caso real: "TITREA40 TMTCEA49" en la cisterna. No sigue hasta que se corrija."""
+
+    def setUp(self):
+        self.ctx = entorno.contexto(_datos_base())
+        self.assertEqual(get_repair_main(entorno.update_texto("TITREA40 TMTCEA49"), self.ctx), REPAIR_PHOTOS)
+
+    def _ultimo(self):
+        return self.ctx.bot.send_message.call_args.kwargs["text"]
+
+    def test_pide_corregir_y_no_acepta_fotos_ni_listo(self):
+        self.assertIn("TITREA40 es de <b>Reserva</b>: para <b>Cisterna</b> es TITCEA40", self._ultimo())
+        upd = entorno.update_foto("f1")
+        fr.handle_repair_photos(upd, self.ctx)
+        self.assertIn("Primero corregí el código", upd.message.reply_text.call_args.args[0])
+        self.assertEqual(self.ctx.user_data.get("fotos_reparaciones", {}).get("main", []), [])
+        upd = entorno.update_texto("Listo")
+        self.assertEqual(fr.handle_repair_photos(upd, self.ctx), REPAIR_PHOTOS)
+        self.assertEqual(self.ctx.user_data["repairs"], "TITREA40 TMTCEA49")
+
+    def test_sigue_mal_y_despues_bien(self):
+        fr.handle_repair_photos(entorno.update_texto("TITRC40 TMTCEA49"), self.ctx)
+        self.assertIn("TITRC40 es de <b>Reserva</b>", self._ultimo())
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("TITCEA40 TMTCEA49"), self.ctx),
+                         REPAIR_PHOTOS)
+        self.assertEqual(self.ctx.user_data["repairs"], "TITCEA40 TMTCEA49")
+        self.assertIn("Mandá una foto de cada reparación", self._ultimo())
+        self.assertNotIn("corregir_codigos", self.ctx.user_data["rep_fotos"])
+        fr.handle_repair_photos(entorno.update_foto("f1"), self.ctx)
+        self.assertEqual(entorno.ids(self.ctx.user_data["fotos_reparaciones"]["main"]), ["f1"])
+
+
 class TestFlujoVoz(unittest.TestCase):
 
     def test_pide_fotos_de_cada_tanque_con_reparaciones_y_despues_contacto(self):

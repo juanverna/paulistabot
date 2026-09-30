@@ -3,7 +3,8 @@ import unittest
 from tests import entorno
 entorno.preparar()
 
-from bot.services.items_reparacion import detectar_items, codigos_de_otro_tanque, lista_para_operario
+from bot.services.items_reparacion import (detectar_items, codigos_de_otro_tanque, lista_para_operario,
+                                           mensaje_codigos_de_otro_tanque)
 
 
 def cantidades(texto: str) -> dict:
@@ -75,6 +76,16 @@ class TestDetectarItems(unittest.TestCase):
     def test_codigo_de_otro_tanque(self):
         self.assertEqual(codigos_de_otro_tanque("TATREA 56 y TITCEA 30", "CISTERNA"), ["TATREA 56"])
         self.assertEqual(codigos_de_otro_tanque("TATREA 56", "RESERVA"), [])
+
+    def test_mensaje_para_corregir_codigos(self):
+        # Caso real: "TITREA40 TMTCEA49" en la cisterna
+        msg = mensaje_codigos_de_otro_tanque("TITREA40 TMTCEA49", "CISTERNA")
+        self.assertIn("• TITREA40 es de Reserva: para Cisterna es TITCEA40", msg)
+        self.assertNotIn("TMTCEA49 es de", msg)
+        self.assertIn("Escribí de nuevo las reparaciones de Cisterna", msg)
+        self.assertIsNone(mensaje_codigos_de_otro_tanque("TITCEA40 TMTCEA49", "CISTERNA"))
+        self.assertIn("TATCC 56 es de Cisterna: para Intermediario es TATHC56",
+                      mensaje_codigos_de_otro_tanque("TATCC 56", "INTERMEDIARIO"))
 
     def test_lista_para_operario(self):
         texto = lista_para_operario(detectar_items("TATCEA 56, TATCC 56 y revocar"))

@@ -97,10 +97,10 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         send("Por favor, ingrese el número de orden (7 dígitos):")
     elif state == ADDRESS:
         send("Ingrese la dirección:")
-    elif state == START_TIME:
-        send("¿A qué hora empezaste el trabajo? (HH:MM)")
-    elif state == END_TIME:
-        send("¿A qué hora terminaste el trabajo? (HH:MM)")
+    elif state in (START_TIME, END_TIME):
+        from bot.handlers import hora
+        campo = "inicio" if state == START_TIME else "fin"
+        send(hora.texto_pregunta(campo), hora.teclado_horas(campo))
     elif state == FUMIGATION:
         send("¿Qué unidades contienen insectos?")
     elif state == FUM_OBS:

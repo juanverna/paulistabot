@@ -113,13 +113,8 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     update.message.reply_text("✅ QR leído correctamente.")
 
     if service == "Fumigaciones":
-        from bot.states import START_TIME
-        update.message.reply_text(
-            apply_bold_keywords("¿A qué hora empezaste el trabajo? (formato HH:MM)"),
-            parse_mode=ParseMode.HTML,
-        )
-        context.user_data["current_state"] = START_TIME
-        return START_TIME
+        from bot.handlers.shared import pedir_hora
+        return pedir_hora(update, context, "inicio")
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),

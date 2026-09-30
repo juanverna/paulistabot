@@ -23,13 +23,14 @@ class TestConversacion(unittest.TestCase):
         from bot.states import ASK_SECOND, ASK_THIRD, TANK_TYPE
         handler = build_conversation_handler()
         update = MagicMock(spec=Update)
-        update.callback_query.data = "rf:main:3:c"
-        for estado in (ASK_SECOND, ASK_THIRD, TANK_TYPE):
-            for h in handler.states[estado]:
-                if isinstance(h, CallbackQueryHandler):
-                    self.assertFalse(h.check_update(update), (estado, h.callback.__name__))
         [fallback] = handler.fallbacks
-        self.assertTrue(fallback.check_update(update))
+        for data in ("rf:main:3:c", "hora:inicio:h:08"):
+            update.callback_query.data = data
+            for estado in (ASK_SECOND, ASK_THIRD, TANK_TYPE):
+                for h in handler.states[estado]:
+                    if isinstance(h, CallbackQueryHandler):
+                        self.assertFalse(h.check_update(update), (data, estado, h.callback.__name__))
+            self.assertTrue(fallback.check_update(update))
 
 
 if __name__ == "__main__":

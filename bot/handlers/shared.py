@@ -5,6 +5,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords, is_valid_time
 from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers import hora
 
 logger = logging.getLogger(__name__)
 
@@ -121,95 +122,120 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["address"] = text
     push_state(context, ADDRESS)
-    service = context.user_data.get("service")
-    # Presupuestos → pide hora (no tiene QR ni nota de voz)
-    if service == "Presupuestos":
-        update.message.reply_text(
-            apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
-            parse_mode=ParseMode.HTML,
-        )
-        context.user_data["current_state"] = START_TIME
-        return START_TIME
-    # Otros → no debería llegar acá, pero por las dudas
-    update.message.reply_text(
-        apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
+    # Presupuestos → pide hora (no tiene QR ni nota de voz); otros no deberían llegar acá
+    return pedir_hora(update, context, "inicio")
+
+
+# =============================================================================
+# Horario: botones (formato 24 hs) o escrito a mano
+# =============================================================================
+def _responder(update: Update, context: CallbackContext, texto: str, markup=None) -> None:
+    """Sirve tanto para mensajes como para botones (en un botón no hay update.message)."""
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=apply_bold_keywords(texto),
+        reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
-    context.user_data["current_state"] = START_TIME
-    return START_TIME
+
+
+def pedir_hora(update: Update, context: CallbackContext, campo: str) -> int:
+    """Pregunta la hora de inicio o de fin con el teclado de horas."""
+    _responder(update, context, hora.texto_pregunta(campo), hora.teclado_horas(campo))
+    estado = START_TIME if campo == "inicio" else END_TIME
+    context.user_data["current_state"] = estado
+    return estado
+
+
+def _hora_escrita(update: Update, context: CallbackContext, estado: int):
+    """Valida la hora escrita. Devuelve la hora, o el estado siguiente si no hay que seguir."""
+    text = update.message.text
+    if check_special_commands(text, update, context):
+        return ConversationHandler.END
+    if text.lower().replace("á", "a").strip() == "atras":
+        return back_handler(update, context)
+    if not is_valid_time(text):
+        update.message.reply_text(
+            apply_bold_keywords("Formato inválido. Tocá los botones o escribila así: 14:30 (24 hs)."),
+            parse_mode=ParseMode.HTML,
+        )
+        return estado
+    return text.strip()
 
 
 def get_start_time(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    if check_special_commands(text, update, context):
-        return ConversationHandler.END
-    if text.lower().replace("á", "a").strip() == "atras":
-        return back_handler(update, context)
-    if not is_valid_time(text):
-        update.message.reply_text(
-            apply_bold_keywords("Formato inválido. Usá HH:MM, por ejemplo 14:30."),
-            parse_mode=ParseMode.HTML,
-        )
-        return START_TIME
-    context.user_data["start_time"] = text.strip()
-    push_state(context, START_TIME)
-    update.message.reply_text(
-        apply_bold_keywords("¿A qué hora terminaste el trabajo? (HH:MM)"),
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = END_TIME
-    return END_TIME
+    resultado = _hora_escrita(update, context, START_TIME)
+    return guardar_hora_inicio(update, context, resultado) if isinstance(resultado, str) else resultado
 
 
 def get_end_time(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    if check_special_commands(text, update, context):
-        return ConversationHandler.END
-    if text.lower().replace("á", "a").strip() == "atras":
-        return back_handler(update, context)
-    if not is_valid_time(text):
-        update.message.reply_text(
-            apply_bold_keywords("Formato inválido. Usá HH:MM, por ejemplo 14:30."),
-            parse_mode=ParseMode.HTML,
-        )
-        return END_TIME
-    context.user_data["end_time"] = text.strip()
+    resultado = _hora_escrita(update, context, END_TIME)
+    return guardar_hora_fin(update, context, resultado) if isinstance(resultado, str) else resultado
+
+
+def guardar_hora_inicio(update: Update, context: CallbackContext, valor: str) -> int:
+    context.user_data["start_time"] = valor
+    push_state(context, START_TIME)
+    return pedir_hora(update, context, "fin")
+
+
+def guardar_hora_fin(update: Update, context: CallbackContext, valor: str) -> int:
+    context.user_data["end_time"] = valor
     push_state(context, END_TIME)
     service = context.user_data.get("service")
 
     # Si viene del flujo manual post-QR → ir directo a medidas
     if context.user_data.pop("manual_after_qr", False):
         selected = context.user_data.get("selected_category", "").capitalize()
-        update.message.reply_text(
-            apply_bold_keywords(
-                f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
+        _responder(update, context, f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):")
         context.user_data["current_state"] = MEASURE_MAIN
         return MEASURE_MAIN
 
     if service == "Fumigaciones":
-        update.message.reply_text(
-            apply_bold_keywords("¿Qué unidades contienen insectos?"),
-            parse_mode=ParseMode.HTML,
-        )
+        _responder(update, context, "¿Qué unidades contienen insectos?")
         context.user_data["current_state"] = FUMIGATION
         return FUMIGATION
-    else:
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
-             InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
-             InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
-            [InlineKeyboardButton("ATRAS",         callback_data="back")],
-        ])
-        update.message.reply_text(
-            apply_bold_keywords("Seleccione el tipo de tanque:"),
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
-        )
-        context.user_data["current_state"] = TANK_TYPE
-        return TANK_TYPE
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
+         InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
+         InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
+        [InlineKeyboardButton("ATRAS",         callback_data="back")],
+    ])
+    _responder(update, context, "Seleccione el tipo de tanque:", keyboard)
+    context.user_data["current_state"] = TANK_TYPE
+    return TANK_TYPE
+
+
+def handle_hora_boton(update: Update, context: CallbackContext) -> int:
+    """Botones del teclado de hora: primero la hora, después los minutos."""
+    query = update.callback_query
+    actual = context.user_data.get("current_state")
+    boton = hora.leer_boton(query.data)
+    esperado = {START_TIME: "inicio", END_TIME: "fin"}.get(actual)
+    if boton is None or boton[0] != esperado:
+        query.answer("Ese paso ya terminó.")
+        return actual
+    campo, accion, hh, mm = boton
+    query.answer()
+    if accion == "volver":
+        query.edit_message_text(apply_bold_keywords(hora.texto_pregunta(campo)),
+                                reply_markup=hora.teclado_horas(campo), parse_mode=ParseMode.HTML)
+        return actual
+    if accion == "h":
+        query.edit_message_text(apply_bold_keywords(f"{hora.PREGUNTAS[campo]}\nAhora los minutos:"),
+                                reply_markup=hora.teclado_minutos(campo, hh), parse_mode=ParseMode.HTML)
+        return actual
+    valor = f"{hh}:{mm}"
+    query.edit_message_text(f"✅ {hora.ETIQUETAS[campo]}: {valor}")
+    if campo == "inicio":
+        return guardar_hora_inicio(update, context, valor)
+    return guardar_hora_fin(update, context, valor)
+
+
+def handle_atras_boton(update: Update, context: CallbackContext) -> int:
+    """Botón ATRAS del teclado de hora."""
+    update.callback_query.answer()
+    return back_handler(update, context)
 
 
 def get_contact(update: Update, context: CallbackContext) -> int:

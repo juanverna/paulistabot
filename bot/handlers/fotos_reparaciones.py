@@ -32,7 +32,7 @@ from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import push_state, back_handler, check_special_commands
 from bot.services import destrabe, revision_fotos, vision_service
 from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
-                                           codigos_de_otro_tanque)
+                                           mensaje_codigos_de_otro_tanque)
 
 logger = logging.getLogger(__name__)
 
@@ -113,14 +113,33 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
     modo: "manual" (sigue con sugerencias) o "voz" (vuelve al flujo de voz).
     """
     _preparar(context, sufijo, modo)
-    texto = texto_pedido(context, sufijo)
-    ajenos = codigos_de_otro_tanque(_reparacion(context, sufijo), context.user_data.get(TANQUES[sufijo][1]))
-    if ajenos:
-        texto = (f"⚠️ Ojo: {', '.join(ajenos)} es un código de otro tanque, no de "
-                 f"{_nombre_tanque(context, sufijo)}.\n\n") + texto
-    _send(update, context, texto)
     context.user_data["current_state"] = REPAIR_PHOTOS
+    # Un código de otro tanque (ej: TITREA en la cisterna) no se deja pasar: hay que corregirlo
+    corregir = mensaje_codigos_de_otro_tanque(_reparacion(context, sufijo),
+                                              context.user_data.get(TANQUES[sufijo][1]))
+    if corregir:
+        context.user_data["rep_fotos"]["corregir_codigos"] = True
+        _send(update, context, corregir)
+        return REPAIR_PHOTOS
+    _send(update, context, texto_pedido(context, sufijo))
     return REPAIR_PHOTOS
+
+
+def _corregir_codigos(update: Update, context: CallbackContext, ctx: dict, text: str) -> int:
+    """El operario reescribió las reparaciones para corregir un código de otro tanque."""
+    sufijo = ctx["sufijo"]
+    normal = _normalizar(text)
+    if normal == "listo" or normal.startswith("no tengo") or destrabe.parece_codigo(text):
+        update.message.reply_text("Primero escribí de nuevo las reparaciones con el código correcto.")
+        return REPAIR_PHOTOS
+    corregir = mensaje_codigos_de_otro_tanque(text, context.user_data.get(TANQUES[sufijo][1]))
+    if corregir:
+        _send(update, context, corregir)
+        return REPAIR_PHOTOS
+    context.user_data[TANQUES[sufijo][0]] = text
+    if not necesita_fotos(text):
+        return _continuar(update, context)
+    return pedir_fotos(update, context, sufijo, ctx.get("modo", "manual"))
 
 
 def reanudar_manual(update: Update, context: CallbackContext, sufijo: str) -> None:
@@ -219,6 +238,9 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
 
     # ---------- Fotos ----------
     if update.message.photo or update.message.document:
+        if ctx.get("corregir_codigos"):
+            update.message.reply_text("Primero corregí el código de las reparaciones (escribilas de nuevo).")
+            return REPAIR_PHOTOS
         if not _es_imagen(update):
             update.message.reply_text("Eso no es una foto. Mandá una foto de la galería.")
             return REPAIR_PHOTOS
@@ -262,6 +284,9 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
         context.user_data.get("items_reparacion", {}).pop(sufijo, None)
         context.user_data.pop("rep_fotos", None)
         return back_handler(update, context)
+
+    if ctx.get("corregir_codigos"):
+        return _corregir_codigos(update, context, ctx, text)
 
     if ctx.get("trabado") and destrabe.parece_codigo(text):
         resultado = destrabe.intentar_destrabe(context.user_data, text)

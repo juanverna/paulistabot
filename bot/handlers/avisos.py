@@ -18,12 +18,8 @@ def get_avisos_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["avisos_address"] = text
     push_state(context, AVISOS_ADDRESS)
-    update.message.reply_text(
-        apply_bold_keywords("¿A qué hora empezaste el trabajo? (HH:MM)"),
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = START_TIME
-    return START_TIME
+    from bot.handlers.shared import pedir_hora
+    return pedir_hora(update, context, "inicio")
 
 
 def handle_avisos_photos(update: Update, context: CallbackContext) -> int:

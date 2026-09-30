@@ -5,6 +5,7 @@ from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
+from email.header import Header
 
 from bot.config import EMAIL_ADDRESS, EMAIL_PASSWORD, CC_EMAIL
 from bot.utils.helpers import apply_bold_keywords
@@ -164,33 +165,79 @@ def _photo_attachments(user_data: dict) -> list:
     return items
 
 
-def send_email(user_data: dict, update: Update, context: CallbackContext) -> None:
+def armar_mensaje(user_data: dict, descargar) -> MIMEMultipart:
+    """
+    Arma el mail. descargar(file_id) → bytes de la foto.
+
+    Limpieza y Presupuestos: informe HTML con las fotos embebidas. Estructura
+    multipart/alternative [text/plain, multipart/related [text/html, fotos]]: el texto plano
+    queda en el primer nivel, que es donde lo busca extract_reports.py para cotizar.
+    Fumigaciones y Avisos: texto plano con las fotos adjuntas, como siempre.
+    """
+    from bot.services.informe_html import armar_informe, SERVICIOS_CON_INFORME
     service = user_data.get("service", "")
-    subject = f"Reporte de Servicio: {service}"
+    direccion = user_data.get("address") or user_data.get("direccion_qr")
+    # extract_reports.py busca subject:"Reporte de Servicio:": ese comienzo no se cambia
+    subject = f"Reporte de Servicio: {service}" + (f" · {direccion}" if direccion else "")
     body    = _build_body(user_data)
 
-    msg           = MIMEMultipart()
-    msg["From"]   = EMAIL_ADDRESS
-    msg["To"]     = EMAIL_ADDRESS
-    msg["Subject"] = subject
+    msg = None
+    if service in SERVICIOS_CON_INFORME:
+        try:
+            msg = _mensaje_html(user_data, body, descargar, armar_informe)
+        except Exception as e:
+            # Nunca se pierde un reporte por el HTML: sale con el formato de siempre
+            logger.exception("No se pudo armar el informe HTML (%s): va en texto plano", e)
+    if msg is None:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        for file_id, name in _photo_attachments(user_data):
+            try:
+                data    = descargar(file_id)
+                subtype = imghdr.what(None, h=data) or "jpeg"
+                image   = MIMEImage(data, _subtype=subtype)
+                image.add_header("Content-Disposition", "attachment",
+                                 filename=f"{name}.{subtype}")
+                msg.attach(image)
+            except Exception as e:
+                logger.error("Error adjuntando foto %s: %s", name, e)
+
+    msg["From"]    = EMAIL_ADDRESS
+    msg["To"]      = EMAIL_ADDRESS
+    msg["Subject"] = Header(subject, "utf-8")
     if CC_EMAIL:
         msg["Cc"] = CC_EMAIL
-    msg.attach(MIMEText(body, "plain"))
+    return msg
 
-    # Adjuntar fotos
-    for file_id, name in _photo_attachments(user_data):
-        try:
-            bio = BytesIO()
-            context.bot.get_file(file_id).download(out=bio)
-            bio.seek(0)
-            data    = bio.read()
-            subtype = imghdr.what(None, h=data) or "jpeg"
-            image   = MIMEImage(data, _subtype=subtype)
-            image.add_header("Content-Disposition", "attachment",
-                             filename=f"{name}.{subtype}")
-            msg.attach(image)
-        except Exception as e:
-            logger.error("Error adjuntando foto %s: %s", name, e)
+
+def _mensaje_html(user_data, body, descargar, armar_informe) -> MIMEMultipart:
+    html_doc, imagenes = armar_informe(user_data, descargar)
+    msg = MIMEMultipart("alternative")
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    related = MIMEMultipart("related")
+    related.attach(MIMEText(html_doc, "html", "utf-8"))
+    for cid, jpeg, nombre in imagenes:
+        image = MIMEImage(jpeg, _subtype="jpeg")
+        image.add_header("Content-ID", f"<{cid}>")
+        # "attachment": Gmail la muestra en el diseño (por el Content-ID) y además en la lista de
+        # adjuntos, desde donde se abre grande
+        image.add_header("Content-Disposition", "attachment", filename=nombre)
+        related.attach(image)
+    msg.attach(related)
+    return msg
+
+
+def _descargar_de_telegram(context: CallbackContext):
+    def descargar(file_id: str) -> bytes:
+        bio = BytesIO()
+        context.bot.get_file(file_id).download(out=bio)
+        return bio.getvalue()
+    return descargar
+
+
+def send_email(user_data: dict, update: Update, context: CallbackContext) -> None:
+    service = user_data.get("service", "")
+    msg = armar_mensaje(user_data, _descargar_de_telegram(context))
 
     recipients = [EMAIL_ADDRESS] + ([CC_EMAIL] if CC_EMAIL else [])
 
