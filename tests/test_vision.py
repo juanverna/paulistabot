@@ -505,7 +505,7 @@ class TestTapaFaltante(FlujoConIA):
 
     def test_el_agujero_respalda_colocar_la_tapa(self):
         self._foto("agujero", analisis(tapa_faltante=True, **INSPECCION))
-        self.assertIn("📷 Tapa de inspección (sin tapa, solo el agujero) ✅", self._enviados()[-1]["text"])
+        self.assertIn("📷 Tapa de inspección (falta la tapa propiamente dicha) ✅", self._enviados()[-1]["text"])
         self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
 
 

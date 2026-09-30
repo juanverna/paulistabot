@@ -161,7 +161,7 @@ def mensaje_resultado(foto: dict, sufijo: str, tanque: str, items: dict, trabado
         return ("❓ No estoy seguro de qué tapa es esta foto. ¿Es alguna de estas?",
                 teclado_grupos(sufijo, pid, tapas))
     if estado == VALIDADA:
-        sin_tapa = " (sin tapa, solo el agujero)" if (foto.get("analisis") or {}).get("tapa_faltante") else ""
+        sin_tapa = " (falta la tapa propiamente dicha)" if (foto.get("analisis") or {}).get("tapa_faltante") else ""
         return f"📷 {etiqueta(grupo)}{sin_tapa} ✅{seguir}", cambiar
     if trabado:  # sin validar (la IA no respondió) mientras el paso está trabado
         return f"📷 Foto recibida.{seguir}", None

@@ -8,7 +8,8 @@ lo mismo). Una carpeta por elemento, con este nombre exacto:
 bot/referencias/
   tapa_acceso/       tapas de acceso (cuadradas, octagonales con parantes, punta recortada, 12 agujeros)
   tapa_inspeccion/   tapas de inspección (de entrada de agua y ciegas)
-  tapa_inspeccion_faltante/  lugares donde debería haber una tapa de inspección y solo está el agujero
+  tapa_inspeccion_faltante/  falta la tapa de inspección propiamente dicha: solo el agujero, o algo
+                             improvisado sin marco (losa de hormigón con hierros, madera)
   marco/             marcos, sin tapa o la unión tapa-marco
   pared_revoque/     revoques de paredes y piso (en buen y en mal estado)
   piso/              pisos del tanque

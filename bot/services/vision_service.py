@@ -91,10 +91,12 @@ Si no es una tapa, tipo_tapa_seguro = true.
 Si hay fotos de referencia de la empresa, comparala con ellas para decidir qué elemento es: si se
 parece claramente a los ejemplos de un tipo de tapa, tipo_tapa_seguro = true.
 
-Tapa faltante: a veces donde debería haber una tapa (casi siempre de inspección) solo está el
-agujero o la abertura, sin tapa. En ese caso elemento_detectado es el tipo de tapa que falta
-(tapa_inspeccion, o tapa_acceso si la abertura es para entrar), tapa_faltante = true, estado = "malo"
-y respalda_la_reparacion = true (la falta de tapa justifica colocarla). Si hay tapa, tapa_faltante = false.
+Tapa faltante: a veces donde debería haber una tapa (casi siempre de inspección) no hay una tapa
+propiamente dicha: solo está el agujero o la abertura, o está tapado con algo improvisado y sin marco
+(una losa de hormigón con hierros para moverla, una madera, una chapa suelta). En ese caso
+elemento_detectado es el tipo de tapa que falta (tapa_inspeccion, o tapa_acceso si la abertura es
+para entrar), tapa_faltante = true, estado = "malo" y respalda_la_reparacion = true (hay que colocar
+una tapa de verdad). Si hay una tapa metálica con su marco, tapa_faltante = false.
 
 Criterios de estado:
 - Tapa o marco en mal estado: óxido con nódulos, perforaciones, deformación, bordes deteriorados.
@@ -117,7 +119,9 @@ Escribió estas reparaciones: "{reparacion}".
 REFERENCIAS_CATEGORIAS = {
     "tapa_acceso":              "tapas de acceso (elemento_detectado = tapa_acceso)",
     "tapa_inspeccion":          "tapas de inspección (elemento_detectado = tapa_inspeccion)",
-    "tapa_inspeccion_faltante": ("lugares donde debería haber una tapa de inspección y solo está el agujero "
+    "tapa_inspeccion_faltante": ("lugares donde falta una tapa de inspección propiamente dicha: "
+                                 "solo el agujero, o tapado con algo improvisado y sin marco, como una "
+                                 "losa de hormigón con hierros "
                                  "(elemento_detectado = tapa_inspeccion, tapa_faltante = true)"),
     "marco":                    "marcos (elemento_detectado = marco)",
     "pared_revoque":            "revoques dañados de paredes y piso (elemento_detectado = pared_revoque)",
