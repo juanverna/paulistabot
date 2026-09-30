@@ -25,8 +25,10 @@ logger = logging.getLogger(__name__)
 
 VISION_ACTIVA    = os.getenv("VISION_ACTIVA", "1").strip().lower() not in ("0", "false", "no")
 VISION_MODEL     = os.getenv("VISION_MODEL", "gpt-6-luna")
-VISION_TIMEOUT_S = float(os.getenv("VISION_TIMEOUT_S", "20"))
-VISION_REASONING = os.getenv("VISION_REASONING", "low")
+VISION_TIMEOUT_S = float(os.getenv("VISION_TIMEOUT_S", "30"))
+# medium: con low la IA a veces se equivocaba "segura" entre tapa de acceso e inspección (0 de 18 con
+# medium, 1 de 18 con low, sobre las fotos de referencia); cuesta ~0,015 centavos más por foto.
+VISION_REASONING = os.getenv("VISION_REASONING", "medium")
 LADO_MAXIMO_PX   = 1280  # las fotos se achican antes de mandarlas (menos tokens, mismo detalle útil)
 MAX_FOTOS_GRUPO  = 6     # tope de fotos por llamada de agrupar_objetos
 
@@ -77,14 +79,24 @@ _PROMPT_FOTO = """Sos inspector de tanques de agua (cisternas, reservas e interm
 Vas a analizar la foto de una reparación que manda un operario.
 
 Cómo reconocer cada elemento:
-- tapa_acceso: tapa grande (47 a 65 cm) por donde entra una persona al tanque. Puede ser cuadrada,
-  octagonal con parantes, de punta recortada o de 12 agujeros. Suele ir apoyada sobre un marco.
-- tapa_inspeccion: tapa chica (30 a 80 cm) para mirar adentro, sin entrar. Puede ser de entrada de
-  agua (con la bajada o el caño de entrada) o ciega.
+- tapa_acceso: tapa grande (47 a 65 cm) por donde entra una persona al tanque. Casi siempre está en
+  una PARED del tanque (vertical), muchas veces sujeta con planchuelas o parantes atornillados. Puede
+  ser cuadrada, de punta recortada o de 12 agujeros. Las tapas OCTOGONALES son siempre de acceso.
+  Suele ir apoyada sobre un marco.
+- tapa_inspeccion: tapa para mirar adentro, sin entrar. Casi siempre está ARRIBA, en la losa o techo
+  del tanque (horizontal, se ve desde arriba). Suelen ser cuadradas metálicas (a veces de chapa con
+  relieve o dibujo), plásticas, o circulares chicas. Puede ser de entrada de agua (con la bajada o el
+  caño de entrada) o ciega.
 - marco: el borde metálico o de hormigón donde apoya la tapa de acceso (sin la tapa, o la unión tapa-marco).
 - pared_revoque: revoque de las paredes, el techo o el piso interior del tanque (cemento, azulejo).
   Si se ven placas de revoque desprendidas en el piso, también es pared_revoque.
 - piso: fondo del tanque, cuando lo que se muestra no es el revoque (ej: suciedad, desagüe).
+Para decidir entre acceso e inspección pesan más la ubicación (pared vertical = acceso; losa de
+arriba, horizontal = inspección) y la forma (octogonal = acceso; plástica o circular = inspección)
+que el tamaño aparente en la foto.
+Ojo: si la tapa está SACADA (apoyada en el piso, contra una pared o sostenida con la mano), la
+ubicación no sirve: decidí por la forma, el tamaño y si tiene planchuelas o parantes; si igual no
+estás seguro, tipo_tapa_seguro = false.
 Las tapas de inspección grandes (60 u 80 cm) pueden medir lo mismo que una de acceso. Si es una tapa
 pero no podés distinguir con seguridad si es de acceso o de inspección, poné tipo_tapa_seguro = false.
 Si no es una tapa, tipo_tapa_seguro = true.

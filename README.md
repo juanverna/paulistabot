@@ -118,8 +118,8 @@ Ver [`.env.example`](.env.example). Ningún secreto va al repo.
 | `DESTRABE_MINUTOS_BLOQUEO` | no (15) | minutos de bloqueo |
 | `VISION_ACTIVA` | no (1) | 0 apaga la revisión con IA de las fotos |
 | `VISION_MODEL` | no (gpt-6-luna) | modelo de OpenAI con visión |
-| `VISION_TIMEOUT_S` | no (20) | segundos máximos por foto antes de dejarla sin validar |
-| `VISION_REASONING` | no (low) | esfuerzo de razonamiento del modelo |
+| `VISION_TIMEOUT_S` | no (30) | segundos máximos por foto antes de dejarla sin validar |
+| `VISION_REASONING` | no (medium) | esfuerzo de razonamiento del modelo |
 | `VISION_MAX_REF` | no (10) | fotos de referencia por elemento |
 | `VISION_REF_DETAIL` | no (low) | detalle con que se mandan las referencias (low o high) |
 | `PHASH_THRESHOLD` | no (8) | distancia de huella para tomar dos fotos como la misma |
