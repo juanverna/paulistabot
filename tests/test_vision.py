@@ -1,4 +1,5 @@
 import io
+import hashlib
 import os
 import json
 import threading
@@ -27,6 +28,10 @@ def analisis(**cambios):
 
 
 INSPECCION = dict(elemento_detectado="tapa_inspeccion")
+
+
+def huella_fija(data: bytes) -> int:
+    return int.from_bytes(hashlib.sha256(data).digest()[:8], "big")
 
 
 def jpeg(ancho=100, alto=80, color=(120, 80, 40), rayas=False) -> bytes:
@@ -180,8 +185,9 @@ class FlujoConIA(unittest.TestCase):
             parche = patch.object(vision_service, nombre, side_effect=efecto)
             parche.start()
             self.addCleanup(parche.stop)
-        # Huella distinta por foto, salvo que el test diga otra cosa
-        parche = patch.object(vision_service, "huella", side_effect=lambda data: hash(data) & 0xFFFFFFFF)
+        # Huella distinta por foto, salvo que el test diga otra cosa. Fija (sha256), no hash():
+        # hash() cambia en cada ejecución y a veces dejaba dos fotos a menos de UMBRAL_HUELLA.
+        parche = patch.object(vision_service, "huella", side_effect=huella_fija)
         self.huella = parche.start()
         self.addCleanup(parche.stop)
         self.ctx = entorno.contexto({"selected_category": "CISTERNA", "alternative_1": "RESERVA",
@@ -419,6 +425,14 @@ class TestDosTapasDeAcceso(FlujoConIA):
         self._foto("a2", analisis())
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         self.assertFalse(hasattr(self, "agrupadas"))
+
+    def test_las_huellas_de_prueba_son_distintas(self):
+        nombres = ["a1", "a2", "a3", "ea", "ciego", "i1", "i2", "t1", "f1", "f2", "ok", "piso"]
+        for x in nombres:
+            for y in nombres:
+                if x < y:
+                    self.assertGreater(vision_service.distancia(huella_fija(x.encode()), huella_fija(y.encode())),
+                                       revision_fotos.UMBRAL_HUELLA, (x, y))
 
     def test_dos_tapas_distintas_sigue(self):
         self._foto("ea", analisis())
