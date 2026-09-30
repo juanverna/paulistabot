@@ -19,6 +19,7 @@ import json
 import base64
 import logging
 from typing import Optional
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,13 @@ VISION_REASONING = os.getenv("VISION_REASONING", "low")
 LADO_MAXIMO_PX   = 1280  # las fotos se achican antes de mandarlas (menos tokens, mismo detalle útil)
 MAX_FOTOS_GRUPO  = 6     # tope de fotos por llamada de agrupar_objetos
 
+# Fotos de referencia (ejemplos reales de la empresa): bot/referencias/<elemento>/*.jpg
+# Se le muestran a la IA junto a cada foto para que reconozca cada tipo de tapa, marco, revoque...
+REFERENCIAS_DIR  = Path(__file__).resolve().parent.parent / "referencias"
+VISION_MAX_REF   = int(os.getenv("VISION_MAX_REF", "10"))        # por elemento
+VISION_REF_DETAIL = os.getenv("VISION_REF_DETAIL", "low")        # low: menos tokens por ejemplo
+LADO_REFERENCIA_PX = 768
+
 ELEMENTOS = ["tapa_acceso", "tapa_inspeccion", "marco", "pared_revoque", "piso", "otro"]
 ESTADOS   = ["bueno", "regular", "malo"]
 CALIDADES = ["buena", "borrosa", "oscura", "muy_lejos"]
@@ -37,12 +45,13 @@ CALIDADES = ["buena", "borrosa", "oscura", "muy_lejos"]
 _SCHEMA_FOTO = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["elemento_detectado", "tipo_tapa_seguro", "coincide_con_lo_declarado", "estado",
-                 "danos_visibles", "respalda_la_reparacion", "requiere_revoque", "calidad_foto",
+    "required": ["elemento_detectado", "tipo_tapa_seguro", "tapa_faltante", "coincide_con_lo_declarado",
+                 "estado", "danos_visibles", "respalda_la_reparacion", "requiere_revoque", "calidad_foto",
                  "comentario"],
     "properties": {
         "elemento_detectado":        {"type": "string", "enum": ELEMENTOS},
         "tipo_tapa_seguro":          {"type": "boolean"},
+        "tapa_faltante":             {"type": "boolean"},
         "coincide_con_lo_declarado": {"type": "boolean"},
         "estado":                    {"type": "string", "enum": ESTADOS},
         "danos_visibles":            {"type": "array", "items": {"type": "string"}},
@@ -63,9 +72,9 @@ _SCHEMA_GRUPOS = {
     },
 }
 
+# Parte fija del pedido (igual en todas las llamadas: OpenAI la cachea junto con las referencias)
 _PROMPT_FOTO = """Sos inspector de tanques de agua (cisternas, reservas e intermediarios) en edificios de Argentina.
-El operario dice que esta foto es del tanque {tanque}. Escribió estas reparaciones: "{reparacion}".
-Ítems que declaró y que hay que respaldar con fotos: {items}.
+Vas a analizar la foto de una reparación que manda un operario.
 
 Cómo reconocer cada elemento:
 - tapa_acceso: tapa grande (47 a 65 cm) por donde entra una persona al tanque. Puede ser cuadrada,
@@ -73,11 +82,19 @@ Cómo reconocer cada elemento:
 - tapa_inspeccion: tapa chica (30 a 80 cm) para mirar adentro, sin entrar. Puede ser de entrada de
   agua (con la bajada o el caño de entrada) o ciega.
 - marco: el borde metálico o de hormigón donde apoya la tapa de acceso (sin la tapa, o la unión tapa-marco).
-- pared_revoque: paredes o techo interior del tanque (revoque, cemento, azulejo).
-- piso: fondo del tanque.
+- pared_revoque: revoque de las paredes, el techo o el piso interior del tanque (cemento, azulejo).
+  Si se ven placas de revoque desprendidas en el piso, también es pared_revoque.
+- piso: fondo del tanque, cuando lo que se muestra no es el revoque (ej: suciedad, desagüe).
 Las tapas de inspección grandes (60 u 80 cm) pueden medir lo mismo que una de acceso. Si es una tapa
 pero no podés distinguir con seguridad si es de acceso o de inspección, poné tipo_tapa_seguro = false.
 Si no es una tapa, tipo_tapa_seguro = true.
+Si hay fotos de referencia de la empresa, comparala con ellas para decidir qué elemento es: si se
+parece claramente a los ejemplos de un tipo de tapa, tipo_tapa_seguro = true.
+
+Tapa faltante: a veces donde debería haber una tapa (casi siempre de inspección) solo está el
+agujero o la abertura, sin tapa. En ese caso elemento_detectado es el tipo de tapa que falta
+(tapa_inspeccion, o tapa_acceso si la abertura es para entrar), tapa_faltante = true, estado = "malo"
+y respalda_la_reparacion = true (la falta de tapa justifica colocarla). Si hay tapa, tapa_faltante = false.
 
 Criterios de estado:
 - Tapa o marco en mal estado: óxido con nódulos, perforaciones, deformación, bordes deteriorados.
@@ -91,6 +108,21 @@ Respondé:
 - danos_visibles: lista corta de daños que se ven (vacía si no hay).
 - comentario: una frase breve en español.
 Respondé SOLO en JSON."""
+
+_PROMPT_CASO = """FOTO A ANALIZAR. El operario dice que es del tanque {tanque}.
+Escribió estas reparaciones: "{reparacion}".
+Ítems que declaró y que hay que respaldar con fotos: {items}."""
+
+# Carpeta de bot/referencias/ → cómo se le presentan esos ejemplos a la IA
+REFERENCIAS_CATEGORIAS = {
+    "tapa_acceso":              "tapas de acceso (elemento_detectado = tapa_acceso)",
+    "tapa_inspeccion":          "tapas de inspección (elemento_detectado = tapa_inspeccion)",
+    "tapa_inspeccion_faltante": ("lugares donde debería haber una tapa de inspección y solo está el agujero "
+                                 "(elemento_detectado = tapa_inspeccion, tapa_faltante = true)"),
+    "marco":                    "marcos (elemento_detectado = marco)",
+    "pared_revoque":            "revoques dañados de paredes y piso (elemento_detectado = pared_revoque)",
+    "piso":                     "pisos (elemento_detectado = piso)",
+}
 
 _PROMPT_GRUPOS = """Sos inspector de tanques de agua en edificios de Argentina.
 Estas {n} fotos son de "{etiqueta}" del tanque {tanque}. El operario dice que hay {cantidad} distintas
@@ -127,6 +159,7 @@ def parsear_json(texto: str) -> Optional[dict]:
         resultado = {
             "elemento_detectado":        str(datos["elemento_detectado"]),
             "tipo_tapa_seguro":          bool(datos.get("tipo_tapa_seguro", True)),
+            "tapa_faltante":             bool(datos.get("tapa_faltante", False)),
             "coincide_con_lo_declarado": bool(datos["coincide_con_lo_declarado"]),
             "estado":                    str(datos["estado"]),
             "danos_visibles":            [str(d) for d in datos.get("danos_visibles") or []],
@@ -157,8 +190,8 @@ def parsear_grupos(texto: str, n: int) -> Optional[list]:
     return grupos
 
 
-def achicar_imagen(data: bytes) -> Optional[bytes]:
-    """JPEG con el lado mayor en LADO_MAXIMO_PX. None si no es una imagen que se pueda abrir."""
+def achicar_imagen(data: bytes, lado: int = LADO_MAXIMO_PX) -> Optional[bytes]:
+    """JPEG (sin EXIF) con el lado mayor en `lado` px. None si no es una imagen que se pueda abrir."""
     from PIL import Image, ImageOps
     try:
         img = Image.open(io.BytesIO(data))
@@ -166,7 +199,7 @@ def achicar_imagen(data: bytes) -> Optional[bytes]:
     except Exception as e:
         logger.warning("No se pudo abrir la imagen: %s", e)
         return None
-    img.thumbnail((LADO_MAXIMO_PX, LADO_MAXIMO_PX))
+    img.thumbnail((lado, lado))
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=85)
     return out.getvalue()
@@ -203,14 +236,49 @@ def _cliente():
     return _client
 
 
-def _llamar(prompt: str, imagenes: list, nombre: str, schema: dict) -> Optional[str]:
-    """Una llamada al modelo con imágenes JPEG. None si está apagado o falla."""
+def _imagen(jpeg: bytes, detalle: str = "high") -> dict:
+    return {"type": "image_url", "image_url": {
+        "url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), "detail": detalle}}
+
+
+_referencias = None
+
+
+def referencias() -> list:
+    """[(elemento, [jpeg, ...])] de bot/referencias/. Se leen una vez; sin carpeta, lista vacía."""
+    global _referencias
+    if _referencias is None:
+        cargadas = []
+        for elemento in REFERENCIAS_CATEGORIAS:
+            carpeta = REFERENCIAS_DIR / elemento
+            if not carpeta.is_dir():
+                continue
+            archivos = sorted(p for p in carpeta.iterdir()
+                              if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"))[:VISION_MAX_REF]
+            jpegs = [j for j in (achicar_imagen(p.read_bytes(), LADO_REFERENCIA_PX) for p in archivos) if j]
+            if jpegs:
+                cargadas.append((elemento, jpegs))
+        _referencias = cargadas
+        logger.info("Visión: referencias cargadas: %s",
+                    {e: len(j) for e, j in cargadas} or "ninguna")
+    return _referencias
+
+
+def _contenido_referencias() -> list:
+    refs = referencias()
+    if not refs:
+        return []
+    contenido = [{"type": "text", "text": "FOTOS DE REFERENCIA (ejemplos reales de la empresa, ya clasificados):"}]
+    for elemento, jpegs in refs:
+        contenido.append({"type": "text", "text": f"Ejemplos de {REFERENCIAS_CATEGORIAS[elemento]}:"})
+        contenido += [_imagen(j, VISION_REF_DETAIL) for j in jpegs]
+    return contenido
+
+
+def _llamar(contenido: list, nombre: str, schema: dict) -> Optional[str]:
+    """Una llamada al modelo (texto + imágenes). None si está apagado o falla."""
     if not VISION_ACTIVA or not os.getenv("OPENAI_API_KEY"):
         return None
-    contenido = [{"type": "text", "text": prompt}]
-    for jpeg in imagenes:
-        contenido.append({"type": "image_url", "image_url": {
-            "url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), "detail": "high"}})
     try:
         respuesta = _cliente().chat.completions.create(
             model=VISION_MODEL,
@@ -232,9 +300,11 @@ def analizar_foto(data: bytes, tanque: str, reparacion: str, items: str = "") ->
     jpeg = achicar_imagen(data)
     if jpeg is None:
         return None
-    prompt = _PROMPT_FOTO.format(tanque=tanque, reparacion=(reparacion or "").strip()[:500],
-                                 items=items or "no especificados")
-    texto = _llamar(prompt, [jpeg], "analisis_foto", _SCHEMA_FOTO)
+    caso = _PROMPT_CASO.format(tanque=tanque, reparacion=(reparacion or "").strip()[:500],
+                               items=items or "no especificados")
+    contenido = ([{"type": "text", "text": _PROMPT_FOTO}] + _contenido_referencias()
+                 + [{"type": "text", "text": caso}, _imagen(jpeg)])
+    texto = _llamar(contenido, "analisis_foto", _SCHEMA_FOTO)
     if texto is None:
         return None
     resultado = parsear_json(texto)
@@ -254,7 +324,8 @@ def agrupar_objetos(fotos: list, etiqueta: str, tanque: str, cantidad: int) -> O
     if any(j is None for j in jpegs):
         return None
     prompt = _PROMPT_GRUPOS.format(n=len(jpegs), etiqueta=etiqueta, tanque=tanque, cantidad=cantidad)
-    texto = _llamar(prompt, jpegs, "objetos_por_foto", _SCHEMA_GRUPOS)
+    texto = _llamar([{"type": "text", "text": prompt}] + [_imagen(j) for j in jpegs],
+                    "objetos_por_foto", _SCHEMA_GRUPOS)
     if texto is None:
         return None
     grupos = parsear_grupos(texto, len(jpegs))

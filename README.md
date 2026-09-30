@@ -70,6 +70,14 @@ operario quedan marcadas en el mail. `VISION_ACTIVA=0` apaga la revisión sin to
 
 Las fotos generales del final (orden de trabajo, ficha y tanques) no cambiaron.
 
+### Fotos de referencia
+
+Para que la IA distinga mejor cada elemento (sobre todo tapa de acceso vs. inspección), se le
+muestran fotos de ejemplo de la empresa junto a cada foto: una carpeta por elemento en
+`bot/referencias/` (ver `bot/referencias/LEEME.md`). Van con detalle bajo (`VISION_REF_DETAIL`)
+para que no encarezcan cada llamada, y la parte fija del pedido (instrucciones + ejemplos) es igual
+en todas las llamadas, así que OpenAI la cachea. Sin fotos en la carpeta, funciona igual que antes.
+
 ### Datos para entrenar
 
 Si están `DATASET_SHEET_ID` y `GOOGLE_SERVICE_ACCOUNT_JSON`, al enviar cada reporte se agrega una
@@ -112,6 +120,8 @@ Ver [`.env.example`](.env.example). Ningún secreto va al repo.
 | `VISION_MODEL` | no (gpt-6-luna) | modelo de OpenAI con visión |
 | `VISION_TIMEOUT_S` | no (20) | segundos máximos por foto antes de dejarla sin validar |
 | `VISION_REASONING` | no (low) | esfuerzo de razonamiento del modelo |
+| `VISION_MAX_REF` | no (10) | fotos de referencia por elemento |
+| `VISION_REF_DETAIL` | no (low) | detalle con que se mandan las referencias (low o high) |
 | `PHASH_THRESHOLD` | no (8) | distancia de huella para tomar dos fotos como la misma |
 | `DATASET_SHEET_ID` | no | hoja de Google Sheets para los datos de entrenamiento |
 | `DATASET_SHEET_NAME` | no (Fotos) | pestaña de esa hoja |

@@ -51,6 +51,17 @@ class TestDetectarItems(unittest.TestCase):
                          {"tapa_inspeccion": 1, "marco": 1, "tapa_marco": 1})
         self.assertEqual(cantidades("tmtcea 49"), {"tapa_marco": 1})
 
+    def test_codigo_pegado_a_la_medida(self):
+        # Caso real: "Tapa de inspeccion y TMTCEA56" no reconocía el código
+        self.assertEqual(cantidades("Tapa de inspeccion y TMTCEA56"), {"tapa_inspeccion": 1, "tapa_marco": 1})
+        self.assertEqual(cantidades("tatcea56 y tatcc56,5"), {"tapa_acceso": 2})
+        self.assertEqual(detectar_items("TITCEA30")["tapa_inspeccion"]["codigos"], ["TITCEA30"])
+
+    def test_codigo_sin_medida(self):
+        self.assertEqual(cantidades("TATCEA"), {"tapa_acceso": 1})
+        self.assertEqual(cantidades("cambiar TITCC y TMTREA"), {"tapa_inspeccion": 1, "tapa_marco": 1})
+        self.assertEqual(detectar_items("TATCEA y TATCC")["tapa_acceso"]["variantes"], ["EA", "C"])
+
     def test_codigo_y_texto_de_lo_mismo_es_una_sola_tapa(self):
         self.assertEqual(cantidades("cambiar tapa de acceso TATCEA 56"), {"tapa_acceso": 1})
 

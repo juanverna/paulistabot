@@ -60,6 +60,15 @@ CANDIDATOS = {
 }
 GRUPOS_TAPA = ("tapa_acceso", "tapa_inspeccion", "tapa_marco", "tapa")
 
+# Lo que la IA vio, para explicarle al operario por qué una foto no corresponde
+PARECE = {
+    "tapa_acceso":     "una tapa de acceso",
+    "tapa_inspeccion": "una tapa de inspección",
+    "marco":           "un marco",
+    "pared_revoque":   "una pared o revoque",
+    "piso":            "el piso del tanque",
+}
+
 NOMBRE = {
     "tapa_inspeccion": "la tapa de inspección",
     "tapa_acceso":     "la tapa de acceso",
@@ -82,11 +91,6 @@ def candidatos(analisis: dict, items: dict) -> list:
     """Ítems declarados que puede respaldar la foto según lo que vio la IA."""
     elemento = analisis["elemento_detectado"]
     cands = [g for g in CANDIDATOS.get(elemento, []) if g in items]
-    if not cands and elemento in ("tapa_acceso", "tapa_inspeccion"):
-        # Declaró un solo tipo de tapa: cualquier tapa cuenta (no dependemos de que la IA
-        # distinga acceso de inspección, que a veces miden lo mismo)
-        otro = "tapa_inspeccion" if elemento == "tapa_acceso" else "tapa_acceso"
-        cands = [g for g in CANDIDATOS[otro] if g in items]
     if "otras" in items and analisis["coincide_con_lo_declarado"]:
         cands.append("otras")
     return cands
@@ -99,13 +103,15 @@ def clasificar(analisis, items: dict) -> dict:
     cands = candidatos(analisis, items)
     if analisis["calidad_foto"] != "buena":
         return {"estado": CALIDAD, "calidad": analisis["calidad_foto"], "candidatos": cands}
+    # La IA no sabe si es de acceso o de inspección: no se adivina, decide el operario (salvo que
+    # se haya declarado "tapa" a secas, donde cualquiera sirve). Su respuesta queda como etiqueta.
+    es_tapa = analisis["elemento_detectado"] in ("tapa_acceso", "tapa_inspeccion")
+    tapas_con_tipo = [g for g in items if g in ("tapa_acceso", "tapa_inspeccion", "tapa_marco")]
+    if es_tapa and not analisis["tipo_tapa_seguro"] and tapas_con_tipo:
+        return {"estado": A_CONFIRMAR, "calidad": None,
+                "candidatos": [g for g in items if g in GRUPOS_TAPA]}
     if not cands:
         return {"estado": NO_CORRESPONDE, "calidad": None, "candidatos": []}
-    dos_tipos_de_tapa = "tapa_inspeccion" in items and ("tapa_acceso" in items or "tapa_marco" in items)
-    if analisis["elemento_detectado"] in ("tapa_acceso", "tapa_inspeccion") and dos_tipos_de_tapa \
-            and not analisis["tipo_tapa_seguro"]:
-        return {"estado": A_CONFIRMAR, "calidad": None,
-                "candidatos": [g for g in GRUPOS_TAPA if g in items]}
     if not analisis["respalda_la_reparacion"]:
         return {"estado": NO_RESPALDA, "calidad": None, "candidatos": cands}
     return {"estado": VALIDADA, "calidad": None, "candidatos": cands}
@@ -140,7 +146,10 @@ def mensaje_resultado(foto: dict, sufijo: str, tanque: str, items: dict, trabado
         return (f"⚠️ Esta foto{de} salió {TEXTO_CALIDAD.get(foto['calidad'], foto['calidad'])}. "
                 "Si tenés otra del mismo lugar, mandala."), None
     if estado == NO_CORRESPONDE:
-        return (f"⚠️ Esta foto no coincide con las reparaciones que pusiste para {tanque}. "
+        visto = PARECE.get((foto.get("analisis") or {}).get("elemento_detectado"))
+        motivo = (f"parece {visto} y eso no está en las reparaciones que pusiste para {tanque}" if visto
+                  else f"no coincide con las reparaciones que pusiste para {tanque}")
+        return (f"⚠️ Esta foto {motivo}. "
                 "La saco de acá: mandala después con las fotos generales."), \
             InlineKeyboardMarkup([[InlineKeyboardButton(
                 "Sí es de las reparaciones", callback_data=datos_boton(sufijo, pid, "c"))]])
@@ -149,9 +158,11 @@ def mensaje_resultado(foto: dict, sufijo: str, tanque: str, items: dict, trabado
                 "Si tenés otra, mandala."), None
     if estado == A_CONFIRMAR:
         tapas = {g: i for g, i in items.items() if g in GRUPOS_TAPA}  # en el orden que las escribió
-        return "❓ ¿De cuál tapa es esta foto?", teclado_grupos(sufijo, pid, tapas, con_otra=False)
+        return ("❓ No estoy seguro de qué tapa es esta foto. ¿Es alguna de estas?",
+                teclado_grupos(sufijo, pid, tapas))
     if estado == VALIDADA:
-        return f"📷 {etiqueta(grupo)} ✅{seguir}", cambiar
+        sin_tapa = " (sin tapa, solo el agujero)" if (foto.get("analisis") or {}).get("tapa_faltante") else ""
+        return f"📷 {etiqueta(grupo)}{sin_tapa} ✅{seguir}", cambiar
     if trabado:  # sin validar (la IA no respondió) mientras el paso está trabado
         return f"📷 Foto recibida.{seguir}", None
     return None, None
@@ -275,8 +286,12 @@ def aplicar_correccion(user_data: dict, sufijo: str, pid: int, grupo: str):
             _descartar(user_data, sufijo, foto)
             return foto
         foto["candidatos"] = [grupo]
-        if foto.get("estado") in (NO_CORRESPONDE, A_CONFIRMAR, PENDIENTE):
-            foto["estado"] = VALIDADA
+        if foto.get("estado") == A_CONFIRMAR:
+            # El operario dijo qué tapa es; lo que la IA vio del daño sigue valiendo
+            respalda = (foto.get("analisis") or {}).get("respalda_la_reparacion", True)
+            foto["estado"] = VALIDADA if respalda else NO_RESPALDA
+        elif foto.get("estado") in (NO_CORRESPONDE, PENDIENTE):
+            foto["estado"] = VALIDADA  # el operario contradice a la IA: queda marcada como corregida
         return foto
 
 

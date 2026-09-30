@@ -20,7 +20,7 @@ def _datos():
         "fotos_reparaciones": {"main": [
             {"file_id": "f1", "estado": "validada", "grupo_ia": "tapa_inspeccion", "grupo": "tapa_acceso",
              "corregida": True, "analisis": {"elemento_detectado": "tapa_inspeccion", "tipo_tapa_seguro": True,
-                                             "estado": "malo", "calidad_foto": "buena",
+                                             "tapa_faltante": False, "estado": "malo", "calidad_foto": "buena",
                                              "respalda_la_reparacion": True, "requiere_revoque": False,
                                              "danos_visibles": ["óxido", "perforación"], "comentario": "x"}},
             {"file_id": "f2", "estado": "sin_validar", "grupo": "tapa_inspeccion", "analisis": None},

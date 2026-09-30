@@ -31,7 +31,8 @@ VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
 # Código del CSV → grupo
 _PREFIJOS = {"TIT": "tapa_inspeccion", "TAT": "tapa_acceso", "MAT": "marco", "TMT": "tapa_marco"}
 _TANQUE_CODIGO = {"C": "CISTERNA", "R": "RESERVA", "H": "INTERMEDIARIO"}
-_RE_CODIGO = re.compile(r"\b(TIT|TAT|MAT|TMT)([CRH])(EA|C)\b(\s*\d+(?:[.,]\d+)?)?", re.IGNORECASE)
+# Sin \b al final: la medida puede venir pegada al código ("TMTCEA56")
+_RE_CODIGO = re.compile(r"\b(TIT|TAT|MAT|TMT)([CRH])(EA|C)(?![A-Za-z])(\s*\d+(?:[.,]\d+)?)?", re.IGNORECASE)
 
 _NUMEROS = {"un": 1, "una": 1, "dos": 2, "ambas": 2, "ambos": 2, "tres": 3, "cuatro": 4}
 _CANT = r"\b(?:(\d+|una?|dos|tres|cuatro|ambas|ambos|las dos|los dos)\s+)?"

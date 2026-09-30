@@ -28,8 +28,8 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 COLUMNAS = [
     "fecha", "orden", "codigo_operario", "servicio", "tanque", "reparaciones_texto",
     "items_declarados", "file_id", "estado", "descartada", "grupo_ia", "grupo_final",
-    "corregida_por_operario", "elemento_detectado", "tipo_tapa_seguro", "estado_elemento",
-    "calidad_foto", "respalda_la_reparacion", "requiere_revoque", "danos_visibles",
+    "corregida_por_operario", "elemento_detectado", "tipo_tapa_seguro", "tapa_faltante",
+    "estado_elemento", "calidad_foto", "respalda_la_reparacion", "requiere_revoque", "danos_visibles",
     "comentario_ia", "modelo",
 ]
 
@@ -79,7 +79,8 @@ def filas(user_data: dict) -> list:
             foto.get("file_id", ""), foto.get("estado", ""), _si_no(descartada),
             foto.get("grupo_ia") or "", "" if descartada else (foto.get("grupo") or ""),
             _si_no(foto.get("corregida", False)), a.get("elemento_detectado", ""),
-            _si_no(a.get("tipo_tapa_seguro")), a.get("estado", ""), a.get("calidad_foto", ""),
+            _si_no(a.get("tipo_tapa_seguro")), _si_no(a.get("tapa_faltante")),
+            a.get("estado", ""), a.get("calidad_foto", ""),
             _si_no(a.get("respalda_la_reparacion")), _si_no(a.get("requiere_revoque")),
             "; ".join(a.get("danos_visibles", [])), a.get("comentario", ""),
             vision_service.VISION_MODEL if a else "",

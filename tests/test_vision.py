@@ -19,7 +19,7 @@ from bot.services.email_service import _build_body, _photo_attachments
 
 
 def analisis(**cambios):
-    base = {"elemento_detectado": "tapa_acceso", "tipo_tapa_seguro": True,
+    base = {"elemento_detectado": "tapa_acceso", "tipo_tapa_seguro": True, "tapa_faltante": False,
             "coincide_con_lo_declarado": True, "estado": "malo", "danos_visibles": ["óxido con nódulos"],
             "respalda_la_reparacion": True, "requiere_revoque": False,
             "calidad_foto": "buena", "comentario": "Tapa muy corroída"}
@@ -59,6 +59,11 @@ class TestParsearJson(unittest.TestCase):
         for texto in ("", None, "no es json", "[1, 2]", '{"calidad_foto": "buena"}'):
             self.assertIsNone(vision_service.parsear_json(texto), repr(texto))
 
+    def test_respuesta_vieja_sin_tapa_faltante(self):
+        viejo = analisis()
+        del viejo["tapa_faltante"]
+        self.assertFalse(vision_service.parsear_json(json.dumps(viejo))["tapa_faltante"])
+
     def test_valores_desconocidos(self):
         a = vision_service.parsear_json(json.dumps(analisis(calidad_foto="rara", elemento_detectado="caño")))
         self.assertEqual((a["calidad_foto"], a["elemento_detectado"]), ("buena", "otro"))
@@ -96,9 +101,24 @@ class TestClasificar(unittest.TestCase):
         self.assertEqual(c(analisis(respalda_la_reparacion=False)), ("no_respalda", None, ["tapa_acceso"]))
         self.assertEqual(c(analisis()), ("validada", None, ["tapa_acceso"]))
 
-    def test_un_solo_tipo_de_tapa_declarado_cualquier_tapa_cuenta(self):
+    def test_tapa_de_otro_tipo_que_el_declarado(self):
+        # La IA está segura de que es de inspección y solo se declaró la de acceso: no corresponde
         r = revision_fotos.clasificar(analisis(**INSPECCION), self.ACCESO)
-        self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa_acceso"]))
+        self.assertEqual(r["estado"], "no_corresponde")
+        # La IA duda: no se adivina, pregunta al operario
+        r = revision_fotos.clasificar(analisis(tipo_tapa_seguro=False, **INSPECCION), self.ACCESO)
+        self.assertEqual((r["estado"], r["candidatos"]), ("a_confirmar", ["tapa_acceso"]))
+
+    def test_tapa_y_marco_se_respalda_con_la_foto_de_la_tapa_de_acceso(self):
+        # "TMTCEA 56": en la foto de la tapa de acceso se ve el marco, alcanza con esa
+        r = revision_fotos.clasificar(analisis(), {"tapa_marco": {"cantidad": 1}})
+        self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa_marco"]))
+        r = revision_fotos.clasificar(analisis(elemento_detectado="marco"), {"tapa_marco": {"cantidad": 1}})
+        self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa_marco"]))
+
+    def test_tapa_a_secas_no_pregunta(self):
+        r = revision_fotos.clasificar(analisis(tipo_tapa_seguro=False), {"tapa": {"cantidad": 1}})
+        self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa"]))
 
     def test_los_dos_tipos_y_la_ia_duda_pregunta(self):
         r = revision_fotos.clasificar(analisis(tipo_tapa_seguro=False), self.AMBAS)
@@ -128,6 +148,7 @@ class TestAnalizarFoto(unittest.TestCase):
             self.assertIsNone(vision_service.agrupar_objetos([jpeg(), jpeg()], "Tapa de acceso", "Cisterna", 2))
             cliente.assert_not_called()
 
+    @patch.object(vision_service, "_referencias", [])  # sin fotos de referencia
     @patch.object(vision_service, "VISION_ACTIVA", True)
     def test_pedido_y_respuesta(self):
         with patch.object(vision_service, "_cliente") as cliente:
@@ -137,9 +158,11 @@ class TestAnalizarFoto(unittest.TestCase):
             kwargs = cliente.return_value.chat.completions.create.call_args.kwargs
         self.assertEqual(kwargs["model"], vision_service.VISION_MODEL)
         self.assertEqual(kwargs["response_format"]["type"], "json_schema")
-        texto, imagen = kwargs["messages"][0]["content"]
-        self.assertIn('"cambiar tapa"', texto["text"])
-        self.assertIn("Tapa de acceso (x2)", texto["text"])
+        fijo, caso, imagen = kwargs["messages"][0]["content"]
+        self.assertIn("Sos inspector de tanques", fijo["text"])
+        self.assertIn('"cambiar tapa"', caso["text"])
+        self.assertIn("Tapa de acceso (x2)", caso["text"])
+        self.assertEqual(imagen["image_url"]["detail"], "high")
         self.assertTrue(imagen["image_url"]["url"].startswith("data:image/jpeg;base64,"))
 
     @patch.object(vision_service, "VISION_ACTIVA", True)
@@ -254,7 +277,8 @@ class TestUnItem(FlujoConIA):
         [descartada] = self.ctx.user_data["fotos_descartadas"]
         self.assertEqual((descartada["file_id"], descartada["sufijo"]), ("piso", "main"))
         aviso = self._enviados()[-1]
-        self.assertIn("no coincide con las reparaciones que pusiste para <b>Cisterna</b>", aviso["text"])
+        self.assertIn("parece el piso del tanque y eso no está en las reparaciones que pusiste para <b>Cisterna</b>",
+                      aviso["text"])
         self.assertIn("mandala después con las fotos generales", aviso["text"])
         self.assertEqual(aviso["reply_to_message_id"], 77)
         self.assertNotIn("piso", [fid for fid, _ in _photo_attachments(self.ctx.user_data)])
@@ -373,10 +397,11 @@ class TestDosTiposDeTapa(FlujoConIA):
     def test_la_ia_duda_y_pregunta_cual_tapa_es(self):
         self._foto("t1", analisis(tipo_tapa_seguro=False))
         pregunta = self._enviados()[-1]
-        self.assertIn("¿De cuál tapa es esta foto?", pregunta["text"])
+        self.assertIn("No estoy seguro de qué tapa es esta foto", pregunta["text"])
         botones = [b.callback_data for fila in pregunta["reply_markup"].inline_keyboard for b in fila]
         pid = self._pid("t1")
-        self.assertEqual(botones, [f"rf:main:{pid}:g:tapa_inspeccion", f"rf:main:{pid}:g:tapa_acceso"])
+        self.assertEqual(botones, [f"rf:main:{pid}:g:tapa_inspeccion", f"rf:main:{pid}:g:tapa_acceso",
+                                   f"rf:main:{pid}:g:otra"])
         self._foto("i1", analisis(**INSPECCION))
         # Sin responder no se puede cerrar el paso
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
@@ -447,6 +472,93 @@ class TestDosTapasDeAcceso(FlujoConIA):
         self.objetos = None
         self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
         self.assertIn("Tapa de acceso 2/2 sin verificar", _build_body(self.ctx.user_data))
+
+class TestCasoRealTapaDeAccesoComoInspeccion(FlujoConIA):
+    """Caso real del 30/09: "Tapa de inspeccion y TMTCEA56" y una foto de la tapa de acceso que la
+    IA toma como de inspección sin estar segura. Antes pasaba como tapa de inspección ✅."""
+    REPARACIONES = "Tapa de inspeccion y TMTCEA56"
+
+    def test_pide_las_dos_y_pregunta_la_tapa_dudosa(self):
+        texto = self.ctx.bot.send_message.call_args_list[0].kwargs["text"]
+        self.assertIn("• Tapa de inspección", texto)
+        self.assertIn("• Tapa y marco de acceso", texto)
+        self._foto("acceso", analisis(tipo_tapa_seguro=False, **INSPECCION))
+        self.assertIn("No estoy seguro de qué tapa es esta foto", self._enviados()[-1]["text"])
+        # El operario dice que es la tapa y marco de acceso
+        self._boton(f"rf:main:{self._pid('acceso')}:g:tapa_marco")
+        # Falta la de inspección: se traba por eso, no pasa como si fuera la de inspección
+        self.assertEqual(self._listo(), REPAIR_PHOTOS)
+        self.assertIn("✅ Tapa y marco de acceso (1 foto(s))", self._textos())
+        self.assertIn("Falta la foto de la tapa de inspección", self._textos())
+        [foto] = self._fotos()
+        self.assertEqual((foto["grupo"], foto["corregida"]), ("tapa_marco", True))
+
+    def test_si_confirma_una_tapa_sin_dano_no_respalda(self):
+        self._foto("acceso", analisis(tipo_tapa_seguro=False, respalda_la_reparacion=False, **INSPECCION))
+        self._boton(f"rf:main:{self._pid('acceso')}:g:tapa_marco")
+        self.assertEqual(self._fotos()[0]["estado"], "no_respalda")
+
+
+class TestTapaFaltante(FlujoConIA):
+    """Donde debería haber una tapa de inspección y solo está el agujero."""
+    REPARACIONES = "colocar tapa de inspeccion"
+
+    def test_el_agujero_respalda_colocar_la_tapa(self):
+        self._foto("agujero", analisis(tapa_faltante=True, **INSPECCION))
+        self.assertIn("📷 Tapa de inspección (sin tapa, solo el agujero) ✅", self._enviados()[-1]["text"])
+        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+
+
+class TestReferencias(unittest.TestCase):
+    """Fotos de ejemplo en bot/referencias/<elemento>/ que se le muestran a la IA."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        for elemento, n in (("tapa_acceso", 3), ("tapa_inspeccion", 2), ("tapa_inspeccion_faltante", 1)):
+            (self.dir / elemento).mkdir()
+            for i in range(n):
+                (self.dir / elemento / f"{i}.jpg").write_bytes(jpeg(2000, 1500))
+        (self.dir / "tapa_acceso" / "notas.txt").write_text("no es una foto")
+        (self.dir / "carpeta_desconocida").mkdir()
+        for nombre, valor in (("REFERENCIAS_DIR", self.dir), ("_referencias", None), ("VISION_ACTIVA", True)):
+            parche = patch.object(vision_service, nombre, valor)
+            parche.start()
+            self.addCleanup(parche.stop)
+
+    def test_carga_por_elemento_achicadas(self):
+        refs = vision_service.referencias()
+        self.assertEqual([(e, len(j)) for e, j in refs],
+                         [("tapa_acceso", 3), ("tapa_inspeccion", 2), ("tapa_inspeccion_faltante", 1)])
+        img = Image.open(io.BytesIO(refs[0][1][0]))
+        self.assertEqual(max(img.size), vision_service.LADO_REFERENCIA_PX)
+        self.assertIs(vision_service.referencias(), refs)  # se leen una sola vez
+
+    def test_tope_por_elemento(self):
+        with patch.object(vision_service, "VISION_MAX_REF", 2):
+            self.assertEqual([len(j) for _, j in vision_service.referencias()], [2, 2, 1])
+
+    def test_van_en_el_pedido_antes_de_la_foto(self):
+        with patch.object(vision_service, "_cliente") as cliente:
+            resp = MagicMock()
+            resp.choices[0].message.content = json.dumps(analisis())
+            cliente.return_value.chat.completions.create.return_value = resp
+            vision_service.analizar_foto(jpeg(), "Cisterna", "cambiar tapa", "Tapa de acceso")
+            contenido = cliente.return_value.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        textos = [c["text"] for c in contenido if c["type"] == "text"]
+        self.assertIn("Ejemplos de tapas de acceso (elemento_detectado = tapa_acceso):", textos)
+        self.assertIn("Ejemplos de tapas de inspección (elemento_detectado = tapa_inspeccion):", textos)
+        self.assertTrue(any("solo está el agujero" in t and "tapa_faltante = true" in t for t in textos))
+        imagenes = [c["image_url"]["detail"] for c in contenido if c["type"] == "image_url"]
+        self.assertEqual(imagenes, ["low"] * 6 + ["high"])  # 6 referencias y al final la foto
+        self.assertTrue(contenido[-2]["text"].startswith("FOTO A ANALIZAR"))
+
+    def test_sin_carpeta_no_hay_referencias(self):
+        with patch.object(vision_service, "REFERENCIAS_DIR", self.dir / "no_existe"):
+            self.assertEqual(vision_service.referencias(), [])
 
 
 if __name__ == "__main__":
