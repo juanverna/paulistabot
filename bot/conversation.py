@@ -19,7 +19,8 @@ from bot.handlers.tanques   import (handle_tank_type,
                                      get_repair_alt2, get_suggestions_alt2,
                                      handle_tank_photos)
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
-from bot.handlers.fotos_reparaciones import handle_repair_photos
+from bot.handlers.fotos_reparaciones import (handle_repair_photos, handle_repair_photo_button,
+                                             handle_boton_vencido)
 from bot.handlers.voice_handler import (handle_voice_message, handle_reprompt_response,
                                          handle_alt_reprompt_response, handle_admin_code_response)
 from bot.handlers.final_summary import (show_final_summary, handle_final_summary_callback,
@@ -52,7 +53,8 @@ def build_conversation_handler() -> ConversationHandler:
             FUM_OBS:    [BACK, MessageHandler(TEXT, get_fum_obs)],
 
             TANK_TYPE: [
-                CallbackQueryHandler(handle_tank_type),
+                # sin "rf:": los botones de fotos de un paso anterior no son una elección de tanque
+                CallbackQueryHandler(handle_tank_type, pattern="^(?!rf:)"),
                 MessageHandler(VOICE, handle_voice_message),
                 MessageHandler(TEXT,  handle_reprompt_response),
                 BACK,
@@ -65,7 +67,7 @@ def build_conversation_handler() -> ConversationHandler:
             REPAIR_MAIN:           [MessageHandler(TEXT, get_repair_main)],
             SUGGESTIONS_MAIN:      [MessageHandler(TEXT, get_suggestions_main)],
 
-            ASK_SECOND: [CallbackQueryHandler(handle_ask_second), BACK],
+            ASK_SECOND: [CallbackQueryHandler(handle_ask_second, pattern="^(si|no|back)$"), BACK],
 
             MEASURE_ALT1:          [MessageHandler(TEXT, get_measure_alt1)],
             TAPAS_INSPECCION_ALT1: [MessageHandler(TEXT, get_tapas_inspeccion_alt1)],
@@ -74,7 +76,7 @@ def build_conversation_handler() -> ConversationHandler:
             REPAIR_ALT1:           [MessageHandler(TEXT, get_repair_alt1)],
             SUGGESTIONS_ALT1:      [MessageHandler(TEXT, get_suggestions_alt1)],
 
-            ASK_THIRD: [CallbackQueryHandler(handle_ask_third), BACK],
+            ASK_THIRD: [CallbackQueryHandler(handle_ask_third, pattern="^(si|no|back)$"), BACK],
 
             MEASURE_ALT2:          [MessageHandler(TEXT, get_measure_alt2)],
             TAPAS_INSPECCION_ALT2: [MessageHandler(TEXT, get_tapas_inspeccion_alt2)],
@@ -85,6 +87,7 @@ def build_conversation_handler() -> ConversationHandler:
 
             # Fotos de las reparaciones de cada tanque ("atrás" lo maneja el handler)
             REPAIR_PHOTOS: [
+                CallbackQueryHandler(handle_repair_photo_button, pattern="^rf:"),
                 MessageHandler(Filters.photo,    handle_repair_photos),
                 MessageHandler(Filters.document, handle_repair_photos),
                 MessageHandler(TEXT,             handle_repair_photos),
@@ -110,5 +113,6 @@ def build_conversation_handler() -> ConversationHandler:
                 MessageHandler(TEXT,  handle_final_edit_response),
             ],
         },
-        fallbacks=[],
+        # Botón de una foto tocado cuando ese paso ya terminó
+        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^rf:")],
     )

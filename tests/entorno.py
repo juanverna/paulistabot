@@ -8,6 +8,7 @@ VARIABLES_FALSAS = {
     "EMAIL_ADDRESS":      "test@example.com",
     "EMAIL_PASSWORD":     "test",
     "OPENAI_API_KEY":     "sk-test",
+    "VISION_ACTIVA":      "0",   # ningún test llama a OpenAI: los de visión simulan la respuesta
 }
 
 
@@ -46,6 +47,16 @@ def update_documento(file_id: str, mime_type: str) -> MagicMock:
     upd = update_texto(None)
     upd.message.document = MagicMock(file_id=file_id, mime_type=mime_type)
     return upd
+
+
+def esperar_revisiones(fotos: list = None, chat_id: int = 1) -> None:
+    """Espera que terminen las revisiones de fotos en segundo plano."""
+    from bot.services import revision_fotos
+    revision_fotos.esperar(chat_id, fotos or [], timeout=5)
+
+
+def ids(fotos: list) -> list:
+    return [f["file_id"] for f in fotos]
 
 
 def mensajes_enviados(ctx: MagicMock, upd: MagicMock) -> str:

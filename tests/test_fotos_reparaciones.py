@@ -48,15 +48,16 @@ class TestFlujoManual(unittest.TestCase):
         ctx, estado = self._hasta_fotos()
         self.assertEqual(estado, REPAIR_PHOTOS)
         self.assertEqual(ctx.user_data["repairs"], "cambiar tapa de acceso")
-        self.assertIn("fotos de las reparaciones de <b>Cisterna</b>",
-                      ctx.bot.send_message.call_args.kwargs["text"])
+        texto = ctx.bot.send_message.call_args.kwargs["text"]
+        self.assertIn("Mandá una foto de cada reparación de <b>Cisterna</b>", texto)
+        self.assertIn("• Tapa de acceso", texto)
 
     def test_varias_fotos_y_listo(self):
         ctx, _ = self._hasta_fotos()
         self.assertEqual(fr.handle_repair_photos(entorno.update_foto("f1"), ctx), REPAIR_PHOTOS)
         self.assertEqual(fr.handle_repair_photos(entorno.update_foto("f2"), ctx), REPAIR_PHOTOS)
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS_MAIN)
-        self.assertEqual(ctx.user_data["fotos_reparaciones"]["main"], ["f1", "f2"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["f1", "f2"])
         self.assertEqual(ctx.user_data["state_stack"], [REPAIR_MAIN, REPAIR_PHOTOS])
         self.assertNotIn("destrabes", ctx.user_data)
 
@@ -67,20 +68,20 @@ class TestFlujoManual(unittest.TestCase):
         fr.handle_repair_photos(u2, ctx)
         self.assertEqual(u1.message.reply_text.call_count, 1)
         self.assertEqual(u2.message.reply_text.call_count, 0)
-        self.assertEqual(ctx.user_data["fotos_reparaciones"]["main"], ["f1", "f2"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["f1", "f2"])
 
     def test_documento_imagen_se_acepta_y_otro_no(self):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_documento("d1", "image/jpeg"), ctx)
         fr.handle_repair_photos(entorno.update_documento("d2", "application/pdf"), ctx)
-        self.assertEqual(ctx.user_data["fotos_reparaciones"]["main"], ["d1"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["d1"])
 
     def test_listo_sin_fotos_traba(self):
         ctx, _ = self._hasta_fotos()
         for texto in ("Listo", "no tengo"):
             upd = entorno.update_texto(texto)
             self.assertEqual(fr.handle_repair_photos(upd, ctx), REPAIR_PHOTOS)
-            self.assertIn("Falta la foto de las reparaciones de <b>Cisterna</b>. Si tenés otra foto",
+            self.assertIn("Falta la foto de la tapa de acceso. Si tenés otra foto",
                           ctx.bot.send_message.call_args.kwargs["text"])
         self.assertTrue(ctx.user_data["rep_fotos"]["trabado"])
 
@@ -88,7 +89,8 @@ class TestFlujoManual(unittest.TestCase):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_texto("Listo"), ctx)
         fr.handle_repair_photos(entorno.update_foto("f1"), ctx)
-        self.assertFalse(ctx.user_data["rep_fotos"]["trabado"])
+        # Sigue trabado hasta el próximo "Listo" (ahí se mira si la foto sirve; con la IA apagada, sí)
+        self.assertTrue(ctx.user_data["rep_fotos"]["trabado"])
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS_MAIN)
         self.assertNotIn("destrabes", ctx.user_data)
 
@@ -100,7 +102,7 @@ class TestFlujoManual(unittest.TestCase):
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), ctx), SUGGESTIONS_MAIN)
         [reg] = ctx.user_data["destrabes"]
         self.assertEqual((reg["tanque"], reg["item"], reg["motivo"]),
-                         ("Cisterna", "reparaciones", "foto faltante"))
+                         ("Cisterna", "Tapa de acceso", "foto faltante"))
 
     @patch.dict(os.environ, {"ADMIN_DAILY_CODE": "4821"})
     def test_codigo_sin_estar_trabado_no_hace_nada(self):
@@ -127,7 +129,7 @@ class TestFlujoManual(unittest.TestCase):
         self.assertEqual(get_repair_alt1(entorno.update_texto("revocar"), ctx), REPAIR_PHOTOS)
         fr.handle_repair_photos(entorno.update_foto("r1"), ctx)
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("listo"), ctx), SUGGESTIONS_ALT1)
-        self.assertEqual(ctx.user_data["fotos_reparaciones"]["alt1"], ["r1"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["alt1"]), ["r1"])
         self.assertEqual(ctx.user_data["state_stack"], [REPAIR_ALT1, REPAIR_PHOTOS])
 
 
@@ -144,7 +146,8 @@ class TestFlujoVoz(unittest.TestCase):
         self.assertEqual(ctx.user_data["rep_fotos"]["sufijo"], "alt2")
         fr.handle_repair_photos(entorno.update_foto("i1"), ctx)
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), CONTACT)
-        self.assertEqual(ctx.user_data["fotos_reparaciones"], {"main": ["m1"], "alt2": ["i1"]})
+        fotos = ctx.user_data["fotos_reparaciones"]
+        self.assertEqual((entorno.ids(fotos["main"]), entorno.ids(fotos["alt2"])), (["m1"], ["i1"]))
 
     def test_con_contacto_va_a_fotos_generales(self):
         ctx = entorno.contexto(_datos_base(contact="Juan 1122334455"))

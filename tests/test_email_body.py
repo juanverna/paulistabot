@@ -60,8 +60,28 @@ class TestCuerpoMail(unittest.TestCase):
 
     def test_adjuntos_con_nombre_por_tanque(self):
         nombres = [n for _, n in _photo_attachments(_datos())]
-        self.assertEqual(nombres, ["reparaciones_cisterna_1", "reparaciones_cisterna_2",
-                                   "reparaciones_reserva_1", "foto_1", "foto_2", "foto_3"])
+        self.assertEqual(nombres, ["reparaciones_cisterna_foto_1", "reparaciones_cisterna_foto_2",
+                                   "reparaciones_reserva_foto_1", "foto_1", "foto_2", "foto_3"])
+
+    def test_adjuntos_con_nombre_por_item(self):
+        datos = _datos()
+        datos["fotos_reparaciones"] = {"main": [
+            {"file_id": "a", "grupo": "tapa_acceso"}, {"file_id": "b", "grupo": "tapa_acceso"},
+            {"file_id": "c", "grupo": "tapa_inspeccion"}]}
+        nombres = [n for _, n in _photo_attachments(datos)][:3]
+        self.assertEqual(nombres, ["reparaciones_cisterna_tapa_acceso_1", "reparaciones_cisterna_tapa_acceso_2",
+                                   "reparaciones_cisterna_tapa_inspeccion_1"])
+
+    def test_estado_de_los_items_y_corregidas(self):
+        datos = _datos()
+        datos["fotos_reparaciones"] = {"main": [
+            {"file_id": "a", "estado": "validada", "corregida": True}, {"file_id": "b", "estado": "validada"}]}
+        datos["items_reparacion"] = {"main": {"items": {}, "estado": {
+            "tapa_acceso": {"requeridas": 2, "distintas": 2, "verificado": True},
+            "marco": {"requeridas": 1, "distintas": 0, "verificado": True}}}}
+        body = _build_body(datos)
+        self.assertIn("Fotos reparaciones Cisterna: 2 (validadas por IA: 2, corregidas por el operario: 1)", body)
+        self.assertIn("Ítems con foto Cisterna: Tapa de acceso 2/2, Marco 0/1", body)
 
 
 if __name__ == "__main__":

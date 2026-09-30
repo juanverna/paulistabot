@@ -3,12 +3,22 @@ fotos_reparaciones.py
 ---------------------
 Paso de fotos de las reparaciones de cada tanque (Limpieza y Presupuestos).
 
-Después de que el operario escribe las reparaciones de un tanque, el bot le pide
-las fotos de esas reparaciones (puede mandar varias). Si escribe "Listo" sin haber
-mandado ninguna, el paso queda trabado hasta que mande una foto o ingrese el
-código diario del encargado (ver bot/services/destrabe.py).
+Después de que el operario escribe las reparaciones de un tanque, el bot saca los ítems
+de ese texto (bot/services/items_reparacion.py: tapa de acceso, tapa de inspección,
+marco, revoque...) y le pide una foto de cada uno; si hay que cambiar 2 tapas de acceso,
+2 fotos de 2 tapas distintas. Puede mandar varias fotos, en el orden que quiera.
 
-Las fotos quedan en user_data["fotos_reparaciones"][sufijo] (sufijo: main/alt1/alt2).
+Cada foto se revisa con IA en segundo plano (bot/services/revision_fotos.py): el bot le
+responde a qué ítem la asignó (con botón para corregirla), si no coincide con lo declarado
+(se saca del apartado), o si salió mal o no muestra el daño.
+
+Al escribir "Listo" se evalúa cada ítem. Si todos tienen sus fotos, sigue; si no, muestra
+qué falta y el paso queda trabado hasta que mande las fotos que faltan o ingrese el código
+diario del encargado (ver bot/services/destrabe.py), que queda registrado por ítem.
+
+Las fotos quedan en user_data["fotos_reparaciones"][sufijo] (sufijo: main/alt1/alt2),
+como dicts con file_id, estado, ítem y análisis; los ítems y su estado final en
+user_data["items_reparacion"][sufijo].
 """
 
 import re
@@ -20,7 +30,9 @@ from telegram.ext import CallbackContext, ConversationHandler
 from bot.states import (REPAIR_PHOTOS, SUGGESTIONS_MAIN, SUGGESTIONS_ALT1, SUGGESTIONS_ALT2)
 from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import push_state, back_handler, check_special_commands
-from bot.services import destrabe
+from bot.services import destrabe, revision_fotos, vision_service
+from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
+                                           codigos_de_otro_tanque)
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +49,6 @@ SIGUIENTE_MANUAL = {
     "alt1": (SUGGESTIONS_ALT1, "alternative_1"),
     "alt2": (SUGGESTIONS_ALT2, "alternative_2"),
 }
-
-ITEM = "reparaciones"
 
 _SIN_REPARACIONES = re.compile(
     r"(no|nada|ninguna|ninguno|-|n/?a|no aplica|sin reparacion(es)?"
@@ -63,8 +73,16 @@ def _nombre_tanque(context: CallbackContext, sufijo: str) -> str:
     return context.user_data.get(TANQUES[sufijo][1], "").capitalize()
 
 
+def _reparacion(context: CallbackContext, sufijo: str) -> str:
+    return context.user_data.get(TANQUES[sufijo][0], "") or ""
+
+
 def _fotos(context: CallbackContext, sufijo: str) -> list:
     return context.user_data.setdefault("fotos_reparaciones", {}).setdefault(sufijo, [])
+
+
+def _items(context: CallbackContext, sufijo: str) -> dict:
+    return context.user_data.get("items_reparacion", {}).get(sufijo, {}).get("items", {})
 
 
 def _send(update: Update, context: CallbackContext, text: str) -> None:
@@ -76,8 +94,17 @@ def _send(update: Update, context: CallbackContext, text: str) -> None:
 
 
 def texto_pedido(context: CallbackContext, sufijo: str) -> str:
-    return (f"📷 Mandá las fotos de las reparaciones de {_nombre_tanque(context, sufijo)} "
-            "(podés mandar varias).\nCuando termines, escribí <b>Listo</b>.")
+    items = _items(context, sufijo)
+    return (f"📷 Mandá una foto de cada reparación de {_nombre_tanque(context, sufijo)}:\n"
+            f"{lista_para_operario(items)}\n\n"
+            "Podés mandar varias. Cuando termines, escribí <b>Listo</b>.")
+
+
+def _preparar(context: CallbackContext, sufijo: str, modo: str) -> None:
+    items = detectar_items(_reparacion(context, sufijo))
+    context.user_data.setdefault("items_reparacion", {})[sufijo] = {"items": items, "estado": None}
+    context.user_data["rep_fotos"] = {"sufijo": sufijo, "modo": modo, "trabado": False,
+                                      "distincion": {}}
 
 
 def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str) -> int:
@@ -85,15 +112,20 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
     Arranca el paso de fotos de reparaciones de un tanque.
     modo: "manual" (sigue con sugerencias) o "voz" (vuelve al flujo de voz).
     """
-    context.user_data["rep_fotos"] = {"sufijo": sufijo, "modo": modo, "trabado": False}
-    _send(update, context, texto_pedido(context, sufijo))
+    _preparar(context, sufijo, modo)
+    texto = texto_pedido(context, sufijo)
+    ajenos = codigos_de_otro_tanque(_reparacion(context, sufijo), context.user_data.get(TANQUES[sufijo][1]))
+    if ajenos:
+        texto = (f"⚠️ Ojo: {', '.join(ajenos)} es un código de otro tanque, no de "
+                 f"{_nombre_tanque(context, sufijo)}.\n\n") + texto
+    _send(update, context, texto)
     context.user_data["current_state"] = REPAIR_PHOTOS
     return REPAIR_PHOTOS
 
 
 def reanudar_manual(update: Update, context: CallbackContext, sufijo: str) -> None:
     """Vuelve a este paso con "atrás" desde sugerencias (flujo manual). Las fotos se conservan."""
-    context.user_data["rep_fotos"] = {"sufijo": sufijo, "modo": "manual", "trabado": False}
+    _preparar(context, sufijo, "manual")
     n = len(_fotos(context, sufijo))
     extra = f"\nYa tenés {n} foto(s) cargada(s)." if n else ""
     _send(update, context, texto_pedido(context, sufijo) + extra)
@@ -127,12 +159,41 @@ def _continuar(update: Update, context: CallbackContext) -> int:
     return siguiente
 
 
-def _trabar(update: Update, context: CallbackContext, ctx: dict) -> int:
+def _trabar(update: Update, context: CallbackContext, ctx: dict, faltantes: dict) -> int:
+    """Traba el paso: faltantes = {grupo: estado del ítem} de los ítems sin sus fotos."""
     ctx["trabado"] = True
-    nombre = _nombre_tanque(context, ctx["sufijo"])
-    _send(update, context, "⚠️ " + destrabe.mensaje_trabado(
-        f"Falta la foto de las reparaciones de {nombre}"))
+    ctx["faltantes"] = {g: e["motivo"] for g, e in faltantes.items()}
+    motivos = ". ".join(e["texto"] for e in faltantes.values())
+    _send(update, context, "⚠️ " + destrabe.mensaje_trabado(motivos))
     return REPAIR_PHOTOS
+
+
+def _cerrar_paso(update: Update, context: CallbackContext, ctx: dict) -> int:
+    """"Listo": espera las revisiones pendientes y evalúa si cada ítem tiene sus fotos."""
+    sufijo  = ctx["sufijo"]
+    chat_id = update.effective_chat.id
+    items   = _items(context, sufijo)
+    if revision_fotos.hay_pendientes(chat_id):
+        update.message.reply_text("⏳ Estoy revisando las fotos, un momento...")
+    revision_fotos.esperar(chat_id, _fotos(context, sufijo),
+                           timeout=vision_service.VISION_TIMEOUT_S + 10)
+
+    fotos = revision_fotos.instantanea(_fotos(context, sufijo))
+    if any(f.get("estado") == revision_fotos.A_CONFIRMAR for f in fotos):
+        update.message.reply_text("❓ Antes de seguir, decime de cuál tapa es cada foto marcada "
+                                  "con ❓ (tocá el botón en esa foto).")
+        return REPAIR_PHOTOS
+
+    estados = revision_fotos.evaluar(context.bot, context.user_data, sufijo,
+                                     _nombre_tanque(context, sufijo), items, ctx.setdefault("distincion", {}))
+    context.user_data["items_reparacion"][sufijo]["estado"] = estados
+    if len(items) > 1 or any(e["requeridas"] > 1 for e in estados.values()):
+        _send(update, context, revision_fotos.texto_checklist(_nombre_tanque(context, sufijo), estados))
+
+    faltantes = {g: e for g, e in estados.items() if not e["ok"]}
+    if not faltantes:
+        return _continuar(update, context)
+    return _trabar(update, context, ctx, faltantes)
 
 
 def _es_imagen(update: Update) -> bool:
@@ -162,8 +223,13 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
             update.message.reply_text("Eso no es una foto. Mandá una foto de la galería.")
             return REPAIR_PHOTOS
         fotos = _fotos(context, sufijo)
-        fotos.append(_file_id(update))
-        ctx["trabado"] = False
+        pid = context.user_data["foto_pid"] = context.user_data.get("foto_pid", 0) + 1
+        foto = {"pid": pid, "file_id": _file_id(update), "message_id": update.message.message_id}
+        fotos.append(foto)
+        # Se revisa con IA en segundo plano; si sigue trabado, se destraba en el próximo "Listo"
+        revision_fotos.enviar_a_revisar(
+            context.bot, update.effective_chat.id, context.user_data, sufijo, foto,
+            _nombre_tanque(context, sufijo), _reparacion(context, sufijo), _items(context, sufijo))
         # Un álbum llega como varios mensajes: respondemos una sola vez por álbum
         grupo = update.message.media_group_id
         if grupo and grupo == ctx.get("ultimo_album"):
@@ -193,14 +259,16 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
             return REPAIR_PHOTOS
         # Vuelve a pedir el texto de reparaciones: las fotos de este tanque se descartan
         context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
+        context.user_data.get("items_reparacion", {}).pop(sufijo, None)
         context.user_data.pop("rep_fotos", None)
         return back_handler(update, context)
 
     if ctx.get("trabado") and destrabe.parece_codigo(text):
         resultado = destrabe.intentar_destrabe(context.user_data, text)
         if resultado == destrabe.OK:
-            destrabe.registrar_destrabe(context.user_data, _nombre_tanque(context, sufijo),
-                                        ITEM, destrabe.MOTIVO_FOTO_FALTANTE)
+            for grupo, motivo in ctx.get("faltantes", {}).items():
+                destrabe.registrar_destrabe(context.user_data, _nombre_tanque(context, sufijo),
+                                            etiqueta(grupo), motivo or destrabe.MOTIVO_FOTO_FALTANTE)
             update.message.reply_text("✅ Código correcto. Seguimos.")
             return _continuar(update, context)
         if resultado == destrabe.BLOQUEADO:
@@ -210,14 +278,50 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
         return REPAIR_PHOTOS
 
     if normal == "listo" or normal.startswith("no tengo"):
-        if _fotos(context, sufijo):
-            return _continuar(update, context)
-        return _trabar(update, context, ctx)
+        return _cerrar_paso(update, context, ctx)
 
-    if ctx.get("trabado"):
-        return _trabar(update, context, ctx)
     update.message.reply_text(
         apply_bold_keywords("Mandá una foto o escribí <b>Listo</b>."),
         parse_mode=ParseMode.HTML,
     )
     return REPAIR_PHOTOS
+
+
+# =============================================================================
+# Botones de las fotos: [Cambiar], "¿De cuál tapa es?", "Sí es de las reparaciones"
+# =============================================================================
+def handle_repair_photo_button(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    partes = query.data.split(":")  # rf:<sufijo>:<pid>:c  |  rf:<sufijo>:<pid>:g:<grupo>
+    ctx = context.user_data.get("rep_fotos")
+    if len(partes) < 4 or not ctx or ctx.get("sufijo") != partes[1]:
+        query.answer("Ese paso ya terminó.")
+        return context.user_data.get("current_state", REPAIR_PHOTOS)
+    sufijo, pid, accion = partes[1], int(partes[2]), partes[3]
+    items = _items(context, sufijo)
+    query.answer()
+
+    if accion == "c":
+        query.edit_message_reply_markup(revision_fotos.teclado_grupos(sufijo, pid, items))
+        return REPAIR_PHOTOS
+
+    grupo = partes[4] if len(partes) > 4 else ""
+    if accion != "g" or (grupo != "otra" and grupo not in items):
+        return REPAIR_PHOTOS
+    foto = revision_fotos.aplicar_correccion(context.user_data, sufijo, pid, grupo)
+    if foto is None:
+        query.edit_message_reply_markup(None)
+        return REPAIR_PHOTOS
+    ctx.get("distincion", {}).clear()  # cambió qué fotos tiene cada ítem
+    if grupo == "otra":
+        query.edit_message_text("🗑️ La saqué de las reparaciones: mandala después con las fotos generales.")
+    else:
+        query.edit_message_text(apply_bold_keywords(f"📷 {etiqueta(grupo)} ✅ (corregida)"),
+                                parse_mode=ParseMode.HTML)
+    return REPAIR_PHOTOS
+
+
+def handle_boton_vencido(update: Update, context: CallbackContext):
+    """Botón de una foto de un paso que ya terminó (cualquier otro estado)."""
+    update.callback_query.answer("Ese paso ya terminó.")
+    return None

@@ -14,6 +14,23 @@ class TestConversacion(unittest.TestCase):
         self.assertIn(REPAIR_PHOTOS, handler.states)
         self.assertIn(REPAIR_PHOTOS, STATE_KEYS)
 
+    def test_boton_viejo_de_una_foto_no_se_toma_como_si_no(self):
+        # En ASK_SECOND/ASK_THIRD/TANK_TYPE un "rf:..." no lo agarra el handler del paso,
+        # sino el fallback que responde "Ese paso ya terminó"
+        from unittest.mock import MagicMock
+        from telegram import Update
+        from telegram.ext import CallbackQueryHandler
+        from bot.states import ASK_SECOND, ASK_THIRD, TANK_TYPE
+        handler = build_conversation_handler()
+        update = MagicMock(spec=Update)
+        update.callback_query.data = "rf:main:3:c"
+        for estado in (ASK_SECOND, ASK_THIRD, TANK_TYPE):
+            for h in handler.states[estado]:
+                if isinstance(h, CallbackQueryHandler):
+                    self.assertFalse(h.check_update(update), (estado, h.callback.__name__))
+        [fallback] = handler.fallbacks
+        self.assertTrue(fallback.check_update(update))
+
 
 if __name__ == "__main__":
     unittest.main()

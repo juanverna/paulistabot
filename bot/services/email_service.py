@@ -98,12 +98,51 @@ def _build_body(user_data: dict) -> str:
         # toma esas claves como ítems a cotizar.
         for sufijo, fotos in user_data.get("fotos_reparaciones", {}).items():
             if fotos:
-                lines.append(f"Fotos reparaciones {_tank_name(user_data, sufijo)}: {len(fotos)}")
+                lines.append(f"Fotos reparaciones {_tank_name(user_data, sufijo)}: {len(fotos)}"
+                             f"{_detalle_revision(fotos)}")
+        for sufijo, datos in user_data.get("items_reparacion", {}).items():
+            if datos.get("estado"):
+                lines.append(f"Ítems con foto {_tank_name(user_data, sufijo)}: {_detalle_items(datos['estado'])}")
+        descartadas = {}
+        for foto in user_data.get("fotos_descartadas", []):
+            descartadas[foto["sufijo"]] = descartadas.get(foto["sufijo"], 0) + 1
+        for sufijo, cantidad in descartadas.items():
+            lines.append(f"Fotos descartadas por no coincidir {_tank_name(user_data, sufijo)}: {cantidad}")
         for d in user_data.get("destrabes", []):
             lines.append(f"Destrabado por encargado ({d['tanque']}, {d['item']}): "
                          f"{d['motivo']} - {d['fecha']} {d['hora']}")
 
     return "Detalles del reporte:\n" + "\n".join(lines)
+
+
+ESTADOS_TEXTO = {"validada": "validadas por IA", "sin_validar": "sin validar",
+                 "calidad": "de calidad baja", "no_respalda": "no muestran el daño"}
+
+
+def _detalle_items(estados: dict) -> str:
+    """"Tapa de acceso 2/2, Marco 0/1" (fotos de objetos distintos / requeridas por ítem)."""
+    from bot.services.items_reparacion import ETIQUETAS
+    partes = []
+    for grupo, e in estados.items():
+        nota = "" if e.get("verificado", True) else " sin verificar"
+        partes.append(f"{ETIQUETAS.get(grupo, grupo)} {e['distintas']}/{e['requeridas']}{nota}")
+    return ", ".join(partes)
+
+
+def _file_id(foto) -> str:
+    return foto["file_id"] if isinstance(foto, dict) else foto
+
+
+def _detalle_revision(fotos: list) -> str:
+    """ " (validadas por IA: 2, sin validar: 1)" según el estado de cada foto."""
+    from bot.services.revision_fotos import resumen
+    cuenta = resumen(fotos)
+    partes = [f"{texto}: {cuenta[estado]}" for estado, texto in ESTADOS_TEXTO.items()
+              if cuenta.get(estado)]
+    corregidas = sum(1 for f in fotos if isinstance(f, dict) and f.get("corregida"))
+    if corregidas:
+        partes.append(f"corregidas por el operario: {corregidas}")
+    return f" ({', '.join(partes)})" if partes else ""
 
 
 def _tank_name(user_data: dict, sufijo: str) -> str:
@@ -116,7 +155,11 @@ def _photo_attachments(user_data: dict) -> list:
     items = []
     for sufijo, fotos in user_data.get("fotos_reparaciones", {}).items():
         tanque = _tank_name(user_data, sufijo).lower() or sufijo
-        items += [(fid, f"reparaciones_{tanque}_{i + 1}") for i, fid in enumerate(fotos)]
+        numero = {}
+        for f in fotos:
+            grupo = (f.get("grupo") or "foto") if isinstance(f, dict) else "foto"
+            numero[grupo] = numero.get(grupo, 0) + 1
+            items.append((_file_id(f), f"reparaciones_{tanque}_{grupo}_{numero[grupo]}"))
     items += [(fid, f"foto_{i + 1}") for i, fid in enumerate(user_data.get("photos", []))]
     return items
 

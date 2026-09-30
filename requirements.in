@@ -11,6 +11,8 @@ certifi==2025.1.31
 requests>=2.31.0
 pyzbar==0.1.9
 Pillow>=10.0.0
+# Solo para escribir la hoja de datos de fotos (bot/services/dataset_fotos.py) con la cuenta de servicio.
+google-auth
 # apscheduler 3.6.3 (lo fija python-telegram-bot 13.15) importa pkg_resources, que setuptools saco en
 # la 82: con una version mas nueva el bot no arranca (ModuleNotFoundError al importar telegram.ext).
 setuptools<82

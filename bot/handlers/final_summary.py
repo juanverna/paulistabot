@@ -107,9 +107,10 @@ def build_full_summary(user_data: dict) -> str:
 
         section = [(label, user_data[key]) for key, label in fields.items()
                    if user_data.get(key)]
-        fotos_rep = len(user_data.get("fotos_reparaciones", {}).get(suffix, []))
+        fotos_rep = user_data.get("fotos_reparaciones", {}).get(suffix, [])
         if fotos_rep:
-            section.append(("Fotos reparaciones", fotos_rep))
+            from bot.services.email_service import _detalle_revision
+            section.append(("Fotos reparaciones", f"{len(fotos_rep)}{_detalle_revision(fotos_rep)}"))
         for d in user_data.get("destrabes", []):
             if d["tanque"] == name:
                 section.append(("Destrabado por encargado", f"{d['motivo']} ({d['hora']})"))
@@ -162,6 +163,8 @@ def handle_final_summary_callback(update: Update, context: CallbackContext) -> i
 
     if query.data == "final_send":
         query.edit_message_text("✅ Enviando reporte...", parse_mode=ParseMode.HTML)
+        from bot.services import dataset_fotos
+        dataset_fotos.registrar(context.user_data)  # fotos + análisis, para entrenar la IA más adelante
         send_email(context.user_data, update, context)
         return ConversationHandler.END
 
