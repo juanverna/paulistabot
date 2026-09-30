@@ -144,7 +144,7 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         return self.ctx.bot.send_message.call_args.kwargs["text"]
 
     def test_pide_corregir_y_no_acepta_fotos_ni_listo(self):
-        self.assertIn("TITREA40 es de <b>Reserva</b>: para <b>Cisterna</b> es TITCEA40", self._ultimo())
+        self.assertIn("TITREA40 es de <b>Reserva</b>, no de <b>Cisterna</b>.", self._ultimo())
         upd = entorno.update_foto("f1")
         fr.handle_repair_photos(upd, self.ctx)
         self.assertIn("Primero corregí el código", upd.message.reply_text.call_args.args[0])
@@ -152,6 +152,15 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         upd = entorno.update_texto("Listo")
         self.assertEqual(fr.handle_repair_photos(upd, self.ctx), REPAIR_PHOTOS)
         self.assertEqual(self.ctx.user_data["repairs"], "TITREA40 TMTCEA49")
+
+    def test_codigo_mal_escrito_no_deja_seguir(self):
+        # Caso real: "taticea30"
+        ctx = entorno.contexto(_datos_base())
+        self.assertEqual(get_repair_main(entorno.update_texto("taticea30"), ctx), REPAIR_PHOTOS)
+        self.assertIn("no es un código válido", ctx.bot.send_message.call_args.kwargs["text"])
+        fr.handle_repair_photos(entorno.update_texto("TATCEA30"), ctx)
+        self.assertEqual(ctx.user_data["repairs"], "TATCEA30")
+        self.assertIn("• Tapa de acceso", ctx.bot.send_message.call_args.kwargs["text"])
 
     def test_sigue_mal_y_despues_bien(self):
         fr.handle_repair_photos(entorno.update_texto("TITRC40 TMTCEA49"), self.ctx)

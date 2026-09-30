@@ -4,7 +4,8 @@ from tests import entorno
 entorno.preparar()
 
 from bot.services.items_reparacion import (detectar_items, codigos_de_otro_tanque, lista_para_operario,
-                                           mensaje_codigos_de_otro_tanque)
+                                           mensaje_codigos_de_otro_tanque, problemas_de_reparaciones,
+                                           CODIGOS_VALIDOS)
 
 
 def cantidades(texto: str) -> dict:
@@ -80,12 +81,48 @@ class TestDetectarItems(unittest.TestCase):
     def test_mensaje_para_corregir_codigos(self):
         # Caso real: "TITREA40 TMTCEA49" en la cisterna
         msg = mensaje_codigos_de_otro_tanque("TITREA40 TMTCEA49", "CISTERNA")
-        self.assertIn("• TITREA40 es de Reserva: para Cisterna es TITCEA40", msg)
+        self.assertIn("• TITREA40 es de Reserva, no de Cisterna.", msg)
         self.assertNotIn("TMTCEA49 es de", msg)
         self.assertIn("Escribí de nuevo las reparaciones de Cisterna", msg)
         self.assertIsNone(mensaje_codigos_de_otro_tanque("TITCEA40 TMTCEA49", "CISTERNA"))
-        self.assertIn("TATCC 56 es de Cisterna: para Intermediario es TATHC56",
+        self.assertIn("TATCC 56 es de Cisterna, no de Intermediario.",
                       mensaje_codigos_de_otro_tanque("TATCC 56", "INTERMEDIARIO"))
+
+    def test_codigos_validos_son_los_del_csv(self):
+        import csv
+        from pathlib import Path
+        ruta = Path(__file__).resolve().parent.parent / "Articulos Python - Hoja 1.csv"
+        with open(ruta, encoding="utf-8") as f:
+            del_csv = {fila["Codigo"] for fila in csv.DictReader(f)
+                       if fila["Codigo"].isalpha() and fila["Codigo"].isupper()}
+        self.assertEqual(set(CODIGOS_VALIDOS), del_csv)
+
+    def test_codigo_mal_escrito(self):
+        # Caso real: "taticea30" pasaba como "Otras reparaciones"
+        msg = problemas_de_reparaciones("taticea30", "CISTERNA")
+        self.assertTrue(msg.startswith('⚠️ "taticea30" no es un código válido.\n\nUsá los códigos establecidos'), msg)
+        self.assertNotIn("quisiste", msg)
+        self.assertIn("Usá los códigos establecidos", msg)
+        self.assertIn("Escribí de nuevo las reparaciones de Cisterna", msg)
+        # Aunque haya otro código bien escrito
+        self.assertIn('"TMTCXA49"', problemas_de_reparaciones("TITCEA30 y TMTCXA49", "CISTERNA") or "")
+
+    def test_texto_que_no_es_ningun_item(self):
+        msg = problemas_de_reparaciones("cambiar flotante", "RESERVA")
+        self.assertIn('No entiendo a qué reparación te referís con "cambiar flotante"', msg)
+        self.assertIn("&lt;b&gt;", problemas_de_reparaciones("<b>hola</b>", "RESERVA"))  # escapado
+
+    def test_reparaciones_que_se_entienden(self):
+        for texto in ("TITCEA30 y TMTCEA49", "tatcea56", "cambiar tapa de acceso", "revocar paredes",
+                      "tapa y marco de acceso", "cambiar tapa de inspeccion TITCEA 40", "no cierra la tapa",
+                      "comprar materiales y revocar", "cambiar 2 tapas de acceso", "Tapas de inspeccion",
+                      "cambiar marcos y tapas", "revocar mamposteria del tanque", "TMTCEA 49 matafuego"):
+            self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"), texto)
+
+    def test_otro_tanque_y_mal_escrito_juntos(self):
+        msg = problemas_de_reparaciones("TITREA40 y taticea30", "CISTERNA")
+        self.assertIn("• TITREA40 es de Reserva, no de Cisterna.", msg)
+        self.assertIn('"taticea30" no es un código válido', msg)
 
     def test_lista_para_operario(self):
         texto = lista_para_operario(detectar_items("TATCEA 56, TATCC 56 y revocar"))

@@ -116,26 +116,63 @@ def codigos_de_otro_tanque(texto: str, tanque: str) -> list:
 
 def mensaje_codigos_de_otro_tanque(texto: str, tanque: str):
     """
-    Si el texto tiene códigos de otro tanque, el mensaje para que el operario los corrija
-    (con el código que correspondería a este tanque). None si están todos bien.
+    Si el texto tiene códigos de otro tanque, el mensaje para que el operario los corrija.
+    None si están todos bien.
     """
     tanque = (tanque or "").upper()
-    letra = {v: k for k, v in _TANQUE_CODIGO.items()}.get(tanque)
     lineas = []
     for m in _RE_CODIGO.finditer(texto or ""):
         de = _TANQUE_CODIGO[m.group(2).upper()]
         if de == tanque:
             continue
         codigo = m.group(0).strip().upper()
-        linea = f"• {codigo} es de {de.capitalize()}"
-        if letra:
-            medida = (m.group(4) or "").strip()
-            linea += f": para {tanque.capitalize()} es {m.group(1).upper()}{letra}{m.group(3).upper()}{medida}"
-        lineas.append(linea)
+        lineas.append(f"• {codigo} es de {de.capitalize()}, no de {tanque.capitalize()}.")
     if not lineas:
         return None
     return ("⛔ Hay códigos que no son de este tanque:\n" + "\n".join(lineas) +
             f"\n\nEscribí de nuevo las reparaciones de {tanque.capitalize()} con el código correcto.")
+
+
+# Los 24 códigos del CSV de artículos: prefijo + tanque + entrada de agua (EA) o ciego (C)
+CODIGOS_VALIDOS = sorted(p + t + v for p in _PREFIJOS for t in _TANQUE_CODIGO for v in ("EA", "C"))
+
+# Algo con forma de código aunque esté mal escrito: termina en tanque + EA/C ("taticea30"),
+# empieza con un prefijo del CSV ("TMTCXA"), o es una palabra corta pegada a una medida
+# ("TMTCXA49"). Palabras comunes (tapa, marco, masilla, materiales...) no entran.
+_RE_PARECE_CODIGO = re.compile(
+    r"\b([TM][A-Z]{1,6}[CRH](?:EA|C)|(?:TIT|TAT|MAT|TMT)[A-Z]{2,4}|[TM][A-Z]{3,6}(?=\d))"
+    r"(\s*\d+(?:[.,]\d+)?)?\b", re.IGNORECASE)
+
+AYUDA_CODIGOS = ("Usá los códigos establecidos (ej: TITCEA 30, TATCEA 56, TMTCEA 49, MATCEA 50) "
+                 "o escribí: tapa de inspección, tapa de acceso, tapa y marco, marco o revocar. "
+                 "Si no hay reparaciones, escribí No.")
+
+
+def codigos_invalidos(texto: str) -> list:
+    """Lo escrito de cada código mal escrito del texto (no se sugiere cuál quiso poner)."""
+    return [m.group(0).strip() for m in _RE_PARECE_CODIGO.finditer(texto or "")
+            if m.group(1).upper() not in CODIGOS_VALIDOS]
+
+
+def problemas_de_reparaciones(texto: str, tanque: str):
+    """
+    Mensaje para que el operario corrija las reparaciones, o None si se entienden.
+    No se aceptan: códigos mal escritos, códigos de otro tanque, ni texto que no corresponda a
+    ningún ítem conocido (hay que usar los códigos establecidos o nombrar la tapa, marco o revoque).
+    """
+    import html
+    lineas = [f"\"{html.escape(escrito)}\" no es un código válido." for escrito in codigos_invalidos(texto)]
+    otro_tanque = mensaje_codigos_de_otro_tanque(texto, tanque)
+    if otro_tanque:
+        lineas += [l[2:] for l in otro_tanque.splitlines() if l.startswith("• ")]
+    if not lineas and set(detectar_items(texto)) == {"otras"}:
+        corto = texto.strip() if len(texto.strip()) <= 60 else texto.strip()[:57] + "..."
+        lineas.append(f"No entiendo a qué reparación te referís con \"{html.escape(corto)}\".")
+    if not lineas:
+        return None
+    problemas = lineas[0] if len(lineas) == 1 else "\n".join(f"• {l}" for l in lineas)
+    return (f"⚠️ {problemas}\n\n{AYUDA_CODIGOS}"
+            f"\n\nEscribí de nuevo las reparaciones de {(tanque or '').capitalize()}.")
 
 
 def etiqueta(grupo: str, cantidad: int = 1) -> str:

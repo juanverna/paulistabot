@@ -32,7 +32,7 @@ from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import push_state, back_handler, check_special_commands
 from bot.services import destrabe, revision_fotos, vision_service
 from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
-                                           mensaje_codigos_de_otro_tanque)
+                                           problemas_de_reparaciones)
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +114,10 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
     """
     _preparar(context, sufijo, modo)
     context.user_data["current_state"] = REPAIR_PHOTOS
-    # Un código de otro tanque (ej: TITREA en la cisterna) no se deja pasar: hay que corregirlo
-    corregir = mensaje_codigos_de_otro_tanque(_reparacion(context, sufijo),
-                                              context.user_data.get(TANQUES[sufijo][1]))
+    # Códigos mal escritos, de otro tanque (ej: TITREA en la cisterna) o texto que no es ningún
+    # ítem conocido: no se deja pasar, hay que corregirlo
+    corregir = problemas_de_reparaciones(_reparacion(context, sufijo),
+                                         context.user_data.get(TANQUES[sufijo][1]))
     if corregir:
         context.user_data["rep_fotos"]["corregir_codigos"] = True
         _send(update, context, corregir)
@@ -126,13 +127,13 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
 
 
 def _corregir_codigos(update: Update, context: CallbackContext, ctx: dict, text: str) -> int:
-    """El operario reescribió las reparaciones para corregir un código de otro tanque."""
+    """El operario reescribió las reparaciones que el bot no entendió."""
     sufijo = ctx["sufijo"]
     normal = _normalizar(text)
     if normal == "listo" or normal.startswith("no tengo") or destrabe.parece_codigo(text):
         update.message.reply_text("Primero escribí de nuevo las reparaciones con el código correcto.")
         return REPAIR_PHOTOS
-    corregir = mensaje_codigos_de_otro_tanque(text, context.user_data.get(TANQUES[sufijo][1]))
+    corregir = problemas_de_reparaciones(text, context.user_data.get(TANQUES[sufijo][1]))
     if corregir:
         _send(update, context, corregir)
         return REPAIR_PHOTOS
