@@ -196,6 +196,12 @@ def _revisar(bot, chat_id, user_data, sufijo, foto, tanque, reparacion, items):
         logger.warning("Revisión de foto falló (%s): queda sin validar", e)
         analisis = None
     resultado = clasificar(analisis, items)
+    # Para poder revisar después qué respondió la IA (sin datos del cliente)
+    a = analisis or {}
+    logger.info("Visión: foto %s de %s → %s | elemento=%s seguro=%s respalda=%s calidad=%s | %s",
+                foto.get("pid"), tanque, resultado["estado"], a.get("elemento_detectado"),
+                a.get("tipo_tapa_seguro"), a.get("respalda_la_reparacion"), a.get("calidad_foto"),
+                a.get("comentario", ""))
 
     with _lock:
         if foto.get("cerrada"):

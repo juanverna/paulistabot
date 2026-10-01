@@ -23,12 +23,16 @@ class TestNecesitaFotos(unittest.TestCase):
 
     def test_sin_reparaciones(self):
         for texto in ("no", "No.", "ninguna", "Nada", "no tiene", "No hay reparaciones",
-                      "sin reparaciones", "-", "N/A", "no aplica", "  ", "", None):
+                      "sin reparaciones", "-", "N/A", "no aplica", "  ", "", None,
+                      # Errores de tipeo (caso real: "Ningana")
+                      "Ningana", "ningua", "nimguna", "ningunaa", "nadaa", "Ninguno."):
             self.assertFalse(fr.necesita_fotos(texto), repr(texto))
 
     def test_con_reparaciones(self):
         for texto in ("cambiar tapa de acceso", "revocar pared norte", "TATCEA 56.5",
-                      "no cierra la tapa, cambiarla", "marco oxidado"):
+                      "no cierra la tapa, cambiarla", "marco oxidado",
+                      "tapa", "marco", "nueva tapa", "no tiene tapa", "no hay tapa", "TATCEA",
+                      "flotante", "automatico", "revoque"):
             self.assertTrue(fr.necesita_fotos(texto), texto)
 
 
@@ -84,6 +88,16 @@ class TestFlujoManual(unittest.TestCase):
             self.assertIn("Falta la foto de la tapa de acceso. Si tenés otra foto",
                           ctx.bot.send_message.call_args.kwargs["text"])
         self.assertTrue(ctx.user_data["rep_fotos"]["trabado"])
+
+    def test_no_con_el_paso_trabado_explica_el_codigo(self):
+        # Caso real: trabado, el operario escribe "No" (no tiene otra foto)
+        ctx, _ = self._hasta_fotos()
+        fr.handle_repair_photos(entorno.update_texto("Listo"), ctx)
+        self.assertIn("pedile al encargado el código de hoy y escribilo acá",
+                      ctx.bot.send_message.call_args.kwargs["text"])
+        upd = entorno.update_texto("No")
+        self.assertEqual(fr.handle_repair_photos(upd, ctx), REPAIR_PHOTOS)
+        self.assertIn("pedile al encargado el código de hoy y escribilo acá", upd.message.reply_text.call_args.args[0])
 
     def test_trabado_se_destraba_con_foto(self):
         ctx, _ = self._hasta_fotos()
@@ -152,6 +166,17 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         upd = entorno.update_texto("Listo")
         self.assertEqual(fr.handle_repair_photos(upd, self.ctx), REPAIR_PHOTOS)
         self.assertEqual(self.ctx.user_data["repairs"], "TITREA40 TMTCEA49")
+
+    def test_no_despues_de_un_rechazo(self):
+        # Caso real: "Ningana" (rechazado antes del arreglo) y después "No": tiene que seguir
+        ctx = entorno.contexto(_datos_base())
+        self.assertEqual(get_repair_main(entorno.update_texto("pintar la puerta"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("No"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(ctx.user_data["repairs"], "No")
+
+    def test_ningana_no_pide_fotos(self):
+        ctx = entorno.contexto(_datos_base())
+        self.assertEqual(get_repair_main(entorno.update_texto("Ningana"), ctx), SUGGESTIONS_MAIN)
 
     def test_codigo_mal_escrito_no_deja_seguir(self):
         # Caso real: "taticea30"

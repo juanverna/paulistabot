@@ -50,6 +50,8 @@ SIGUIENTE_MANUAL = {
     "alt2": (SUGGESTIONS_ALT2, "alternative_2"),
 }
 
+AYUDA_CODIGO = "🔑 Si no tenés otra foto, pedile al encargado el código de hoy y escribilo acá."
+
 _SIN_REPARACIONES = re.compile(
     r"(no|nada|ninguna|ninguno|-|n/?a|no aplica|sin reparacion(es)?"
     r"|no (tiene|hay|requiere|necesita|lleva)( reparacion(es)?| nada)?"
@@ -62,11 +64,23 @@ def _normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", sin_tildes.lower()).strip(" .!,;")
 
 
+# Para tolerar errores de tipeo en UNA palabra ("ningana", "nimguna", "nadaa"). En frases no:
+# "no hay tapa" se parece a "no hay nada" y significa lo contrario (hay que colocarla).
+_PALABRAS_SIN_REPARACIONES = ("ninguna", "ninguno", "nada")
+
+
 def necesita_fotos(reparaciones) -> bool:
     """True si el texto de reparaciones describe alguna reparación."""
+    import difflib
     if not reparaciones or not str(reparaciones).strip():
         return False
-    return not _SIN_REPARACIONES.fullmatch(_normalizar(str(reparaciones)))
+    normal = _normalizar(str(reparaciones))
+    if _SIN_REPARACIONES.fullmatch(normal):
+        return False
+    # Una sola palabra parecida a "ninguna" o "nada" (con errores de tipeo)
+    if " " not in normal and difflib.get_close_matches(normal, _PALABRAS_SIN_REPARACIONES, n=1, cutoff=0.8):
+        return False
+    return True
 
 
 def _nombre_tanque(context: CallbackContext, sufijo: str) -> str:
@@ -133,6 +147,9 @@ def _corregir_codigos(update: Update, context: CallbackContext, ctx: dict, text:
     if normal == "listo" or normal.startswith("no tengo") or destrabe.parece_codigo(text):
         update.message.reply_text("Primero escribí de nuevo las reparaciones con el código correcto.")
         return REPAIR_PHOTOS
+    if not necesita_fotos(text):  # "No", "ninguna"...: no hay reparaciones en este tanque
+        context.user_data[TANQUES[sufijo][0]] = text
+        return _continuar(update, context)
     corregir = problemas_de_reparaciones(text, context.user_data.get(TANQUES[sufijo][1]))
     if corregir:
         _send(update, context, corregir)
@@ -184,7 +201,7 @@ def _trabar(update: Update, context: CallbackContext, ctx: dict, faltantes: dict
     ctx["trabado"] = True
     ctx["faltantes"] = {g: e["motivo"] for g, e in faltantes.items()}
     motivos = ". ".join(e["texto"] for e in faltantes.values())
-    _send(update, context, "⚠️ " + destrabe.mensaje_trabado(motivos))
+    _send(update, context, "⚠️ " + destrabe.mensaje_trabado(motivos) + "\n\n" + AYUDA_CODIGO)
     return REPAIR_PHOTOS
 
 
@@ -305,6 +322,10 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
 
     if normal == "listo" or normal.startswith("no tengo"):
         return _cerrar_paso(update, context, ctx)
+
+    if ctx.get("trabado"):  # "No", "no tengo otra", etc. con el paso trabado
+        update.message.reply_text(apply_bold_keywords(AYUDA_CODIGO), parse_mode=ParseMode.HTML)
+        return REPAIR_PHOTOS
 
     update.message.reply_text(
         apply_bold_keywords("Mandá una foto o escribí <b>Listo</b>."),
