@@ -116,6 +116,18 @@ class TestClasificar(unittest.TestCase):
         r = revision_fotos.clasificar(analisis(elemento_detectado="marco"), {"tapa_marco": {"cantidad": 1}})
         self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa_marco"]))
 
+    def test_flotante_y_automatico(self):
+        items = {"flotante": {"cantidad": 1}, "automatico": {"cantidad": 1}}
+        for elemento in ("flotante", "automatico"):
+            r = revision_fotos.clasificar(analisis(elemento_detectado=elemento), items)
+            self.assertEqual((r["estado"], r["candidatos"]), ("validada", [elemento]))
+        # Su falla no suele verse en la foto: no se exige daño visible
+        r = revision_fotos.clasificar(analisis(elemento_detectado="flotante", respalda_la_reparacion=False), items)
+        self.assertEqual(r["estado"], "validada")
+        # Una tapa no respalda el cambio de flotante
+        r = revision_fotos.clasificar(analisis(), {"flotante": {"cantidad": 1}})
+        self.assertEqual(r["estado"], "no_corresponde")
+
     def test_tapa_a_secas_no_pregunta(self):
         r = revision_fotos.clasificar(analisis(tipo_tapa_seguro=False), {"tapa": {"cantidad": 1}})
         self.assertEqual((r["estado"], r["candidatos"]), ("validada", ["tapa"]))
@@ -506,6 +518,18 @@ class TestTapaFaltante(FlujoConIA):
     def test_el_agujero_respalda_colocar_la_tapa(self):
         self._foto("agujero", analisis(tapa_faltante=True, **INSPECCION))
         self.assertIn("📷 Tapa de inspección (falta la tapa propiamente dicha) ✅", self._enviados()[-1]["text"])
+        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+
+
+class TestFlotante(FlujoConIA):
+    REPARACIONES = "cambiar flotante"
+
+    def test_pide_la_foto_del_flotante(self):
+        self.assertIn("• Flotante", self.ctx.bot.send_message.call_args_list[0].kwargs["text"])
+        self._foto("tapa", analisis())
+        self.assertIn("parece una tapa de acceso y eso no está en las reparaciones", self._enviados()[-1]["text"])
+        self._foto("bocha", analisis(elemento_detectado="flotante", comentario="Bocha rota."))
+        self.assertIn("📷 Flotante ✅", self._enviados()[-1]["text"])
         self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
 
 

@@ -55,6 +55,8 @@ CANDIDATOS = {
     "tapa_inspeccion": ["tapa_inspeccion", "tapa"],
     "marco":           ["marco", "tapa_marco"],
     "pared_revoque":   ["revoque"],
+    "flotante":        ["flotante"],
+    "automatico":      ["automatico"],
     "piso":            [],
     "otro":            [],
 }
@@ -67,6 +69,8 @@ PARECE = {
     "marco":           "un marco",
     "pared_revoque":   "una pared o revoque",
     "piso":            "el piso del tanque",
+    "flotante":        "un flotante",
+    "automatico":      "un automático",
 }
 
 NOMBRE = {
@@ -76,6 +80,8 @@ NOMBRE = {
     "marco":           "el marco",
     "tapa":            "la tapa",
     "revoque":         "el revoque",
+    "flotante":        "el flotante",
+    "automatico":      "el automático",
     "otras":           "las reparaciones",
 }
 
@@ -112,7 +118,10 @@ def clasificar(analisis, items: dict) -> dict:
                 "candidatos": [g for g in items if g in GRUPOS_TAPA]}
     if not cands:
         return {"estado": NO_CORRESPONDE, "calidad": None, "candidatos": []}
-    if not analisis["respalda_la_reparacion"]:
+    # El flotante y el automático suelen fallar sin daño visible (no cortan el agua, no prenden la
+    # bomba): para ellos alcanza con que la foto los muestre
+    sin_dano_visible = all(g in ("flotante", "automatico") for g in cands)
+    if not analisis["respalda_la_reparacion"] and not sin_dano_visible:
         return {"estado": NO_RESPALDA, "calidad": None, "candidatos": cands}
     return {"estado": VALIDADA, "calidad": None, "candidatos": cands}
 

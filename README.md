@@ -39,8 +39,10 @@ Del texto de reparaciones el bot saca los ítems que necesitan foto
 | `MAT…`, "marco" | Marco |
 | `TMT…`, "tapa y marco" | Tapa y marco de acceso |
 | "revoque", "revocar", "mampostería", "fisura" | Revoque |
+| "flotante" (en cualquier tanque, sin código) | Flotante |
+| "automático" (en cualquier tanque, sin código) | Automático |
 | "tapa" sola | Tapa (cualquiera de las dos) |
-| nada de lo anterior | Otras reparaciones |
+| nada de lo anterior | se rechaza: "No entiendo a qué reparación te referís…" |
 
 La medida se ignora. Cada código cuenta como una unidad, y también "2 tapas de acceso", "ambas", "de
 entrada de agua y ciego". **Si un ítem tiene 2 unidades, hacen falta 2 fotos de 2 objetos distintos**

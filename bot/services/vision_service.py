@@ -39,7 +39,8 @@ VISION_MAX_REF   = int(os.getenv("VISION_MAX_REF", "10"))        # por elemento
 VISION_REF_DETAIL = os.getenv("VISION_REF_DETAIL", "low")        # low: menos tokens por ejemplo
 LADO_REFERENCIA_PX = 768
 
-ELEMENTOS = ["tapa_acceso", "tapa_inspeccion", "marco", "pared_revoque", "piso", "otro"]
+ELEMENTOS = ["tapa_acceso", "tapa_inspeccion", "marco", "pared_revoque", "piso", "flotante", "automatico",
+             "otro"]
 ESTADOS   = ["bueno", "regular", "malo"]
 CALIDADES = ["buena", "borrosa", "oscura", "muy_lejos"]
 
@@ -93,6 +94,10 @@ Cómo reconocer cada elemento:
 - pared_revoque: revoque de las paredes, el techo o el piso interior del tanque (cemento, azulejo).
   Si se ven placas de revoque desprendidas en el piso, también es pared_revoque.
 - piso: fondo del tanque, cuando lo que se muestra no es el revoque (ej: suciedad, desagüe).
+- flotante: la válvula a flotante de la entrada de agua: una boya o bocha (esfera de metal, plástico o
+  telgopor) unida a una varilla o brazo y a la válvula del caño de entrada.
+- automatico: el automático de tanque (control de nivel eléctrico que prende y apaga la bomba): una
+  boya o pera de plástico colgando de un cable, o el flotante eléctrico con contrapeso.
 Para decidir entre acceso e inspección pesan más la ubicación (pared vertical = acceso; losa de
 arriba, horizontal = inspección) y la forma (octogonal = acceso; plástica o circular = inspección)
 que el tamaño aparente en la foto.

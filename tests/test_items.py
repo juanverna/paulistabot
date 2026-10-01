@@ -26,7 +26,11 @@ class TestDetectarItems(unittest.TestCase):
             "revocar paredes":                              {"revoque": 1},
             "reparaciones de mampostería, fisuras":         {"revoque": 1},
             "no cierra la tapa, cambiarla":                 {"tapa": 1},
-            "cambiar flotante":                             {"otras": 1},
+            "cambiar flotante":                             {"flotante": 1},
+            "Cambiar automático":                           {"automatico": 1},
+            "cambiar 2 flotantes y el automatico":          {"flotante": 2, "automatico": 1},
+            "TITCEA30, cambiar flotante":                   {"tapa_inspeccion": 1, "flotante": 1},
+            "pintar la puerta":                             {"otras": 1},
         }
         for texto, esperado in casos.items():
             self.assertEqual(cantidades(texto), esperado, texto)
@@ -108,16 +112,24 @@ class TestDetectarItems(unittest.TestCase):
         self.assertIn('"TMTCXA49"', problemas_de_reparaciones("TITCEA30 y TMTCXA49", "CISTERNA") or "")
 
     def test_texto_que_no_es_ningun_item(self):
-        msg = problemas_de_reparaciones("cambiar flotante", "RESERVA")
-        self.assertIn('No entiendo a qué reparación te referís con "cambiar flotante"', msg)
+        msg = problemas_de_reparaciones("pintar la puerta", "RESERVA")
+        self.assertIn('No entiendo a qué reparación te referís con "pintar la puerta"', msg)
+        self.assertIn("flotante o automático", msg)
         self.assertIn("&lt;b&gt;", problemas_de_reparaciones("<b>hola</b>", "RESERVA"))  # escapado
 
     def test_reparaciones_que_se_entienden(self):
         for texto in ("TITCEA30 y TMTCEA49", "tatcea56", "cambiar tapa de acceso", "revocar paredes",
                       "tapa y marco de acceso", "cambiar tapa de inspeccion TITCEA 40", "no cierra la tapa",
                       "comprar materiales y revocar", "cambiar 2 tapas de acceso", "Tapas de inspeccion",
-                      "cambiar marcos y tapas", "revocar mamposteria del tanque", "TMTCEA 49 matafuego"):
+                      "cambiar marcos y tapas", "revocar mamposteria del tanque", "TMTCEA 49 matafuego",
+                      "cambiar flotante", "cambiar automático", "flotante y automatico"):
             self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"), texto)
+
+    def test_flotante_y_automatico_en_cualquier_tanque(self):
+        for tanque in ("CISTERNA", "RESERVA", "INTERMEDIARIO"):
+            self.assertIsNone(problemas_de_reparaciones("cambiar flotante y automatico", tanque), tanque)
+        self.assertEqual(lista_para_operario(detectar_items("cambiar flotante y automático")),
+                         "• Flotante\n• Automático")
 
     def test_otro_tanque_y_mal_escrito_juntos(self):
         msg = problemas_de_reparaciones("TITREA40 y taticea30", "CISTERNA")

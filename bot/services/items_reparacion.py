@@ -23,6 +23,8 @@ ETIQUETAS = {
     "marco":           "Marco",
     "tapa":            "Tapa",
     "revoque":         "Revoque",
+    "flotante":        "Flotante",
+    "automatico":      "Automático",
     "otras":           "Otras reparaciones",
 }
 
@@ -45,6 +47,9 @@ _PATRONES = [
     ("tapa_acceso",     re.compile(_CANT + r"tapas?\s+(?:de\s+)?acceso")),
     ("marco",           re.compile(_CANT + r"marcos?\b")),
     ("revoque",         re.compile(r"\w*(?:revoqu|revoca|revocar|mamposter|fisura|desprendi)\w*")),
+    # Flotante y automático: valen en cualquier tanque, no tienen código
+    ("flotante",        re.compile(_CANT + r"flotantes?\b")),
+    ("automatico",      re.compile(_CANT + r"automaticos?\b")),
     ("tapa",            re.compile(_CANT + r"tapas?\b")),
 ]
 
@@ -58,7 +63,7 @@ def _cantidad(match) -> int:
     palabra = (match.group(1) or "").strip()
     if not palabra:
         # "tapas" en plural sin número: al menos 2
-        return 2 if re.search(r"tapas|marcos", match.group(0)) else 1
+        return 2 if re.search(r"tapas|marcos|flotantes|automaticos", match.group(0)) else 1
     if palabra.isdigit():
         return max(1, int(palabra))
     return _NUMEROS.get(palabra.replace("las ", "").replace("los ", ""), 2)
@@ -144,7 +149,8 @@ _RE_PARECE_CODIGO = re.compile(
     r"(\s*\d+(?:[.,]\d+)?)?\b", re.IGNORECASE)
 
 AYUDA_CODIGOS = ("Usá los códigos establecidos (ej: TITCEA 30, TATCEA 56, TMTCEA 49, MATCEA 50) "
-                 "o escribí: tapa de inspección, tapa de acceso, tapa y marco, marco o revocar. "
+                 "o escribí: tapa de inspección, tapa de acceso, tapa y marco, marco, revocar, "
+                 "flotante o automático. "
                  "Si no hay reparaciones, escribí No.")
 
 
