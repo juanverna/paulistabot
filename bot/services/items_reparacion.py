@@ -83,6 +83,8 @@ def detectar_items(texto: str) -> dict:
         item["variantes"].append(m.group(3).upper())
         item["codigos"].append(m.group(0).strip().upper())
     resto = _normalizar(_RE_CODIGO.sub(" ", texto))
+    # "evita marco" es un tipo de tapa de acceso (menú de reparaciones), no un marco
+    resto = resto.replace("evita marco", " ")
 
     # 2) Texto libre: la cantidad de un grupo es el máximo entre códigos y texto
     #    ("cambiar tapa de acceso TATCEA 56" es una sola tapa)

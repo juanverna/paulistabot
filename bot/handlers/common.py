@@ -55,10 +55,10 @@ def back_handler(update: Update, context: CallbackContext) -> int:
 
 
 def _pasos_con_botones() -> dict:
-    """{estado: (sufijo, campo)} de medida, tapas y sellado de cada tanque."""
+    """{estado: (sufijo, campo)} de medida, tapas, sellado y reparaciones de cada tanque."""
     from bot.handlers.campos_tanque import PASOS
     return {paso[campo][0]: (sufijo, campo) for sufijo, paso in PASOS.items()
-            for campo in ("medida", "insp", "acceso", "sellado")}
+            for campo in ("medida", "insp", "acceso", "sellado", "reparaciones")}
 
 
 # =============================================================================
@@ -120,29 +120,23 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         ])
         send("Seleccione el tipo de tanque:", kb)
     elif state in _pasos_con_botones():
-        # Medida, tapas y sellado: la misma pregunta (con sus botones) que la primera vez
+        # Medida, tapas, sellado y reparaciones: la misma pregunta que la primera vez
         from bot.handlers import campos_tanque
         sufijo, campo = _pasos_con_botones()[state]
         if campo == "medida":
             campos_tanque.preguntar_medida(update, context, sufijo)
-        elif campo == "sellado":
-            campos_tanque.preguntar_sellado(update, context, sufijo)
+        elif campo == "reparaciones":
+            campos_tanque.preguntar_reparaciones(update, context, sufijo)
         else:
-            campos_tanque.preguntar_tapas(update, context, sufijo, campo)
-    elif state == REPAIR_MAIN:
-        send(f"Indique reparaciones a realizar para {selected}:")
+            campos_tanque.preguntar_texto(update, context, sufijo, campo)
     elif state == SUGGESTIONS_MAIN:
         send(f"Indique sugerencias p/ la próx limpieza para {selected}:")
     elif state == ASK_SECOND:
         send(f"¿Quiere comentar algo sobre {alt1}?", si_no_keyboard())
-    elif state == REPAIR_ALT1:
-        send(f"Indique reparaciones a realizar para {alt1}:")
     elif state == SUGGESTIONS_ALT1:
         send(f"Indique sugerencias p/ la próx limpieza para {alt1}:")
     elif state == ASK_THIRD:
         send(f"¿Quiere comentar algo sobre {alt2}?", si_no_keyboard())
-    elif state == REPAIR_ALT2:
-        send(f"Indique reparaciones a realizar para {alt2}:")
     elif state == SUGGESTIONS_ALT2:
         send(f"Indique sugerencias p/ la próx limpieza para {alt2}:")
     elif state == REPAIR_PHOTOS:

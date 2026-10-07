@@ -5,9 +5,10 @@ from tests import entorno
 entorno.preparar()
 
 from bot.services import campos
+from bot.services.items_reparacion import detectar_items, problemas_de_reparaciones
 from bot.states import (MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN,
-                        REPAIR_MAIN, MEASURE_ALT1, TAPAS_INSPECCION_ALT1, CONTACT, CONTACT_PHONE,
-                        PHOTOS)
+                        REPAIR_MAIN, REPAIR_PHOTOS, SUGGESTIONS_MAIN, MEASURE_ALT1,
+                        TAPAS_INSPECCION_ALT1, CONTACT, CONTACT_PHONE, PHOTOS)
 from bot.handlers import campos_tanque as ct
 
 
@@ -25,6 +26,10 @@ def _datos(**extra) -> dict:
              "state_stack": []}
     datos.update(extra)
     return datos
+
+
+def _enviados(ctx) -> str:
+    return "\n".join(c.kwargs.get("text", "") for c in ctx.bot.send_message.call_args_list)
 
 
 class TestMedida(unittest.TestCase):
@@ -51,7 +56,7 @@ class TestMedida(unittest.TestCase):
             self.assertTrue(problema)
 
 
-class TestTelefonoYSellado(unittest.TestCase):
+class TestTelefono(unittest.TestCase):
 
     def test_telefono(self):
         for escrito in ("1135456067", "11 3545-6067", "011 3545 6067", "+54 9 11 3545 6067", "54 11 3545 6067"):
@@ -63,36 +68,69 @@ class TestTelefonoYSellado(unittest.TestCase):
         self.assertEqual(campos.separar_nombre_telefono("Daniel 11 3545 6067"), ("Daniel", "1135456067"))
         self.assertEqual(campos.separar_nombre_telefono("Daniel"), ("Daniel", None))
 
-    def test_sellado(self):
-        self.assertEqual(campos.texto_sellado(["burlete", "masilla"]), "Masilla y burlete")
-        self.assertEqual(campos.texto_sellado(["masilla"], "Cinta"), "Masilla y cinta")
-        self.assertEqual(campos.texto_sellado([]), "No tiene")
 
-    def test_catalogo_de_tapas(self):
-        cat = campos.CATALOGO_TAPAS
-        self.assertEqual(cat["insp"]["ins"][2], ["30x30", "40x40", "50x50", "60x60", "80x80"])
-        self.assertEqual(cat["acceso"]["com"][2], ["47x47", "48x48", "49x49", "50x50", "52x52"])
-        self.assertEqual(cat["acceso"]["est"][2], ["39x49", "54", "60"])
-        self.assertEqual(cat["acceso"]["oct"][2], ["53.5x56.5", "54x54"])
-        self.assertEqual(cat["acceso"]["pun"][2], ["54"])
-        self.assertEqual(cat["acceso"]["12a"][2], ["49.5", "56", "56.5", "58"])
-        self.assertEqual(cat["acceso"]["evi"][2], ["62", "69"])
+class TestCatalogo(unittest.TestCase):
 
-    def test_codigo_tapa(self):
-        self.assertEqual(campos.codigo_tapa("insp", "CISTERNA", "EA", "ins", "60x60"), "TITCEA 60x60")
-        self.assertEqual(campos.codigo_tapa("acceso", "INTERMEDIARIO", "C", "12a", "56.5"),
+    def test_catalogo_del_dueno(self):
+        cat = campos.CATALOGO_REPARACIONES
+        self.assertEqual(cat["tit"][2]["ins"][2], ["30x30", "40x40", "50x50", "60x60", "80x80"])
+        acceso = cat["tat"][2]
+        self.assertEqual(acceso["com"][2], ["47x47", "48x48", "49x49", "50x50", "52x52"])
+        self.assertEqual(acceso["est"][2], ["39x49", "54", "60"])
+        self.assertEqual(acceso["oct"][2], ["53.5x56.5", "54x54"])
+        self.assertEqual(acceso["pun"][2], ["54"])
+        self.assertEqual(acceso["12a"][2], ["49.5", "56", "56.5", "58"])
+        self.assertEqual(acceso["evi"][2], ["62", "69"])
+        self.assertEqual(cat["tmt"][2]["tm"][2], ["48x48", "49x49", "50x50", "52x52", "54x54", "60x60"])
+        self.assertEqual(cat["mat"][2]["ma"][2], ["48", "49", "50", "52", "54", "60"])
+
+    def test_texto_de_cada_reparacion(self):
+        self.assertEqual(campos.reparacion("tit", "CISTERNA", "EA", "ins", "60x60"), "TITCEA 60x60")
+        self.assertEqual(campos.reparacion("tat", "INTERMEDIARIO", "C", "12a", "56.5"),
                          "TATHC 12 agujeros punta recortada 56.5")
-        self.assertEqual(campos.codigo_tapa("acceso", "RESERVA", "EA", "com", "48x48"), "TATREA 48x48")
+        self.assertEqual(campos.reparacion("tmt", "RESERVA", "EA", "tm", "48x48"), "TMTREA 48x48")
+        self.assertEqual(campos.reparacion("mat", "RESERVA", "C", "ma", "50"), "MATRC 50")
+        self.assertEqual(campos.reparacion("rev", caras=["piso", "frente"]), "revoque frente y piso")
+        self.assertEqual(campos.reparacion("flo"), "flotante")
+        self.assertEqual(campos.reparacion("aut"), "automático")
+
+    def test_todo_el_catalogo_pasa_el_control_y_pide_la_foto_correcta(self):
+        # Lo que arma el menú tiene que entrar al paso de fotos sin que el bot pida corregirlo
+        grupo_foto = {"tit": "tapa_inspeccion", "tat": "tapa_acceso", "tmt": "tapa_marco", "mat": "marco"}
+        for tanque in ("CISTERNA", "RESERVA", "INTERMEDIARIO"):
+            for grupo, (_, prefijo, tipos) in campos.CATALOGO_REPARACIONES.items():
+                if prefijo is None:
+                    continue
+                for tipo, (_, _, medidas) in tipos.items():
+                    for medida in medidas:
+                        for variante in ("EA", "C"):
+                            texto = campos.reparacion(grupo, tanque, variante, tipo, medida)
+                            self.assertIsNone(problemas_de_reparaciones(texto, tanque), texto)
+                            items = detectar_items(texto)
+                            self.assertEqual(list(items), [grupo_foto[grupo]], texto)
+                            self.assertEqual(items[grupo_foto[grupo]]["cantidad"], 1, texto)
+        for grupo, foto in (("flo", "flotante"), ("aut", "automatico")):
+            self.assertEqual(list(detectar_items(campos.reparacion(grupo))), [foto])
+        self.assertEqual(list(detectar_items(campos.reparacion("rev", caras=["frente"]))), ["revoque"])
+
+    def test_varias_reparaciones_juntas(self):
+        texto = "TATCEA evita marco 62, TATCC 47x47, MATCEA 50, revoque lateral, flotante"
+        self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"))
+        items = detectar_items(texto)
+        self.assertEqual(items["tapa_acceso"]["cantidad"], 2)
+        self.assertEqual(items["marco"]["cantidad"], 1)  # "evita marco" no cuenta como marco
+        self.assertIn("revoque", items)
+        self.assertIn("flotante", items)
 
 
-class TestPasosConBotones(unittest.TestCase):
+class TestPasosDelTanque(unittest.TestCase):
 
-    def test_medida_valida_pasa_a_tapas(self):
+    def test_medida_valida_pasa_a_tapas_en_texto(self):
         ctx = entorno.contexto(_datos())
         estado = ct.recibir_medida("main")(entorno.update_texto("180 200 150"), ctx)
         self.assertEqual(estado, TAPAS_INSPECCION_MAIN)
         self.assertEqual(ctx.user_data["measure_main"], "1.80, 2.00, 1.50")
-        self.assertEqual(ctx.user_data["state_stack"], [MEASURE_MAIN])
+        self.assertIn("Indique TAPAS INSPECCIÓN (30 40 50 60 80):", _enviados(ctx))
 
     def test_medida_invalida_se_vuelve_a_pedir(self):
         ctx = entorno.contexto(_datos())
@@ -107,78 +145,104 @@ class TestPasosConBotones(unittest.TestCase):
         self.assertEqual(ct.boton_material("alt1")(boton("md:alt1:plastico"), ctx), TAPAS_INSPECCION_ALT1)
         self.assertEqual(ctx.user_data["measure_alt1"], "1000 lts (plástico)")
 
-    def test_tapas_con_botones(self):
+    def test_tapas_y_sellado_como_antes(self):
         ctx = entorno.contexto(_datos())
-        insp = ct.boton_tapas("main", "insp")
-        for data in ("tp:main:insp:m:60x60", "tp:main:insp:v:EA", "tp:main:insp:m:30x30", "tp:main:insp:v:C"):
-            self.assertEqual(insp(boton(data), ctx), TAPAS_INSPECCION_MAIN)
-        self.assertEqual(insp(boton("tp:main:insp:listo"), ctx), TAPAS_ACCESO_MAIN)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "TITCEA 60x60, TITCC 30x30")
-
-        acceso = ct.boton_tapas("main", "acceso")
-        for data in ("tp:main:acceso:t:oct", "tp:main:acceso:m:53.5x56.5", "tp:main:acceso:v:EA",
-                     "tp:main:acceso:t:pun", "tp:main:acceso:v:C",          # una sola medida: no se elige
-                     "tp:main:acceso:t:evi", "tp:main:acceso:m:69", "tp:main:acceso:v:EA",
-                     "tp:main:acceso:borrar",
-                     "tp:main:acceso:t:com", "tp:main:acceso:volver",       # se arrepintió
-                     "tp:main:acceso:t:12a", "tp:main:acceso:m:56.5", "tp:main:acceso:v:C"):
-            self.assertEqual(acceso(boton(data), ctx), TAPAS_ACCESO_MAIN, data)
-        self.assertEqual(acceso(boton("tp:main:acceso:listo"), ctx), SEALING_MAIN)
-        self.assertEqual(ctx.user_data["tapas_acceso_main"],
-                         "TATCEA octogonal con parantes 53.5x56.5, TATCC punta recortada con parantes 54, "
-                         "TATCC 12 agujeros punta recortada 56.5")
-
-    def test_medida_de_otro_tipo_no_se_toma(self):
-        ctx = entorno.contexto(_datos())
-        acceso = ct.boton_tapas("main", "acceso")
-        acceso(boton("tp:main:acceso:t:com"), ctx)
-        acceso(boton("tp:main:acceso:m:69"), ctx)  # 69 es de evita marco, no de las comunes
-        self.assertIsNone(ctx.user_data["tapas_en_curso"]["medida"])
-
-    def test_tapas_no_se_escriben(self):
-        ctx = entorno.contexto(_datos())
-        upd = entorno.update_texto("TATCEA 57")
-        self.assertEqual(ct.texto_tapas("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
-        self.assertNotIn("tapas_acceso_main", ctx.user_data)
-        self.assertIn("con los botones", entorno.mensajes_enviados(ctx, upd))
-
-    def test_no_tiene_y_listo_vacio(self):
-        ctx = entorno.contexto(_datos())
-        insp = ct.boton_tapas("main", "insp")
-        self.assertEqual(insp(boton("tp:main:insp:listo"), ctx), TAPAS_INSPECCION_MAIN)  # sin tapas: no avanza
-        self.assertEqual(insp(boton("tp:main:insp:no"), ctx), TAPAS_ACCESO_MAIN)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "No tiene")
-
-    def test_boton_de_otro_paso_no_se_toma(self):
-        ctx = entorno.contexto(_datos())
-        upd = boton("tp:main:insp:m:60x60")
-        self.assertEqual(ct.boton_tapas("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
-        upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
-        self.assertNotIn("tapas_en_curso", ctx.user_data)
-
-    def test_sellado(self):
-        ctx = entorno.contexto(_datos())
-        sellado = ct.boton_sellado("main")
-        sellado(boton("se:main:burlete"), ctx)
-        sellado(boton("se:main:masilla"), ctx)
-        sellado(boton("se:main:silicona"), ctx)
-        sellado(boton("se:main:silicona"), ctx)  # la desmarca
-        self.assertEqual(sellado(boton("se:main:listo"), ctx), REPAIR_MAIN)
-        self.assertEqual(ctx.user_data["sealing_main"], "Masilla y burlete")
-
-    def test_sellado_otro_escrito(self):
-        ctx = entorno.contexto(_datos())
-        ct.boton_sellado("main")(boton("se:main:otro"), ctx)
-        self.assertEqual(ct.texto_sellado("main")(entorno.update_texto("cinta"), ctx), REPAIR_MAIN)
-        self.assertEqual(ctx.user_data["sealing_main"], "cinta")
+        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("una de 60"), ctx), TAPAS_ACCESO_MAIN)
+        self.assertEqual(ct.recibir_texto("main", "acceso")(entorno.update_texto("56.5"), ctx), SEALING_MAIN)
+        self.assertEqual(ct.recibir_texto("main", "sellado")(entorno.update_texto("masilla"), ctx), REPAIR_MAIN)
+        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "una de 60")
+        self.assertEqual(ctx.user_data["tapas_acceso_main"], "56.5")
+        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+        enviados = _enviados(ctx)
+        self.assertIn("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):", enviados)
+        self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b> (EJ: masilla, burlete):", enviados)
+        self.assertIn("Reparaciones a realizar en <b>Cisterna</b>", enviados)
+        self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN])
 
     def test_atras_desde_tapas_vuelve_a_la_medida(self):
         ctx = entorno.contexto(_datos(state_stack=[MEASURE_MAIN], current_state=TAPAS_INSPECCION_MAIN,
                                       measure_main="1.80, 2.00, 1.50"))
-        upd = boton("back")
-        self.assertEqual(ct.boton_tapas("main", "insp")(upd, ctx), MEASURE_MAIN)
-        enviados = [c.kwargs["text"] for c in ctx.bot.send_message.call_args_list]
-        self.assertTrue(any("Medida del tanque" in t for t in enviados), enviados)
+        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("atrás"), ctx), MEASURE_MAIN)
+        self.assertIn("Medida del tanque", _enviados(ctx))
+
+
+class TestMenuDeReparaciones(unittest.TestCase):
+
+    def _ctx(self):
+        return entorno.contexto(_datos(current_state=REPAIR_MAIN, state_stack=[SEALING_MAIN]))
+
+    def test_carga_completa_y_pasa_a_las_fotos(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        pasos = ("g:tit", "m:60x60", "v:EA",                  # tapa de inspección
+                 "g:tat", "t:oct", "m:53.5x56.5", "v:C",      # tapa de acceso octogonal
+                 "g:tat", "t:pun", "v:EA",                    # punta recortada: una sola medida
+                 "g:tmt", "m:48x48", "v:EA",                  # marco y tapa
+                 "g:mat", "m:52", "v:C",                      # marco solo
+                 "g:rev", "c:frente", "c:piso", "c:frente", "c:lateral", "cok",
+                 "g:flo", "g:aut", "g:aut", "borrar",
+                 "g:tat", "volver")                           # se arrepintió
+        for paso in pasos:
+            self.assertEqual(rep(boton(f"rp:main:{paso}"), ctx), REPAIR_MAIN, paso)
+        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(ctx.user_data["repairs"],
+                         "TITCEA 60x60, TATCC octogonal con parantes 53.5x56.5, "
+                         "TATCEA punta recortada con parantes 54, TMTCEA 48x48, MATCC 52, "
+                         "revoque lateral y piso, flotante, automático")
+        self.assertEqual(ctx.user_data["state_stack"], [SEALING_MAIN, REPAIR_MAIN])
+        self.assertIn("Mandá una foto de cada reparación", _enviados(ctx))
+        self.assertNotIn("reparaciones_en_curso", ctx.user_data)
+
+    def test_sin_reparaciones_va_a_sugerencias(self):
+        ctx = self._ctx()
+        ctx.user_data["fotos_reparaciones"] = {"main": ["vieja"]}
+        rep = ct.boton_reparaciones("main")
+        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_MAIN)  # sin nada cargado no avanza
+        self.assertEqual(rep(boton("rp:main:no"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(ctx.user_data["repairs"], "No")
+        self.assertNotIn("main", ctx.user_data["fotos_reparaciones"])
+
+    def test_medida_de_otro_tipo_no_se_toma(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        rep(boton("rp:main:g:tat"), ctx)
+        rep(boton("rp:main:t:com"), ctx)
+        rep(boton("rp:main:m:69"), ctx)  # 69 es de evita marco, no de las comunes
+        self.assertIsNone(ctx.user_data["reparaciones_en_curso"]["medida"])
+
+    def test_revoque_sin_caras_no_se_agrega(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        rep(boton("rp:main:g:rev"), ctx)
+        upd = boton("rp:main:cok")
+        rep(upd, ctx)
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
+        self.assertTrue(upd.callback_query.answer.call_args.kwargs.get("show_alert"))
+
+    def test_boton_de_otro_tanque_no_se_toma(self):
+        ctx = self._ctx()
+        upd = boton("rp:alt1:g:flo")
+        self.assertEqual(ct.boton_reparaciones("main")(upd, ctx), REPAIR_MAIN)
+        upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
+        self.assertNotIn("reparaciones_en_curso", ctx.user_data)
+
+    def test_las_reparaciones_no_se_escriben(self):
+        ctx = self._ctx()
+        upd = entorno.update_texto("cambiar tapa de acceso")
+        self.assertEqual(ct.texto_reparaciones("main")(upd, ctx), REPAIR_MAIN)
+        self.assertNotIn("repairs", ctx.user_data)
+        self.assertIn("se cargan con los botones", _enviados(ctx))
+
+    def test_volver_de_las_fotos_conserva_lo_cargado(self):
+        ctx = self._ctx()
+        ctx.user_data["repairs"] = "TITCEA 60x60, flotante"
+        ct.preguntar_reparaciones(entorno.update_texto(None), ctx, "main")
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 60x60", "flotante"])
+
+    def test_atras_vuelve_al_sellado(self):
+        ctx = self._ctx()
+        self.assertEqual(ct.boton_reparaciones("main")(boton("back"), ctx), SEALING_MAIN)
+        self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b>", _enviados(ctx))
 
 
 class TestContacto(unittest.TestCase):
@@ -186,8 +250,7 @@ class TestContacto(unittest.TestCase):
     def test_nombre_y_despues_telefono(self):
         ctx = entorno.contexto(_datos(current_state=CONTACT))
         self.assertEqual(ct.recibir_nombre(entorno.update_texto("Daniel"), ctx), CONTACT_PHONE)
-        upd = entorno.update_texto("11 3545")
-        self.assertEqual(ct.recibir_telefono(upd, ctx), CONTACT_PHONE)  # incompleto
+        self.assertEqual(ct.recibir_telefono(entorno.update_texto("11 3545"), ctx), CONTACT_PHONE)  # incompleto
         self.assertEqual(ct.recibir_telefono(entorno.update_texto("11 3545 6067"), ctx), PHOTOS)
         self.assertEqual(ctx.user_data["contact"], "Daniel 1135456067")
 
@@ -221,7 +284,7 @@ class TestConversacion(unittest.TestCase):
         handler = build_conversation_handler()
         update = MagicMock(spec=Update)
         [fallback] = handler.fallbacks
-        for data in ("tp:main:insp:m:60", "se:main:listo", "md:main:plastico", "ct:sin"):
+        for data in ("rp:main:g:tit", "md:main:plastico", "ct:sin", "tp:main:insp:m:60x60"):
             update.callback_query.data = data
             for h in handler.states[TANK_TYPE]:
                 if isinstance(h, CallbackQueryHandler):

@@ -96,6 +96,8 @@ def _text_step(update, context, save_key, current_state, next_state, next_questi
     return next_state
 
 
+# Las reparaciones de la carga manual se eligen con un menú (campos_tanque.boton_reparaciones).
+# get_repair_* quedan para cargarlas como texto: los tests del paso de fotos las usan.
 def _repair_step(update, context, save_key, current_state, sufijo, next_state, next_question):
     """Como _text_step, pero si hay reparaciones pide sus fotos antes de seguir."""
     text = update.message.text

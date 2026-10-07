@@ -7,36 +7,65 @@ informe reciban siempre lo mismo:
 - Medida: metros con 2 decimales, "alto, ancho, profundo" -> "1.80, 2.00, 1.50" (igual que la
   nota de voz). Varios tanques: "2 tanques: 1.80, ..." o "Tanque 1: ... | Tanque 2: ...".
   En litros: "2000 lts (plástico)".
-- Tapas: código del CSV de artículos + tipo y medida del catálogo -> "TITCEA 60x60,
-  TATCC 12 agujeros punta recortada 56.5", o "No tiene".
-- Sellado: "Masilla", "Masilla y burlete", "No tiene"...
+- Reparaciones: código del CSV de artículos + tipo y medida del catálogo, separadas por coma
+  -> "TITCEA 60x60, TATCC 12 agujeros punta recortada 56.5, revoque frente y piso, flotante",
+  o "No".
 - Teléfono: 10 dígitos con código de área, sin espacios -> "1135456067".
 """
 
 import re
 
 LETRA_TANQUE = {"CISTERNA": "C", "RESERVA": "R", "INTERMEDIARIO": "H"}
-PREFIJO_TAPA = {"insp": "TIT", "acceso": "TAT"}
 VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
+SIN_REPARACIONES = "No"
 
-# Catálogo de tapas (planilla del dueño, 2026-10-07): {campo: {tipo: (botón, descripción, medidas)}}.
-# El operario elige de acá; no se escribe nada. La descripción va en el valor guardado.
-CATALOGO_TAPAS = {
-    "insp": {
-        "ins": ("Inspección", "", ["30x30", "40x40", "50x50", "60x60", "80x80"]),
-    },
-    "acceso": {
+# Catálogo de reparaciones (planilla del dueño, 2026-10-07). El operario elige de acá; no se
+# escribe nada. {grupo: (botón, prefijo del código, {tipo: (botón, descripción, medidas)})}.
+# Los grupos sin prefijo no llevan código ni medida (revoque, flotante, automático).
+CATALOGO_REPARACIONES = {
+    "tit": ("Tapa de inspección", "TIT", {
+        "ins": ("", "", ["30x30", "40x40", "50x50", "60x60", "80x80"]),
+    }),
+    "tat": ("Tapa de acceso", "TAT", {
         "com": ("Comunes (47 a 52)", "", ["47x47", "48x48", "49x49", "50x50", "52x52"]),
         "est": ("39x49 / 54 / 60", "", ["39x49", "54", "60"]),
         "oct": ("Octogonal con parantes", "octogonal con parantes", ["53.5x56.5", "54x54"]),
         "pun": ("Punta recortada con parantes", "punta recortada con parantes", ["54"]),
         "12a": ("12 agujeros punta recortada", "12 agujeros punta recortada", ["49.5", "56", "56.5", "58"]),
         "evi": ("Evita marco", "evita marco", ["62", "69"]),
-    },
+    }),
+    "tmt": ("Cambio de marco y tapa de acceso", "TMT", {
+        "tm": ("", "", ["48x48", "49x49", "50x50", "52x52", "54x54", "60x60"]),
+    }),
+    "mat": ("Cambio de marco solo", "MAT", {
+        "ma": ("", "", ["48", "49", "50", "52", "54", "60"]),
+    }),
+    "rev": ("Revoque", None, {}),
+    "flo": ("Flotante", None, {}),
+    "aut": ("Automático", None, {}),
 }
+# Caras del tanque para el revoque (extract_reports.py busca frente, lateral y piso)
+CARAS_REVOQUE = {"frente": "frente", "lateral": "lateral", "piso": "piso"}
 
-SELLADOS = {"masilla": "Masilla", "burlete": "Burlete", "silicona": "Silicona"}
-NO_TIENE = "No tiene"
+
+def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "", medida: str = "",
+               caras: list = None) -> str:
+    """
+    Texto estándar de una reparación del catálogo:
+    ('tat', 'CISTERNA', 'EA', 'oct', '54x54') -> 'TATCEA octogonal con parantes 54x54'
+    ('rev', caras=['frente', 'piso'])          -> 'revoque frente y piso'
+    ('flo',)                                   -> 'flotante'
+    """
+    boton, prefijo, tipos = CATALOGO_REPARACIONES[grupo]
+    if prefijo is None:
+        texto = boton.lower()
+        if grupo == "rev" and caras:
+            nombres = [CARAS_REVOQUE[c] for c in CARAS_REVOQUE if c in caras]
+            texto += " " + (nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1])
+        return texto
+    descripcion = tipos[tipo][1]
+    return f"{prefijo}{LETRA_TANQUE[tanque.upper()]}{variante} {descripcion} {medida}".replace("  ", " ")
+
 
 MATERIALES = {"plastico": "plástico", "cilindrico": "cilíndrico", "acero": "acero inoxidable"}
 
@@ -101,28 +130,6 @@ def normalizar_medida(texto: str):
             return " | ".join(f"Tanque {i}: {g}" for i, g in enumerate(grupos, 1)), None
 
     return None, f"Necesito 3 medidas por tanque y encontré {len(numeros)}."
-
-
-def tapa(campo: str, tipo: str, medida: str) -> str:
-    """Descripción + medida: ('acceso', 'oct', '54x54') -> 'octogonal con parantes 54x54'."""
-    descripcion = CATALOGO_TAPAS[campo][tipo][1]
-    return f"{descripcion} {medida}".strip()
-
-
-def codigo_tapa(campo: str, tanque: str, variante: str, tipo: str, medida: str) -> str:
-    """('acceso', 'CISTERNA', 'EA', 'oct', '54x54') -> 'TATCEA octogonal con parantes 54x54'."""
-    return f"{PREFIJO_TAPA[campo]}{LETRA_TANQUE[tanque.upper()]}{variante} {tapa(campo, tipo, medida)}"
-
-
-def texto_sellado(elegidos: list, otro: str = "") -> str:
-    """['masilla', 'burlete'] -> 'Masilla y burlete'."""
-    partes = [SELLADOS[e] for e in SELLADOS if e in elegidos]
-    if otro:
-        partes.append(otro.strip())
-    if not partes:
-        return NO_TIENE
-    partes = [partes[0]] + [p[0].lower() + p[1:] for p in partes[1:]]
-    return partes[0] if len(partes) == 1 else ", ".join(partes[:-1]) + " y " + partes[-1]
 
 
 def normalizar_telefono(texto: str):
