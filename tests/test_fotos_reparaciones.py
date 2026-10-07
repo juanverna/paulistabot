@@ -173,6 +173,8 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         self.assertEqual(get_repair_main(entorno.update_texto("pintar la puerta"), ctx), REPAIR_PHOTOS)
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("No"), ctx), SUGGESTIONS_MAIN)
         self.assertEqual(ctx.user_data["repairs"], "No")
+        # Los ítems del texto rechazado no quedan: el informe mostraba "Otras reparaciones: Falta foto"
+        self.assertNotIn("main", ctx.user_data.get("items_reparacion", {}))
 
     def test_ningana_no_pide_fotos(self):
         ctx = entorno.contexto(_datos_base())

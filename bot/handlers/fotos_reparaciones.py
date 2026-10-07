@@ -149,6 +149,8 @@ def _corregir_codigos(update: Update, context: CallbackContext, ctx: dict, text:
         return REPAIR_PHOTOS
     if not necesita_fotos(text):  # "No", "ninguna"...: no hay reparaciones en este tanque
         context.user_data[TANQUES[sufijo][0]] = text
+        # Los ítems eran del texto rechazado: si quedan, el informe pide su foto
+        context.user_data.get("items_reparacion", {}).pop(sufijo, None)
         return _continuar(update, context)
     corregir = problemas_de_reparaciones(text, context.user_data.get(TANQUES[sufijo][1]))
     if corregir:
