@@ -369,10 +369,21 @@ class TestMenuDeReparaciones(unittest.TestCase):
     def test_botones_del_menu_con_emoji_y_uno_por_fila(self):
         ctx = self._ctx()
         _, botones = ct._rep_pantalla(ctx, "main")
-        textos = [fila[0].text for fila in botones.inline_keyboard[:7]]
-        self.assertEqual(textos, ["🔍 Tapa de inspección", "🚪 Tapa de acceso", "🔲 Tapa y marco de acceso",
+        textos = [fila[0].text for fila in botones.inline_keyboard[:8]]
+        self.assertEqual(textos, ["🚫 Sin reparaciones",  # arriba de todo
+                                  "🔍 Tapa de inspección", "🚪 Tapa de acceso", "🔲 Tapa y marco de acceso",
                                   "🖼 Marco solo", "🧱 Revoque", "🛟 Flotante", "⚡ Automático"])
-        self.assertTrue(all(len(fila) == 1 for fila in botones.inline_keyboard[:7]))
+        self.assertTrue(all(len(fila) == 1 for fila in botones.inline_keyboard[:8]))
+
+    def test_sin_reparaciones_no_aparece_con_algo_cargado(self):
+        ctx = self._ctx()
+        ct.boton_reparaciones("main")(boton("rp:main:g:flo"), ctx)
+        _, botones = ct._rep_pantalla(ctx, "main")
+        datos = [b.callback_data for fila in botones.inline_keyboard for b in fila]
+        self.assertNotIn("rp:main:no", datos)
+        self.assertEqual(botones.inline_keyboard[0][0].text, "🔍 Tapa de inspección")
+        self.assertEqual(ct.boton_reparaciones("main")(boton("rp:main:no"), ctx), REPAIR_MAIN)  # botón viejo
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["flotante"])
 
     def test_atras_en_el_pedido_de_fotos_vuelve_al_menu(self):
         from bot.handlers.fotos_reparaciones import handle_repair_photos_atras

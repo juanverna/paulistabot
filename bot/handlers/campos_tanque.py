@@ -241,11 +241,12 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
         return texto + (f"\n{ayuda}" if ayuda else "")
 
     if grupo is None:
-        filas = [[InlineKeyboardButton(f"{campos.EMOJI_REPARACION[clave]} {boton}", callback_data=f"{base}g:{clave}")]
-                 for clave, (boton, _, _) in campos.CATALOGO_REPARACIONES.items()]
+        # "Sin reparaciones" arriba de todo; con algo cargado no va (borraría lo cargado)
+        filas = [] if curso["lista"] else [[InlineKeyboardButton("🚫 Sin reparaciones", callback_data=f"{base}no")]]
+        filas += [[InlineKeyboardButton(f"{campos.EMOJI_REPARACION[clave]} {boton}", callback_data=f"{base}g:{clave}")]
+                  for clave, (boton, _, _) in campos.CATALOGO_REPARACIONES.items()]
         filas += [[InlineKeyboardButton("↩️ Borrar última", callback_data=f"{base}borrar"),
                    InlineKeyboardButton("✅ Listo", callback_data=f"{base}listo")],
-                  [InlineKeyboardButton("🚫 Sin reparaciones", callback_data=f"{base}no")],
                   [InlineKeyboardButton("⬅️ ATRAS", callback_data="back")]]
         partes = [f"🔧 <b>Reparaciones de {tanque}</b>"]
         if curso.get("aviso"):
@@ -255,7 +256,7 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
             partes.append("Tocá otra reparación para agregarla, o <b>✅ Listo</b> si ya están todas.")
         else:
             partes.append("Tocá cada reparación que haya que hacer, de a una. Si son 2 iguales, cargala "
-                          "2 veces. Si no hay ninguna, tocá <b>🚫 Sin reparaciones</b>.")
+                          "2 veces. Si no hay ninguna, tocá <b>🚫 Sin reparaciones</b> (arriba de todo).")
         return "\n\n".join(partes), InlineKeyboardMarkup(filas)
 
     nombre_grupo, _, tipos = campos.CATALOGO_REPARACIONES[grupo]
@@ -361,6 +362,10 @@ def boton_reparaciones(sufijo: str):
         curso = _rep_en_curso(context, sufijo)
         if accion == "listo" and not curso["lista"]:
             query.answer("No cargaste ninguna reparación. Si no hay, tocá «Sin reparaciones».", show_alert=True)
+            return estado
+        if accion == "no" and curso["lista"]:  # botón viejo: no se borra lo cargado
+            query.answer("Ya cargaste reparaciones. Si no va ninguna, borralas con «Borrar última».",
+                         show_alert=True)
             return estado
         query.answer()
         curso["aviso"] = None
