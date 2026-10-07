@@ -14,6 +14,8 @@ informe reciban siempre lo mismo:
 
 import re
 
+_NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
+
 LETRA_TANQUE = {"CISTERNA": "C", "RESERVA": "R", "INTERMEDIARIO": "H"}
 VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
 SIN_REPARACIONES = "No"
@@ -46,27 +48,49 @@ CATALOGO_REPARACIONES = {
 }
 # Emoji de cada botón del menú, para distinguirlos de un vistazo
 EMOJI_REPARACION = {"tit": "🔍", "tat": "🚪", "tmt": "🔲", "mat": "🖼", "rev": "🧱", "flo": "🛟", "aut": "⚡"}
-# Caras del tanque para el revoque (extract_reports.py busca frente, lateral y piso)
-CARAS_REVOQUE = {"frente": "frente", "lateral": "lateral", "piso": "piso"}
+# Revoque: un ítem por cara. Cuba de entrada de agua o ciego (si hay una sola cuba, entrada de
+# agua), y la cara completa o un parche con sus medidas en metros.
+# extract_reports.py busca "frente", "lateral" y "piso" en el texto.
+CARAS_REVOQUE = {"frente": "frente", "li": "lateral izquierdo", "ld": "lateral derecho", "piso": "piso"}
+CUBAS = {"EA": "entrada de agua", "C": "ciego"}
 
 
 def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "", medida: str = "",
-               caras: list = None) -> str:
+               cara: str = "", parche: str = "") -> str:
     """
-    Texto estándar de una reparación del catálogo:
-    ('tat', 'CISTERNA', 'EA', 'oct', '54x54') -> 'TATCEA octogonal con parantes 54x54'
-    ('rev', caras=['frente', 'piso'])          -> 'revoque frente y piso'
-    ('flo',)                                   -> 'flotante'
+    Texto estándar de una reparación del catálogo (sin comas: las reparaciones se separan con coma):
+    ('tat', 'CISTERNA', 'EA', 'oct', '54x54')        -> 'TATCEA octogonal con parantes 54x54'
+    ('rev', variante='EA', cara='frente')            -> 'revoque frente entrada de agua completo'
+    ('rev', variante='C', cara='li', parche='1.50x1.50')
+                                                     -> 'revoque lateral izquierdo ciego parche 1.50x1.50 m'
+    ('flo',)                                         -> 'flotante'
     """
     boton, prefijo, tipos = CATALOGO_REPARACIONES[grupo]
+    if grupo == "rev":
+        extension = f"parche {parche} m" if parche else "completo"
+        return f"revoque {CARAS_REVOQUE[cara]} {CUBAS[variante]} {extension}"
     if prefijo is None:
-        texto = boton.lower()
-        if grupo == "rev" and caras:
-            nombres = [CARAS_REVOQUE[c] for c in CARAS_REVOQUE if c in caras]
-            texto += " " + (nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1])
-        return texto
+        return boton.lower()
     descripcion = tipos[tipo][1]
     return f"{prefijo}{LETRA_TANQUE[tanque.upper()]}{variante} {descripcion} {medida}".replace("  ", " ")
+
+
+_PARCHE_MAX_M = 15.0
+
+
+def normalizar_parche(texto: str):
+    """
+    Medidas de un parche de revoque en metros: '2x2' -> '2.00x2.00'; '1,5 x 1,5' -> '1.50x1.50'.
+    (valor, None), o (None, motivo) si no son 2 medidas razonables.
+    """
+    numeros = _NUMERO.findall((texto or "").lower())
+    if len(numeros) != 2:
+        return None, ("Escribí las 2 medidas del parche en metros, largo x alto "
+                      "(ej: 2x2 o 1,5 x 1,5).")
+    metros = [float(n.replace(",", ".")) for n in numeros]
+    if not all(0 < m <= _PARCHE_MAX_M for m in metros):
+        return None, "Las medidas del parche van en metros, entre 0.01 y 15 (ej: 2x2 o 1,5 x 1,5)."
+    return f"{metros[0]:.2f}x{metros[1]:.2f}", None
 
 
 # Tapas (texto, con la ayuda de siempre en la pregunta): solo se aceptan estas medidas.
@@ -117,7 +141,6 @@ AYUDA_MEDIDA = ("Escribí las 3 medidas: alto, ancho y profundo, en metros o en 
                 "Si son varios tanques iguales: 2 tanques 1.80 1.80 1.80.\n"
                 "Si es de plástico o cilíndrico: 1000 litros.")
 
-_NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
 _MIN_M, _MAX_M = 0.2, 15.0
 
 

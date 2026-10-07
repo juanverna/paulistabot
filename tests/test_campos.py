@@ -90,7 +90,10 @@ class TestCatalogo(unittest.TestCase):
                          "TATHC 12 agujeros punta recortada 56.5")
         self.assertEqual(campos.reparacion("tmt", "RESERVA", "EA", "tm", "48x48"), "TMTREA 48x48")
         self.assertEqual(campos.reparacion("mat", "RESERVA", "C", "ma", "50"), "MATRC 50")
-        self.assertEqual(campos.reparacion("rev", caras=["piso", "frente"]), "revoque frente y piso")
+        self.assertEqual(campos.reparacion("rev", variante="EA", cara="frente"),
+                         "revoque frente entrada de agua completo")
+        self.assertEqual(campos.reparacion("rev", variante="C", cara="li", parche="1.50x1.50"),
+                         "revoque lateral izquierdo ciego parche 1.50x1.50 m")
         self.assertEqual(campos.reparacion("flo"), "flotante")
         self.assertEqual(campos.reparacion("aut"), "automático")
 
@@ -111,7 +114,28 @@ class TestCatalogo(unittest.TestCase):
                             self.assertEqual(items[grupo_foto[grupo]]["cantidad"], 1, texto)
         for grupo, foto in (("flo", "flotante"), ("aut", "automatico")):
             self.assertEqual(list(detectar_items(campos.reparacion(grupo))), [foto])
-        self.assertEqual(list(detectar_items(campos.reparacion("rev", caras=["frente"]))), ["revoque"])
+        for cara in campos.CARAS_REVOQUE:
+            for cuba in campos.CUBAS:
+                for parche in ("", "2.00x2.00"):
+                    texto = campos.reparacion("rev", variante=cuba, cara=cara, parche=parche)
+                    self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"), texto)
+                    self.assertEqual(list(detectar_items(texto)), ["revoque"], texto)
+
+    def test_cubas_del_revoque_no_duplican_la_tapa(self):
+        # "entrada de agua" y "ciego" de dos revoques no son dos tapas de acceso
+        texto = ("TATCEA 47x47, revoque frente entrada de agua completo, "
+                 "revoque piso ciego parche 1.00x1.00 m")
+        self.assertEqual(detectar_items(texto)["tapa_acceso"]["cantidad"], 1)
+        # el texto escrito a mano de antes sigue contando 2
+        self.assertEqual(detectar_items("tapa de acceso de entrada de agua y ciego")["tapa_acceso"]["cantidad"], 2)
+
+    def test_medidas_del_parche(self):
+        for escrito, esperado in (("2x2", "2.00x2.00"), ("1,5 x 1,5", "1.50x1.50"), ("2 por 0.5", "2.00x0.50")):
+            self.assertEqual(campos.normalizar_parche(escrito), (esperado, None), escrito)
+        for escrito in ("grande", "2", "2x2x2", "0x1", "20x1"):
+            valor, problema = campos.normalizar_parche(escrito)
+            self.assertIsNone(valor, escrito)
+            self.assertTrue(problema)
 
     def test_varias_reparaciones_juntas(self):
         texto = "TATCEA evita marco 62, TATCC 47x47, MATCEA 50, revoque lateral, flotante"
@@ -223,7 +247,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
                  "g:tat", "t:pun", "v:EA",                    # punta recortada: una sola medida
                  "g:tmt", "m:48x48", "v:EA",                  # marco y tapa
                  "g:mat", "m:52", "v:C",                      # marco solo
-                 "g:rev", "c:frente", "c:piso", "c:frente", "c:lateral", "cok",
+                 "g:rev", "cara:li", "cuba:EA", "ext:completo",  # revoque lateral izquierdo completo
                  "g:flo", "g:aut", "g:aut", "borrar",
                  "g:tat", "volver")                           # se arrepintió
         for paso in pasos:
@@ -232,7 +256,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
         self.assertEqual(ctx.user_data["repairs"],
                          "TITCEA 60x60, TATCC octogonal con parantes 53.5x56.5, "
                          "TATCEA punta recortada con parantes 54, TMTCEA 48x48, MATCC 52, "
-                         "revoque lateral y piso, flotante, automático")
+                         "revoque lateral izquierdo entrada de agua completo, flotante, automático")
         self.assertEqual(ctx.user_data["state_stack"], [SEALING_MAIN, REPAIR_MAIN])
         self.assertIn("Mandá una foto de cada reparación", _enviados(ctx))
         self.assertNotIn("reparaciones_en_curso", ctx.user_data)
@@ -254,14 +278,37 @@ class TestMenuDeReparaciones(unittest.TestCase):
         rep(boton("rp:main:m:69"), ctx)  # 69 es de evita marco, no de las comunes
         self.assertIsNone(ctx.user_data["reparaciones_en_curso"]["medida"])
 
-    def test_revoque_sin_caras_no_se_agrega(self):
+    def test_revoque_con_parche(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        for paso in ("g:rev", "cara:ld", "cuba:C", "ext:parche"):
+            self.assertEqual(rep(boton(f"rp:main:{paso}"), ctx), REPAIR_MAIN, paso)
+        texto = ct.texto_reparaciones("main")
+        upd = entorno.update_texto("grande")
+        self.assertEqual(texto(upd, ctx), REPAIR_MAIN)  # medidas inválidas: se vuelven a pedir
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
+        self.assertIn("2 medidas del parche", entorno.mensajes_enviados(ctx, upd))
+        self.assertEqual(texto(entorno.update_texto("1,5 x 1,5"), ctx), REPAIR_MAIN)
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"],
+                         ["revoque lateral derecho ciego parche 1.50x1.50 m"])
+        self.assertIn("Tocá cada reparación", _enviados(ctx))  # vuelve al menú
+
+    def test_revoque_pide_entrada_de_agua_si_hay_una_sola_cuba(self):
         ctx = self._ctx()
         rep = ct.boton_reparaciones("main")
         rep(boton("rp:main:g:rev"), ctx)
-        upd = boton("rp:main:cok")
+        upd = boton("rp:main:cara:frente")
         rep(upd, ctx)
+        texto = upd.callback_query.edit_message_text.call_args.args[0]
+        self.assertIn("una sola cuba", texto)
+        self.assertIn("Entrada de agua", texto)
+
+    def test_revoque_saltear_pasos_no_agrega_nada(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        rep(boton("rp:main:g:rev"), ctx)
+        rep(boton("rp:main:ext:completo"), ctx)  # sin cara ni cuba
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
-        self.assertTrue(upd.callback_query.answer.call_args.kwargs.get("show_alert"))
 
     def test_boton_de_otro_tanque_no_se_toma(self):
         ctx = self._ctx()

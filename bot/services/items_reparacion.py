@@ -103,8 +103,10 @@ def detectar_items(texto: str) -> dict:
         item["cantidad"] = max(item["cantidad"], cantidad)
 
     # "tapa de acceso de entrada de agua y ciego": dos unidades (solo si hay un único tipo de tapa/marco)
+    # (el "entrada de agua"/"ciego" de un revoque del menú es la cuba, no una tapa: no cuenta)
+    sin_revoque = ",".join(p for p in _normalizar(_RE_CODIGO.sub(" ", texto)).split(",") if "revoque" not in p)
     fisicos = [g for g in items if g in ("tapa_inspeccion", "tapa_acceso", "tapa_marco", "marco", "tapa")]
-    if len(fisicos) == 1 and "entrada de agua" in resto and "ciego" in resto:
+    if len(fisicos) == 1 and "entrada de agua" in sin_revoque and "ciego" in sin_revoque:
         items[fisicos[0]]["cantidad"] = max(items[fisicos[0]]["cantidad"], 2)
 
     # 3) Si no se reconoció ningún ítem, todo el texto es "otras reparaciones" (una foto).
