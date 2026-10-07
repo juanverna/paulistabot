@@ -524,8 +524,11 @@ class TestModificarAlgo(unittest.TestCase):
     def test_modificar_reparaciones_a_ninguna_vuelve_al_resumen(self):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
-        self._boton("ed:f:main:reparaciones", ctx)
-        self.assertEqual(ct.boton_reparaciones("main")(boton("rp:main:no"), ctx), FINAL_SUMMARY)
+        self._boton("ed:f:main:reparaciones", ctx)  # arranca con "TITCEA 60x60" cargada
+        rep = ct.boton_reparaciones("main")
+        self.assertEqual(rep(boton("rp:main:no"), ctx), REPAIR_MAIN)  # no borra lo cargado de golpe
+        rep(boton("rp:main:borrar"), ctx)
+        self.assertEqual(rep(boton("rp:main:no"), ctx), FINAL_SUMMARY)
         self.assertEqual(ctx.user_data["repairs"], "No")
 
     def test_atras_en_la_primera_pregunta_vuelve_al_resumen_sin_borrar(self):
