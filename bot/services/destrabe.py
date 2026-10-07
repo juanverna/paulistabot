@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 MOTIVO_FOTO_FALTANTE = "foto faltante"
 MOTIVO_CALIDAD_BAJA  = "foto de calidad baja"
 MOTIVO_NO_RESPALDA   = "foto no respalda la reparación"
+MOTIVO_CORRECCION    = "foto corregida por el operario"
 
 # Argentina no tiene horario de verano: UTC-3 fijo (Heroku corre en UTC)
 HORA_ARGENTINA = timezone(timedelta(hours=-3), "ART")

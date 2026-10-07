@@ -100,8 +100,8 @@ def _items(context: CallbackContext, sufijo: str) -> dict:
     return context.user_data.get("items_reparacion", {}).get(sufijo, {}).get("items", {})
 
 
-def _send(update: Update, context: CallbackContext, text: str, atras: bool = False) -> None:
-    context.bot.send_message(
+def _send(update: Update, context: CallbackContext, text: str, atras: bool = False):
+    return context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=apply_bold_keywords(text),
         reply_markup=teclado_atras() if atras else None,
@@ -190,20 +190,67 @@ def _continuar(update: Update, context: CallbackContext) -> int:
     return siguiente
 
 
-def _trabar(update: Update, context: CallbackContext, ctx: dict, faltantes: dict) -> int:
-    """Traba el paso: faltantes = {grupo: estado del ítem} de los ítems sin sus fotos."""
+def _trabar(update: Update, context: CallbackContext, ctx: dict, faltantes: dict, corregidas: list) -> int:
+    """
+    Traba el paso hasta que mande las fotos que faltan o el encargado dé el código.
+    faltantes = {grupo: estado del ítem} sin sus fotos; corregidas = fotos donde el operario
+    contradijo a la IA (piden el código aunque ya estén todas).
+    """
     ctx["trabado"] = True
     ctx["faltantes"] = {g: e["motivo"] for g, e in faltantes.items()}
-    motivos = ". ".join(e["texto"] for e in faltantes.values())
-    _send(update, context, "⚠️ " + destrabe.mensaje_trabado(motivos) + "\n\n" + AYUDA_CODIGO)
+    ctx["correcciones"] = [{"grupo": f["candidatos"][0], "texto": revision_fotos.texto_correccion(f)}
+                           for f in corregidas]
+    partes = []
+    if faltantes:
+        partes.append(destrabe.mensaje_trabado(". ".join(e["texto"] for e in faltantes.values())))
+    if corregidas:
+        detalle = "; ".join(c["texto"] for c in ctx["correcciones"])
+        n = len(corregidas)
+        partes.append((f"Corregiste {n} foto que la IA reconoció distinto" if n == 1 else
+                       f"Corregiste {n} fotos que la IA reconoció distinto") +
+                      f" ({detalle}). Como hubo corrección, para seguir hace falta el código del encargado"
+                      + ("." if faltantes else ", aunque ya estén todas las fotos."))
+    texto = "⚠️ " + "\n\n".join(partes) + "\n\n" + (
+        AYUDA_CODIGO if faltantes else "🔑 Pedile al encargado el código de hoy y escribilo acá.")
+    # Si ya había un aviso de trabado, queda marcado como viejo: vale el nuevo
+    anterior = ctx.pop("msg_trabado", None)
+    if anterior:
+        try:
+            context.bot.edit_message_text(chat_id=update.effective_chat.id, message_id=anterior,
+                                          text="ℹ️ Este aviso se actualizó: mirá el de más abajo.")
+        except Exception:  # muy viejo o igual: no importa
+            pass
+    mensaje = _send(update, context, texto)
+    ctx["msg_trabado"] = getattr(mensaje, "message_id", None)
     return REPAIR_PHOTOS
+
+
+def _evaluar_y_decidir(update: Update, context: CallbackContext, ctx: dict) -> int:
+    """Evalúa los ítems con las fotos que hay: sigue, o traba (fotos faltantes o corregidas)."""
+    sufijo = ctx["sufijo"]
+    items = _items(context, sufijo)
+    estados = revision_fotos.evaluar(context.bot, context.user_data, sufijo,
+                                     _nombre_tanque(context, sufijo), items, ctx.setdefault("distincion", {}))
+    context.user_data["items_reparacion"][sufijo]["estado"] = estados
+    if len(items) > 1 or any(e["requeridas"] > 1 for e in estados.values()):
+        _send(update, context, revision_fotos.texto_checklist(_nombre_tanque(context, sufijo), estados))
+
+    faltantes = {g: e for g, e in estados.items() if not e["ok"]}
+    corregidas = revision_fotos.corregidas(revision_fotos.instantanea(_fotos(context, sufijo)))
+    if not faltantes and not corregidas:
+        if ctx.get("trabado"):  # se destrabó solo (ej: deshizo la corrección)
+            ctx["trabado"] = False
+            if update.message is None:  # vino de un botón: hay que escribir Listo para seguir
+                _send(update, context, "✅ Ya está todo. Escribí <b>Listo</b> para seguir.")
+                return REPAIR_PHOTOS
+        return _continuar(update, context)
+    return _trabar(update, context, ctx, faltantes, corregidas)
 
 
 def _cerrar_paso(update: Update, context: CallbackContext, ctx: dict) -> int:
     """"Listo": espera las revisiones pendientes y evalúa si cada ítem tiene sus fotos."""
     sufijo  = ctx["sufijo"]
     chat_id = update.effective_chat.id
-    items   = _items(context, sufijo)
     if revision_fotos.hay_pendientes(chat_id):
         update.message.reply_text("⏳ Estoy revisando las fotos, un momento...")
     revision_fotos.esperar(chat_id, _fotos(context, sufijo),
@@ -214,17 +261,7 @@ def _cerrar_paso(update: Update, context: CallbackContext, ctx: dict) -> int:
         update.message.reply_text("❓ Antes de seguir, decime de cuál tapa es cada foto marcada "
                                   "con ❓ (tocá el botón en esa foto).")
         return REPAIR_PHOTOS
-
-    estados = revision_fotos.evaluar(context.bot, context.user_data, sufijo,
-                                     _nombre_tanque(context, sufijo), items, ctx.setdefault("distincion", {}))
-    context.user_data["items_reparacion"][sufijo]["estado"] = estados
-    if len(items) > 1 or any(e["requeridas"] > 1 for e in estados.values()):
-        _send(update, context, revision_fotos.texto_checklist(_nombre_tanque(context, sufijo), estados))
-
-    faltantes = {g: e for g, e in estados.items() if not e["ok"]}
-    if not faltantes:
-        return _continuar(update, context)
-    return _trabar(update, context, ctx, faltantes)
+    return _evaluar_y_decidir(update, context, ctx)
 
 
 def _es_imagen(update: Update) -> bool:
@@ -297,6 +334,9 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
             for grupo, motivo in ctx.get("faltantes", {}).items():
                 destrabe.registrar_destrabe(context.user_data, _nombre_tanque(context, sufijo),
                                             etiqueta(grupo), motivo or destrabe.MOTIVO_FOTO_FALTANTE)
+            for c in ctx.get("correcciones", []):
+                destrabe.registrar_destrabe(context.user_data, _nombre_tanque(context, sufijo),
+                                            etiqueta(c["grupo"]), f"{destrabe.MOTIVO_CORRECCION} ({c['texto']})")
             update.message.reply_text("✅ Código correcto. Seguimos.")
             return _continuar(update, context)
         if resultado == destrabe.BLOQUEADO:
@@ -370,6 +410,9 @@ def handle_repair_photo_button(update: Update, context: CallbackContext) -> int:
     else:
         query.edit_message_text(apply_bold_keywords(f"📷 {etiqueta(grupo)} ✅ (corregida)"),
                                 parse_mode=ParseMode.HTML)
+    if ctx.get("trabado"):
+        # El aviso de trabado era de antes de la corrección: se vuelve a evaluar y se avisa de nuevo
+        return _evaluar_y_decidir(update, context, ctx)
     return REPAIR_PHOTOS
 
 

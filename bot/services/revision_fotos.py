@@ -301,6 +301,9 @@ def aplicar_correccion(user_data: dict, sufijo: str, pid: int, grupo: str):
             _descartar(user_data, sufijo, foto)
             return foto
         foto["candidatos"] = [grupo]
+        if foto.get("estado") == A_CONFIRMAR or foto.get("confirmo_tapa"):
+            # El bot le preguntó de cuál tapa es (la IA no estaba segura): no contradice a la IA
+            foto["confirmo_tapa"] = True
         if foto.get("estado") == A_CONFIRMAR:
             # El operario dijo qué tapa es; lo que la IA vio del daño sigue valiendo
             respalda = (foto.get("analisis") or {}).get("respalda_la_reparacion", True)
@@ -308,6 +311,26 @@ def aplicar_correccion(user_data: dict, sufijo: str, pid: int, grupo: str):
         elif foto.get("estado") in (NO_CORRESPONDE, PENDIENTE):
             foto["estado"] = VALIDADA  # el operario contradice a la IA: queda marcada como corregida
         return foto
+
+
+def corregidas(fotos: list) -> list:
+    """
+    Fotos en las que el operario contradijo a la IA (la puso en otro ítem, o dijo que sí era de
+    las reparaciones). Piden el código del encargado aunque ya estén todas las fotos.
+    No cuenta responder "¿de cuál tapa es?" (la IA no estaba segura y preguntó).
+    """
+    return [f for f in fotos
+            if f.get("corregida") and not f.get("confirmo_tapa") and f.get("estado") in ACEPTADAS
+            and f.get("candidatos") and f["candidatos"][0] != f.get("grupo_ia")]
+
+
+def texto_correccion(foto: dict) -> str:
+    """'la IA vio el marco y pusiste la tapa de inspección'."""
+    puesto = NOMBRE.get(foto["candidatos"][0], foto["candidatos"][0])
+    ia = foto.get("grupo_ia")
+    if ia:
+        return f"la IA vio {NOMBRE.get(ia, ia)} y pusiste {puesto}"
+    return f"la IA dijo que no era de las reparaciones y pusiste {puesto}"
 
 
 # =============================================================================
