@@ -44,7 +44,31 @@ def start_conversation(update: Update, context: CallbackContext) -> int:
     return CODE
 
 
+# =============================================================================
+# "Modificar algo" del resumen final (final_summary.py)
+# =============================================================================
+_EN_CURSO = ("reparaciones_en_curso", "rep_fotos", "litros_pendiente")
+
+
+def terminar_edicion(update: Update, context: CallbackContext):
+    """
+    Si se está modificando un campo desde el resumen final, vuelve al resumen.
+    None si no se está modificando nada (el paso sigue con el flujo normal).
+    """
+    if context.user_data.pop("editando", None) is None:
+        return None
+    for clave in _EN_CURSO:
+        context.user_data.pop(clave, None)
+    from bot.handlers.final_summary import show_final_summary
+    return show_final_summary(update, context)
+
+
 def back_handler(update: Update, context: CallbackContext) -> int:
+    # "Atrás" en la primera pregunta del campo que se está modificando: vuelve al resumen
+    # sin borrar el valor (más adentro, ej. de las fotos al menú de reparaciones, es lo normal)
+    editando = context.user_data.get("editando")
+    if editando is not None and len(context.user_data.get("state_stack", [])) <= editando:
+        return terminar_edicion(update, context)
     current = context.user_data.get("current_state")
     if current in STATE_KEYS and STATE_KEYS[current]:
         context.user_data.pop(STATE_KEYS[current], None)

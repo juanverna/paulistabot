@@ -24,7 +24,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
 from bot.services import campos
 
 PASOS = {
@@ -146,6 +146,9 @@ def _guardar_medida(update: Update, context: CallbackContext, sufijo: str, valor
     push_state(context, estado)
     if update.message:
         update.message.reply_text(f"✅ Medida: {valor}")
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     return preguntar_texto(update, context, sufijo, "insp")
 
 
@@ -178,6 +181,9 @@ def recibir_texto(sufijo: str, campo: str):
             return siguiente
         context.user_data[clave] = update.message.text
         push_state(context, estado)
+        fin = terminar_edicion(update, context)
+        if fin is not None:
+            return fin
         if siguiente_campo:
             return preguntar_texto(update, context, sufijo, siguiente_campo)
         return preguntar_reparaciones(update, context, sufijo)
@@ -282,6 +288,9 @@ def _rep_terminar(update: Update, context: CallbackContext, sufijo: str, lista: 
     # Sin reparaciones: no hay fotos que pedir, ni ítems de una carga anterior
     context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
     context.user_data.get("items_reparacion", {}).pop(sufijo, None)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     siguiente = SIGUIENTE_MANUAL[sufijo][0]
     _enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {_tanque(context, sufijo).capitalize()}:")
     return _ir(context, siguiente)
@@ -389,6 +398,9 @@ def _guardar_contacto(update: Update, context: CallbackContext, nombre: str, tel
         context.user_data["contact"] = "Sin encargado"
     else:
         context.user_data["contact"] = f"{nombre} {telefono or '(sin teléfono)'}"
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     return pedir_fotos_generales(update, context)
 
 

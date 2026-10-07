@@ -29,7 +29,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import (REPAIR_PHOTOS, SUGGESTIONS_MAIN, SUGGESTIONS_ALT1, SUGGESTIONS_ALT2)
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
 from bot.services import destrabe, revision_fotos, vision_service
 from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
                                            problemas_de_reparaciones)
@@ -124,7 +124,7 @@ def _preparar(context: CallbackContext, sufijo: str, modo: str) -> None:
 def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str) -> int:
     """
     Arranca el paso de fotos de reparaciones de un tanque.
-    modo: "manual" (sigue con sugerencias) o "voz" (vuelve al flujo de voz).
+    modo: "manual" (sigue con sugerencias; es el único que queda).
     """
     _preparar(context, sufijo, modo)
     context.user_data["current_state"] = REPAIR_PHOTOS
@@ -170,15 +170,6 @@ def reanudar_manual(update: Update, context: CallbackContext, sufijo: str) -> No
     _send(update, context, texto_pedido(context, sufijo) + extra)
 
 
-def pendiente_voz(user_data: dict):
-    """Primer tanque (flujo de voz) con reparaciones que todavía no pasó por el paso de fotos."""
-    hechos = user_data.get("fotos_reparaciones_hechas", [])
-    for sufijo, (clave, _) in TANQUES.items():
-        if sufijo not in hechos and necesita_fotos(user_data.get(clave)):
-            return sufijo
-    return None
-
-
 def _continuar(update: Update, context: CallbackContext) -> int:
     ctx = context.user_data.pop("rep_fotos", {})
     sufijo = ctx.get("sufijo", "main")
@@ -186,11 +177,10 @@ def _continuar(update: Update, context: CallbackContext) -> int:
     if sufijo not in hechos:
         hechos.append(sufijo)
 
-    if ctx.get("modo") == "voz":
-        from bot.handlers.voice_handler import _go_to_contact
-        return _go_to_contact(update, context)
-
     push_state(context, REPAIR_PHOTOS)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     siguiente, clave_nombre = SIGUIENTE_MANUAL[sufijo]
     nombre = context.user_data.get(clave_nombre, "").capitalize()
     _send(update, context, f"Indique sugerencias p/ la próx limpieza para {nombre}:")
@@ -294,11 +284,6 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
 
     normal = _normalizar(text)
     if normal == "atras":
-        if ctx.get("modo") == "voz":
-            update.message.reply_text(
-                "En este paso no se puede volver atrás. Si hay que corregir algo, "
-                "usá 'Modificar algo' en el resumen final.")
-            return REPAIR_PHOTOS
         # Vuelve a pedir el texto de reparaciones: las fotos de este tanque se descartan
         context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
         context.user_data.get("items_reparacion", {}).pop(sufijo, None)

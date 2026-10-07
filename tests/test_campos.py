@@ -292,5 +292,120 @@ class TestConversacion(unittest.TestCase):
             self.assertTrue(fallback.check_update(update), data)
 
 
+class TestElegirTanque(unittest.TestCase):
+
+    def test_limpieza_va_directo_a_la_hora_sin_nota_de_voz(self):
+        from bot.handlers.tanques import handle_tank_type
+        from bot.states import START_TIME
+        ctx = entorno.contexto({"state_stack": [], "service": "Limpieza y Reparacion de Tanques"})
+        self.assertEqual(handle_tank_type(boton("RESERVA"), ctx), START_TIME)
+        self.assertEqual(ctx.user_data["selected_category"], "RESERVA")
+        self.assertEqual(ctx.user_data["modo_ingreso"], "MANUAL")
+        self.assertTrue(ctx.user_data["manual_after_qr"])
+        self.assertNotIn("NOTA DE VOZ", _enviados(ctx))
+
+    def test_presupuesto_ya_tiene_la_hora_y_va_a_la_medida(self):
+        from bot.handlers.tanques import handle_tank_type
+        ctx = entorno.contexto({"state_stack": [], "service": "Presupuestos",
+                                "start_time": "08:00", "end_time": "10:00"})
+        self.assertEqual(handle_tank_type(boton("CISTERNA"), ctx), MEASURE_MAIN)
+
+    def test_boton_viejo_de_voz_no_es_un_tanque(self):
+        from bot.handlers.tanques import handle_tank_type
+        from bot.states import TANK_TYPE
+        ctx = entorno.contexto({"state_stack": []})
+        upd = boton("input_voice")
+        self.assertEqual(handle_tank_type(upd, ctx), TANK_TYPE)
+        self.assertNotIn("selected_category", ctx.user_data)
+
+
+class TestModificarAlgo(unittest.TestCase):
+
+    def _ctx(self):
+        from bot.states import FINAL_SUMMARY, PHOTOS as FOTOS
+        return entorno.contexto(_datos(
+            current_state=FINAL_SUMMARY, state_stack=[MEASURE_MAIN, SEALING_MAIN, FOTOS],
+            measure_main="1.80, 2.00, 1.50", sealing_main="masilla", repairs="TITCEA 60x60",
+            suggestions="nada", contact="Daniel 1135456067", start_time="08:00", end_time="10:00",
+            photos=["a", "b", "c"]))
+
+    def _boton(self, data, ctx):
+        from bot.handlers.final_summary import handle_final_summary_callback
+        return handle_final_summary_callback(boton(data), ctx)
+
+    def test_menu_muestra_los_tanques_cargados(self):
+        from bot.handlers.final_summary import _menu
+        _, botones = _menu(self._ctx().user_data, "menu")
+        datos = [b.callback_data for fila in botones.inline_keyboard for b in fila]
+        self.assertIn("ed:t:main", datos)
+        self.assertNotIn("ed:t:alt1", datos)  # Reserva no se cargó
+
+    def test_modificar_la_medida_vuelve_al_resumen(self):
+        from bot.states import FINAL_SUMMARY
+        ctx = self._ctx()
+        self.assertEqual(self._boton("final_edit", ctx), FINAL_SUMMARY)
+        self.assertEqual(self._boton("ed:t:main", ctx), FINAL_SUMMARY)
+        self.assertEqual(self._boton("ed:f:main:medida", ctx), MEASURE_MAIN)
+        self.assertEqual(ct.recibir_medida("main")(entorno.update_texto("grande"), ctx), MEASURE_MAIN)  # sigue validando
+        self.assertEqual(ct.recibir_medida("main")(entorno.update_texto("150 150 150"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["measure_main"], "1.50, 1.50, 1.50")
+        self.assertNotIn("editando", ctx.user_data)
+        self.assertIn("RESUMEN COMPLETO", _enviados(ctx))
+
+    def test_modificar_reparaciones_usa_el_menu_y_las_fotos(self):
+        from bot.states import FINAL_SUMMARY
+        ctx = self._ctx()
+        self.assertEqual(self._boton("ed:f:main:reparaciones", ctx), REPAIR_MAIN)
+        rep = ct.boton_reparaciones("main")
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 60x60"])  # arranca con lo cargado
+        rep(boton("rp:main:g:flo"), ctx)
+        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(ctx.user_data["repairs"], "TITCEA 60x60, flotante")
+
+    def test_modificar_reparaciones_a_ninguna_vuelve_al_resumen(self):
+        from bot.states import FINAL_SUMMARY
+        ctx = self._ctx()
+        self._boton("ed:f:main:reparaciones", ctx)
+        self.assertEqual(ct.boton_reparaciones("main")(boton("rp:main:no"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["repairs"], "No")
+
+    def test_atras_en_la_primera_pregunta_vuelve_al_resumen_sin_borrar(self):
+        from bot.states import FINAL_SUMMARY
+        ctx = self._ctx()
+        self._boton("ed:f:main:sellado", ctx)
+        self.assertEqual(ct.recibir_texto("main", "sellado")(entorno.update_texto("atras"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+
+    def test_modificar_sugerencias_y_contacto(self):
+        from bot.states import FINAL_SUMMARY
+        from bot.handlers.tanques import get_suggestions_main
+        ctx = self._ctx()
+        self.assertEqual(self._boton("ed:f:main:sugerencias", ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(get_suggestions_main(entorno.update_texto("limpiar antes"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["suggestions"], "limpiar antes")
+        self.assertEqual(self._boton("ed:c", ctx), CONTACT)
+        self.assertEqual(ct.recibir_nombre(entorno.update_texto("Ana"), ctx), CONTACT_PHONE)
+        self.assertEqual(ct.recibir_telefono(entorno.update_texto("2214567890"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["contact"], "Ana 2214567890")
+
+    def test_modificar_la_hora_con_los_botones(self):
+        from bot.states import FINAL_SUMMARY, START_TIME
+        from bot.handlers.shared import handle_hora_boton
+        ctx = self._ctx()
+        self.assertEqual(self._boton("ed:h:inicio", ctx), START_TIME)
+        handle_hora_boton(boton("hora:inicio:h:09"), ctx)
+        self.assertEqual(handle_hora_boton(boton("hora:inicio:m:09:15"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["start_time"], "09:15")
+        self.assertEqual(ctx.user_data["end_time"], "10:00")
+
+    def test_texto_en_el_resumen_pide_usar_los_botones(self):
+        from bot.states import FINAL_SUMMARY
+        from bot.handlers.final_summary import handle_final_text
+        ctx = self._ctx()
+        upd = entorno.update_texto("cambiar sellado a burlete")
+        self.assertEqual(handle_final_text(upd, ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords, is_valid_time
-from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
 from bot.handlers import hora
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ def get_address(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["address"] = text
     push_state(context, ADDRESS)
-    # Presupuestos → pide hora (no tiene QR ni nota de voz); otros no deberían llegar acá
+    # Presupuestos → pide hora (no tiene QR); otros no deberían llegar acá
     return pedir_hora(update, context, "inicio")
 
 
@@ -176,12 +176,18 @@ def get_end_time(update: Update, context: CallbackContext) -> int:
 def guardar_hora_inicio(update: Update, context: CallbackContext, valor: str) -> int:
     context.user_data["start_time"] = valor
     push_state(context, START_TIME)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     return pedir_hora(update, context, "fin")
 
 
 def guardar_hora_fin(update: Update, context: CallbackContext, valor: str) -> int:
     context.user_data["end_time"] = valor
     push_state(context, END_TIME)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     service = context.user_data.get("service")
 
     # Si viene del flujo manual post-QR → ir directo a medidas

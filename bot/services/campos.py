@@ -4,8 +4,7 @@ campos.py
 Formato estándar de los datos que el operario carga a mano, para que la calculadora y el
 informe reciban siempre lo mismo:
 
-- Medida: metros con 2 decimales, "alto, ancho, profundo" -> "1.80, 2.00, 1.50" (igual que la
-  nota de voz). Varios tanques: "2 tanques: 1.80, ..." o "Tanque 1: ... | Tanque 2: ...".
+- Medida: metros con 2 decimales, "alto, ancho, profundo" -> "1.80, 2.00, 1.50". Varios tanques: "2 tanques: 1.80, ..." o "Tanque 1: ... | Tanque 2: ...".
   En litros: "2000 lts (plástico)".
 - Reparaciones: código del CSV de artículos + tipo y medida del catálogo, separadas por coma
   -> "TITCEA 60x60, TATCC 12 agujeros punta recortada 56.5, revoque frente y piso, flotante",

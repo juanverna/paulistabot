@@ -9,7 +9,6 @@ from bot.states import (REPAIR_MAIN, REPAIR_ALT1, REPAIR_PHOTOS, SUGGESTIONS_MAI
                         SUGGESTIONS_ALT1, CONTACT, PHOTOS)
 from bot.handlers import fotos_reparaciones as fr
 from bot.handlers.tanques import get_repair_main, get_repair_alt1, get_suggestions_main
-from bot.handlers.voice_handler import _go_to_contact
 
 
 def _datos_base(**extra):
@@ -199,32 +198,6 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         self.assertNotIn("corregir_codigos", self.ctx.user_data["rep_fotos"])
         fr.handle_repair_photos(entorno.update_foto("f1"), self.ctx)
         self.assertEqual(entorno.ids(self.ctx.user_data["fotos_reparaciones"]["main"]), ["f1"])
-
-
-class TestFlujoVoz(unittest.TestCase):
-
-    def test_pide_fotos_de_cada_tanque_con_reparaciones_y_despues_contacto(self):
-        ctx = entorno.contexto(_datos_base(repairs="cambiar tapa", repair_alt1="no",
-                                           repair_alt2="revocar paredes"))
-        upd = entorno.update_texto("")
-        self.assertEqual(_go_to_contact(upd, ctx), REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["rep_fotos"]["sufijo"], "main")
-        fr.handle_repair_photos(entorno.update_foto("m1"), ctx)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["rep_fotos"]["sufijo"], "alt2")
-        fr.handle_repair_photos(entorno.update_foto("i1"), ctx)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), CONTACT)
-        fotos = ctx.user_data["fotos_reparaciones"]
-        self.assertEqual((entorno.ids(fotos["main"]), entorno.ids(fotos["alt2"])), (["m1"], ["i1"]))
-
-    def test_con_contacto_va_a_fotos_generales(self):
-        ctx = entorno.contexto(_datos_base(contact="Juan 1122334455"))
-        self.assertEqual(_go_to_contact(entorno.update_texto(""), ctx), PHOTOS)
-
-    def test_atras_no_se_permite_en_voz(self):
-        ctx = entorno.contexto(_datos_base(repairs="cambiar tapa"))
-        _go_to_contact(entorno.update_texto(""), ctx)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("atras"), ctx), REPAIR_PHOTOS)
 
 
 if __name__ == "__main__":

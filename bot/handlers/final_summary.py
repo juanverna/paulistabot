@@ -2,53 +2,23 @@
 final_summary.py
 ----------------
 Muestra un resumen completo del formulario antes de enviarlo.
-Permite editar cualquier campo antes de confirmar.
+
+"Modificar algo": el operario elige con botones qué campo cambiar y el bot le vuelve a hacer
+esa misma pregunta, con los mismos controles (medida validada, menú de reparaciones y sus
+fotos, hora con botones...). Al terminar ese campo vuelve al resumen (common.terminar_edicion).
+Botones: "ed:menu", "ed:hora", "ed:h:<inicio|fin>", "ed:c" (contacto), "ed:t:<sufijo>",
+"ed:f:<sufijo>:<campo>" y "ed:volver".
 """
 
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import CallbackContext, ConversationHandler
 
-from bot.states import FINAL_SUMMARY, PHOTOS
+from bot.states import FINAL_SUMMARY, PHOTOS, SUGGESTIONS_MAIN, SUGGESTIONS_ALT1, SUGGESTIONS_ALT2
 from bot.utils.helpers import apply_bold_keywords
 from bot.services.email_service import send_email
-from bot.services.voice_service import transcribe_audio, download_voice
 
 logger = logging.getLogger(__name__)
-
-# Campos editables con su etiqueta legible
-EDITABLE_FIELDS = {
-    "start_time":            "Hora de inicio",
-    "end_time":              "Hora de finalización",
-    "measure_main":          "Medida {selected}",
-    "tapas_inspeccion_main": "Tapas inspección {selected}",
-    "tapas_acceso_main":     "Tapas acceso {selected}",
-    "sealing_main":          "Sellado {selected}",
-    "repairs":               "Reparaciones {selected}",
-    "suggestions":           "Sugerencias {selected}",
-    "measure_alt1":          "Medida {alt1}",
-    "tapas_inspeccion_alt1": "Tapas inspección {alt1}",
-    "tapas_acceso_alt1":     "Tapas acceso {alt1}",
-    "sealing_alt1":          "Sellado {alt1}",
-    "repair_alt1":           "Reparaciones {alt1}",
-    "suggestions_alt1":      "Sugerencias {alt1}",
-    "measure_alt2":          "Medida {alt2}",
-    "tapas_inspeccion_alt2": "Tapas inspección {alt2}",
-    "tapas_acceso_alt2":     "Tapas acceso {alt2}",
-    "sealing_alt2":          "Sellado {alt2}",
-    "repair_alt2":           "Reparaciones {alt2}",
-    "suggestions_alt2":      "Sugerencias {alt2}",
-    "contact":               "Contacto",
-}
-
-
-def _get_label(field: str, user_data: dict) -> str:
-    selected = user_data.get("selected_category", "").capitalize()
-    alt1     = user_data.get("alternative_1", "").capitalize()
-    alt2     = user_data.get("alternative_2", "").capitalize()
-    label = EDITABLE_FIELDS.get(field, field)
-    return label.format(selected=selected, alt1=alt1, alt2=alt2)
-
 
 def build_full_summary(user_data: dict) -> str:
     """Construye el resumen completo del formulario."""
@@ -156,135 +126,109 @@ def show_final_summary(update: Update, context: CallbackContext) -> int:
     return FINAL_SUMMARY
 
 
+# Campos de cada tanque que se pueden modificar, en el orden en que se preguntan
+CAMPOS_TANQUE = (("medida", "Medida"), ("insp", "Tapas inspección"), ("acceso", "Tapas acceso"),
+                 ("sellado", "Sellado"), ("reparaciones", "Reparaciones"), ("sugerencias", "Sugerencias"))
+SUGERENCIAS = {"main": (SUGGESTIONS_MAIN, "suggestions"), "alt1": (SUGGESTIONS_ALT1, "suggestions_alt1"),
+               "alt2": (SUGGESTIONS_ALT2, "suggestions_alt2")}
+
+
+def _tanques_cargados(user_data: dict) -> list:
+    """Sufijos de los tanques del reporte: el principal y los alternativos que tienen datos."""
+    from bot.handlers.campos_tanque import PASOS
+    sufijos = []
+    for sufijo, paso in PASOS.items():
+        claves = [paso[c][1] for c in ("medida", "insp", "acceso", "sellado", "reparaciones")]
+        if sufijo == "main" or any(user_data.get(k) for k in claves + [SUGERENCIAS[sufijo][1]]):
+            sufijos.append(sufijo)
+    return sufijos
+
+
+def _menu(user_data: dict, nivel: str):
+    """(texto, botones) del menú de "Modificar algo"."""
+    from bot.handlers.campos_tanque import PASOS
+    volver = [InlineKeyboardButton("← Volver", callback_data="ed:menu")]
+    if nivel == "hora":
+        return "¿Qué hora querés cambiar?", InlineKeyboardMarkup([
+            [InlineKeyboardButton("Hora de inicio", callback_data="ed:h:inicio"),
+             InlineKeyboardButton("Hora de fin", callback_data="ed:h:fin")], volver])
+    if nivel in PASOS:
+        tanque = user_data.get(PASOS[nivel]["tanque"], "").capitalize()
+        botones = [InlineKeyboardButton(nombre, callback_data=f"ed:f:{nivel}:{campo}")
+                   for campo, nombre in CAMPOS_TANQUE]
+        filas = [botones[i:i + 2] for i in range(0, len(botones), 2)] + [volver]
+        return f"¿Qué querés cambiar de {tanque}?", InlineKeyboardMarkup(filas)
+    filas = [[InlineKeyboardButton("🕒 Horario", callback_data="ed:hora"),
+              InlineKeyboardButton("👤 Contacto", callback_data="ed:c")]]
+    filas += [[InlineKeyboardButton(f"🛢 {user_data.get(PASOS[s]['tanque'], '').capitalize()}",
+                                    callback_data=f"ed:t:{s}")] for s in _tanques_cargados(user_data)]
+    filas.append([InlineKeyboardButton("← Volver al resumen", callback_data="ed:volver")])
+    return "✏️ ¿Qué querés modificar?", InlineKeyboardMarkup(filas)
+
+
+def _editar_campo(update: Update, context: CallbackContext, data: str) -> int:
+    """Vuelve a hacer la pregunta del campo elegido; al terminarlo se vuelve al resumen."""
+    from bot.handlers import campos_tanque
+    from bot.handlers.shared import pedir_hora
+    ud = context.user_data
+    ud["editando"] = len(ud.get("state_stack", []))  # "atrás" en el primer paso vuelve al resumen
+    partes = data.split(":")
+    if partes[1] == "h":
+        return pedir_hora(update, context, partes[2])
+    if partes[1] == "c":
+        return campos_tanque.preguntar_contacto(update, context)
+    sufijo, campo = partes[2], partes[3]
+    if campo == "medida":
+        return campos_tanque.preguntar_medida(update, context, sufijo)
+    if campo == "reparaciones":
+        return campos_tanque.preguntar_reparaciones(update, context, sufijo)
+    if campo == "sugerencias":
+        estado, _ = SUGERENCIAS[sufijo]
+        tanque = ud.get(campos_tanque.PASOS[sufijo]["tanque"], "").capitalize()
+        campos_tanque._enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {tanque}:")
+        ud["current_state"] = estado
+        return estado
+    return campos_tanque.preguntar_texto(update, context, sufijo, campo)
+
+
 def handle_final_summary_callback(update: Update, context: CallbackContext) -> int:
-    """Maneja los botones del resumen final."""
+    """Maneja los botones del resumen final y del menú de "Modificar algo"."""
     query = update.callback_query
     query.answer()
+    data = query.data
 
-    if query.data == "final_send":
+    if data == "final_send":
         query.edit_message_text("✅ Enviando reporte...", parse_mode=ParseMode.HTML)
         from bot.services import dataset_fotos
         dataset_fotos.registrar(context.user_data)  # fotos + análisis, para entrenar la IA más adelante
         send_email(context.user_data, update, context)
         return ConversationHandler.END
 
-    if query.data == "final_edit":
-        query.edit_message_text(
-            apply_bold_keywords(
-                "✏️ Decime qué campo querés cambiar y el nuevo valor.\n\n"
-                "Podés escribirlo o mandarlo por nota de voz.\n"
-                "Ejemplo: <i>\"cambiar sellado cisterna a burlete\"</i>\n"
-                "Ejemplo: <i>\"hora de inicio 9:30\"</i>"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
-        context.user_data["final_edit_mode"] = True
+    if data in ("final_edit", "ed:menu"):
+        nivel = "menu"
+    elif data == "ed:hora":
+        nivel = "hora"
+    elif data.startswith("ed:t:"):
+        nivel = data.split(":")[2]
+    elif data == "ed:volver":
+        query.edit_message_reply_markup(reply_markup=None)
+        return show_final_summary(update, context)
+    elif data.startswith(("ed:h:", "ed:f:")) or data == "ed:c":
+        query.edit_message_reply_markup(reply_markup=None)
+        return _editar_campo(update, context, data)
+    else:
         return FINAL_SUMMARY
 
+    texto, botones = _menu(context.user_data, nivel)
+    if data == "final_edit":  # el resumen queda a la vista; el menú va en un mensaje nuevo
+        query.edit_message_reply_markup(reply_markup=None)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=texto, reply_markup=botones)
+    else:
+        query.edit_message_text(texto, reply_markup=botones)
     return FINAL_SUMMARY
 
 
-def handle_final_edit_response(update: Update, context: CallbackContext) -> int:
-    """Recibe la corrección del operario y actualiza el campo correspondiente."""
-    if not context.user_data.get("final_edit_mode"):
-        return FINAL_SUMMARY
-
-    # Obtener texto (escrito o audio)
-    answer_text = None
-    if update.message.text:
-        answer_text = update.message.text.strip()
-    elif update.message.voice or update.message.audio:
-        processing = context.bot.send_message(
-            chat_id=update.effective_chat.id, text="⏳ Procesando..."
-        )
-        audio_bytes = download_voice(update, context)
-        processing.delete()
-        if audio_bytes:
-            answer_text = transcribe_audio(audio_bytes)
-
-    if not answer_text:
-        update.message.reply_text("❌ No pude procesar. Intentá de nuevo.")
-        return FINAL_SUMMARY
-
-    # Usar GPT para extraer qué campo cambiar y el nuevo valor
-    updated = _extract_edit_from_text(answer_text, context.user_data)
-
-    if not updated:
-        update.message.reply_text(
-            apply_bold_keywords(
-                "❓ No entendí qué campo querés cambiar. Intentá ser más específico.\n"
-                "Ejemplo: <i>\"cambiar sellado cisterna a masilla\"</i>"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
-        return FINAL_SUMMARY
-
-    # Aplicar cambios
-    for key, value in updated.items():
-        context.user_data[key] = value
-        logger.info("Campo editado: %s = %s", key, value)
-
-    context.user_data["final_edit_mode"] = False
-    update.message.reply_text("✅ Actualizado.", parse_mode=ParseMode.HTML)
-
-    # Mostrar resumen actualizado
-    return show_final_summary(update, context)
-
-
-def _extract_edit_from_text(text: str, user_data: dict) -> dict:
-    """Usa GPT para extraer qué campo cambiar y el nuevo valor."""
-    import os, json
-    from openai import OpenAI
-
-    selected = user_data.get("selected_category", "CISTERNA").lower()
-    alt1     = user_data.get("alternative_1", "RESERVA").lower()
-    alt2     = user_data.get("alternative_2", "INTERMEDIARIO").lower()
-
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-    prompt = f"""
-Sos un asistente que procesa correcciones de operarios de limpieza de tanques.
-El operario quiere cambiar un campo del reporte.
-
-Campos disponibles y sus claves:
-- start_time: hora de inicio (formato HH:MM)
-- end_time: hora de finalización (formato HH:MM)
-- measure_main: medida del tanque {selected}
-- tapas_inspeccion_main: tapas inspección {selected}
-- tapas_acceso_main: tapas acceso {selected}
-- sealing_main: sellado {selected}
-- repairs: reparaciones {selected}
-- suggestions: sugerencias {selected}
-- measure_alt1: medida {alt1}
-- tapas_inspeccion_alt1: tapas inspección {alt1}
-- tapas_acceso_alt1: tapas acceso {alt1}
-- sealing_alt1: sellado {alt1}
-- repair_alt1: reparaciones {alt1}
-- suggestions_alt1: sugerencias {alt1}
-- measure_alt2: medida {alt2}
-- tapas_inspeccion_alt2: tapas inspección {alt2}
-- tapas_acceso_alt2: tapas acceso {alt2}
-- sealing_alt2: sellado {alt2}
-- repair_alt2: reparaciones {alt2}
-- suggestions_alt2: sugerencias {alt2}
-- contact: nombre y teléfono del encargado
-
-Extraé qué campo quiere cambiar y el nuevo valor.
-Devolvé SOLO un JSON con el formato: {{"clave": "nuevo_valor"}}
-Si no podés identificar el campo, devolvé {{}}
-
-Texto del operario: {text}
-"""
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-        raw = response.choices[0].message.content.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw)
-    except Exception as e:
-        logger.error("Error extrayendo edición: %s", e)
-        return {}
+def handle_final_text(update: Update, context: CallbackContext) -> int:
+    """Texto en el resumen final: los cambios se hacen con los botones."""
+    update.message.reply_text("👆 Usá los botones del resumen: «Enviar reporte» o «Modificar algo».")
+    return FINAL_SUMMARY

@@ -17,15 +17,11 @@ from bot.handlers import campos_tanque as ct
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
 from bot.handlers.fotos_reparaciones import (handle_repair_photos, handle_repair_photo_button,
                                              handle_boton_vencido)
-from bot.handlers.voice_handler import (handle_voice_message, handle_reprompt_response,
-                                         handle_alt_reprompt_response, handle_admin_code_response)
-from bot.handlers.final_summary import (show_final_summary, handle_final_summary_callback,
-                                         handle_final_edit_response)
+from bot.handlers.final_summary import handle_final_summary_callback, handle_final_text
 from bot.services.qr_service    import scan_qr
 
 BACK = MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
 TEXT = Filters.text & ~Filters.command
-VOICE = Filters.voice | Filters.audio
 
 
 def _pasos_tanque(sufijo: str) -> dict:
@@ -69,9 +65,7 @@ def build_conversation_handler() -> ConversationHandler:
 
             TANK_TYPE: [
                 # Botones de pasos anteriores (fotos, hora, tapas...) no son una elección de tanque
-                CallbackQueryHandler(handle_tank_type, pattern="^(?!(rf|hora|tp|se|md|ct|rp):)"),
-                MessageHandler(VOICE, handle_voice_message),
-                MessageHandler(TEXT,  handle_reprompt_response),
+                CallbackQueryHandler(handle_tank_type, pattern="^(?!(rf|hora|tp|se|md|ct|rp|ed):)"),
                 BACK,
             ],
 
@@ -114,13 +108,11 @@ def build_conversation_handler() -> ConversationHandler:
             SCAN_QR: [MessageHandler(Filters.photo & ~Filters.command, scan_qr)],
 
             FINAL_SUMMARY: [
-                CallbackQueryHandler(handle_final_summary_callback,
-                    pattern="^(final_send|final_edit)$"),
-                MessageHandler(VOICE, handle_final_edit_response),
-                MessageHandler(TEXT,  handle_final_edit_response),
+                CallbackQueryHandler(handle_final_summary_callback, pattern="^(final_send|final_edit|ed:)"),
+                MessageHandler(TEXT, handle_final_text),
             ],
         },
         # Botón de una foto, de la hora, de reparaciones, material o contacto tocado cuando ese
         # paso ya terminó ("tp" y "se": tapas y sellado con botones de una versión anterior)
-        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^(rf|hora|tp|se|md|ct|rp):")],
+        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^(rf|hora|tp|se|md|ct|rp|ed):")],
     )

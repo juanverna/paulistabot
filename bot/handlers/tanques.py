@@ -4,7 +4,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
 from bot.services.email_service import send_email
 from bot.handlers.fotos_reparaciones import necesita_fotos, pedir_fotos
 from bot.handlers.campos_tanque import preguntar_medida, preguntar_contacto
@@ -17,30 +17,13 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 def handle_tank_type(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
-    query.answer()
-
-    # Botones MANUAL / NOTA DE VOZ
-    if query.data in ("input_manual", "input_voice"):
-        from bot.handlers.voice_handler import handle_input_method
-        return handle_input_method(update, context)
-
-    # Todos los callbacks del flujo de voz
-    if query.data in ("voice_confirm", "voice_retry", "voice_alt_si", "voice_alt_no"):
-        from bot.handlers.voice_handler import handle_voice_confirm
-        return handle_voice_confirm(update, context)
-
-    # Callbacks de material para litros
-    if query.data in ("mat_plastico", "mat_cilindrico", "mat_acero"):
-        from bot.handlers.voice_handler import handle_litros_material
-        return handle_litros_material(update, context)
-
-    # Callbacks de conflictos y buffer
-    if query.data in ("conflict_yes", "conflict_no"):
-        from bot.handlers.voice_handler import handle_voice_confirm
-        return handle_voice_confirm(update, context)
-
     if query.data.lower() == "back":
+        query.answer()
         return back_handler(update, context)
+    if query.data not in ("CISTERNA", "RESERVA", "INTERMEDIARIO"):
+        query.answer("Ese paso ya terminó.")
+        return TANK_TYPE
+    query.answer()
 
     push_state(context, TANK_TYPE)
     selected     = query.data
@@ -49,31 +32,18 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         "selected_category": selected,
         "alternative_1":     alternatives[0],
         "alternative_2":     alternatives[1],
+        "modo_ingreso":      "MANUAL",
     })
     query.edit_message_text(
         apply_bold_keywords(f"Tipo de tanque seleccionado: {selected.capitalize()}"),
         parse_mode=ParseMode.HTML,
     )
-
-    # Mostrar botonera MANUAL / NOTA DE VOZ
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✍️ MANUAL",      callback_data="input_manual"),
-            InlineKeyboardButton("🎤 NOTA DE VOZ", callback_data="input_voice"),
-        ]
-    ])
-    context.bot.send_message(
-        chat_id=query.message.chat.id,
-        text=apply_bold_keywords(
-            "¿Cómo querés completar el reporte?\n\n"
-            "• <b>MANUAL</b>: el bot te va preguntando de a uno\n"
-            "• <b>NOTA DE VOZ</b>: mandás un audio y la IA procesa todo"
-        ),
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = TANK_TYPE
-    return TANK_TYPE
+    # Presupuestos ya pidió la hora antes del tanque; Limpieza (después del QR) la pide ahora
+    if context.user_data.get("start_time") and context.user_data.get("end_time"):
+        return preguntar_medida(update, context, "main")
+    context.user_data["manual_after_qr"] = True  # después de la hora de fin, a la medida
+    from bot.handlers.shared import pedir_hora
+    return pedir_hora(update, context, "inicio")
 
 
 # =============================================================================
@@ -131,6 +101,9 @@ def get_suggestions_main(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["suggestions"] = text
     push_state(context, SUGGESTIONS_MAIN)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     alt1 = context.user_data.get("alternative_1", "").capitalize()
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Si", callback_data="si"),
@@ -188,6 +161,9 @@ def get_suggestions_alt1(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["suggestions_alt1"] = text
     push_state(context, SUGGESTIONS_ALT1)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     alt2 = context.user_data.get("alternative_2", "").capitalize()
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Si", callback_data="si"),
@@ -235,6 +211,9 @@ def get_suggestions_alt2(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["suggestions_alt2"] = text
     push_state(context, SUGGESTIONS_ALT2)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
     return preguntar_contacto(update, context)
 
 

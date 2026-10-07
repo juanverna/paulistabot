@@ -14,9 +14,11 @@ bash scripts/correr.sh              # corre el bot
 
 ## Fotos de reparaciones y destrabe
 
-En Limpieza y Presupuestos, cuando el operario escribe las reparaciones de un tanque (manual o por
-nota de voz), el bot le pide las fotos de esas reparaciones. Puede mandar varias y termina con
-"Listo". Si responde "no", "ninguna", etc., no se piden fotos.
+En Limpieza y Presupuestos, el operario elige las reparaciones de cada tanque con un menú de
+botones (catálogo en `bot/services/campos.py`; no se escriben) y el bot le pide las fotos de esas
+reparaciones. Puede mandar varias y termina con "Listo". Con "Sin reparaciones" no se piden fotos.
+La carga es solo manual (la nota de voz se sacó el 2026-10-07). "Modificar algo", en el resumen
+final, vuelve a hacer la pregunta del campo elegido con los mismos controles.
 
 Si escribe "Listo" o "no tengo" sin haber mandado ninguna foto, el paso queda trabado hasta que:
 
@@ -113,7 +115,7 @@ Ver [`.env.example`](.env.example). Ningún secreto va al repo.
 | `TELEGRAM_BOT_TOKEN` | sí | token del bot |
 | `EMAIL_ADDRESS`, `EMAIL_PASSWORD` | sí | cuenta de Gmail que envía los reportes |
 | `CC_EMAIL` | no | copia de los reportes |
-| `OPENAI_API_KEY` | sí | nota de voz y revisión de fotos con IA |
+| `OPENAI_API_KEY` | sí | revisión de fotos con IA |
 | `ADMIN_DAILY_CODE` | la escribe el scheduler | código diario del encargado |
 | `HEROKU_API_KEY` | para el scheduler | `scripts/generate_daily_code.py` |
 | `DESTRABE_MAX_INTENTOS` | no (5) | códigos incorrectos antes de bloquear el destrabe |
