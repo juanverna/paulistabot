@@ -21,8 +21,9 @@ VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
 # Medidas que aparecen en el CSV de artículos y en la pregunta que se usaba antes
 MEDIDAS_TAPA = {
     "insp":   ["30", "40", "50", "60", "80"],
-    "acceso": ["47", "48", "49", "49.5", "50", "51.5", "52", "53.5", "54", "56",
-               "56.5", "58", "60", "62", "65", "4789", "50125"],
+    # La pregunta vieja abreviaba "4789" (47, 48, 49) y "50125" (50, 51, 52, 55): son medidas sueltas
+    "acceso": ["47", "48", "49", "49.5", "50", "51", "51.5", "52", "53.5", "54",
+               "55", "56", "56.5", "58", "60", "62", "65"],
 }
 
 SELLADOS = {"masilla": "Masilla", "burlete": "Burlete", "silicona": "Silicona"}

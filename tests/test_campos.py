@@ -68,6 +68,13 @@ class TestTelefonoYSellado(unittest.TestCase):
         self.assertEqual(campos.texto_sellado(["masilla"], "Cinta"), "Masilla y cinta")
         self.assertEqual(campos.texto_sellado([]), "No tiene")
 
+    def test_medidas_de_acceso_sin_abreviaturas(self):
+        medidas = campos.MEDIDAS_TAPA["acceso"]
+        for m in ("47", "48", "49", "50", "51", "52", "55"):
+            self.assertIn(m, medidas)
+        self.assertNotIn("4789", medidas)
+        self.assertNotIn("50125", medidas)
+
     def test_codigo_tapa(self):
         self.assertEqual(campos.codigo_tapa("insp", "CISTERNA", "EA", "60"), "TITCEA 60")
         self.assertEqual(campos.codigo_tapa("acceso", "INTERMEDIARIO", "C", "56.5"), "TATHC 56.5")
