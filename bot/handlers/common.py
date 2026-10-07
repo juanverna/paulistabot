@@ -54,6 +54,13 @@ def back_handler(update: Update, context: CallbackContext) -> int:
     return prev
 
 
+def _pasos_con_botones() -> dict:
+    """{estado: (sufijo, campo)} de medida, tapas y sellado de cada tanque."""
+    from bot.handlers.campos_tanque import PASOS
+    return {paso[campo][0]: (sufijo, campo) for sufijo, paso in PASOS.items()
+            for campo in ("medida", "insp", "acceso", "sellado")}
+
+
 # =============================================================================
 # Re-preguntar según estado
 # =============================================================================
@@ -112,42 +119,28 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
              InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
         ])
         send("Seleccione el tipo de tanque:", kb)
-    elif state == MEASURE_MAIN:
-        send(f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):")
-    elif state == TAPAS_INSPECCION_MAIN:
-        send("Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
-    elif state == TAPAS_ACCESO_MAIN:
-        send("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
-    elif state == SEALING_MAIN:
-        send(f"Indique cómo selló el tanque de {selected} (EJ: masilla, burlete):")
+    elif state in _pasos_con_botones():
+        # Medida, tapas y sellado: la misma pregunta (con sus botones) que la primera vez
+        from bot.handlers import campos_tanque
+        sufijo, campo = _pasos_con_botones()[state]
+        if campo == "medida":
+            campos_tanque.preguntar_medida(update, context, sufijo)
+        elif campo == "sellado":
+            campos_tanque.preguntar_sellado(update, context, sufijo)
+        else:
+            campos_tanque.preguntar_tapas(update, context, sufijo, campo)
     elif state == REPAIR_MAIN:
         send(f"Indique reparaciones a realizar para {selected}:")
     elif state == SUGGESTIONS_MAIN:
         send(f"Indique sugerencias p/ la próx limpieza para {selected}:")
     elif state == ASK_SECOND:
         send(f"¿Quiere comentar algo sobre {alt1}?", si_no_keyboard())
-    elif state == MEASURE_ALT1:
-        send(f"Indique la medida del tanque para {alt1} (ALTO, ANCHO, PROFUNDO):")
-    elif state == TAPAS_INSPECCION_ALT1:
-        send("Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
-    elif state == TAPAS_ACCESO_ALT1:
-        send("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
-    elif state == SEALING_ALT1:
-        send(f"Indique cómo selló el tanque de {alt1}:")
     elif state == REPAIR_ALT1:
         send(f"Indique reparaciones a realizar para {alt1}:")
     elif state == SUGGESTIONS_ALT1:
         send(f"Indique sugerencias p/ la próx limpieza para {alt1}:")
     elif state == ASK_THIRD:
         send(f"¿Quiere comentar algo sobre {alt2}?", si_no_keyboard())
-    elif state == MEASURE_ALT2:
-        send(f"Indique la medida del tanque para {alt2} (ALTO, ANCHO, PROFUNDO):")
-    elif state == TAPAS_INSPECCION_ALT2:
-        send("Indique TAPAS INSPECCIÓN (30 40 50 60 80):")
-    elif state == TAPAS_ACCESO_ALT2:
-        send("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):")
-    elif state == SEALING_ALT2:
-        send(f"Indique cómo selló el tanque de {alt2}:")
     elif state == REPAIR_ALT2:
         send(f"Indique reparaciones a realizar para {alt2}:")
     elif state == SUGGESTIONS_ALT2:
@@ -159,7 +152,11 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         sufijo = {REPAIR_ALT1: "alt1", REPAIR_ALT2: "alt2"}.get(stack[-1] if stack else None, "main")
         reanudar_manual(update, context, sufijo)
     elif state == CONTACT:
-        send("Ingrese el nombre y teléfono del encargado:")
+        from bot.handlers import campos_tanque
+        campos_tanque.preguntar_contacto(update, context)
+    elif state == CONTACT_PHONE:
+        from bot.handlers import campos_tanque
+        campos_tanque.preguntar_telefono(update, context)
     elif state == AVISOS_ADDRESS:
         send("Indique dirección/es donde se entregaron avisos:")
     elif state == PHOTOS:

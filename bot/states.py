@@ -5,7 +5,7 @@
  REPAIR_ALT1, SUGGESTIONS_ALT1, ASK_THIRD, MEASURE_ALT2, TAPAS_INSPECCION_ALT2,
  TAPAS_ACCESO_ALT2, SEALING_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS,
  AVISOS_CODE, AVISOS_ADDRESS, AVISOS_PHOTOS, SCAN_QR, FINAL_SUMMARY,
- REPAIR_PHOTOS) = range(38)
+ REPAIR_PHOTOS, CONTACT_PHONE) = range(39)
 
 # Mapeo estado → clave en user_data (para limpiar al hacer "atrás")
 STATE_KEYS = {
@@ -34,7 +34,8 @@ STATE_KEYS = {
     SEALING_ALT2:          "sealing_alt2",
     SUGGESTIONS_ALT2:      "suggestions_alt2",
     REPAIR_ALT2:           "repair_alt2",
-    CONTACT:               "contact",
+    CONTACT:               "contact_nombre",
+    CONTACT_PHONE:         "contact_telefono",
     AVISOS_ADDRESS:        "avisos_address",
     SCAN_QR:               None,
     FINAL_SUMMARY:         None,

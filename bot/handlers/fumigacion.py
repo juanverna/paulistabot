@@ -34,12 +34,8 @@ def get_fum_obs(update: Update, context: CallbackContext) -> int:
         return back_handler(update, context)
     context.user_data["fum_obs"] = text
     push_state(context, FUM_OBS)
-    update.message.reply_text(
-        apply_bold_keywords("Ingrese el nombre y teléfono del encargado:"),
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = CONTACT
-    return CONTACT
+    from bot.handlers.campos_tanque import preguntar_contacto
+    return preguntar_contacto(update, context)
 
 
 def handle_fum_photos(update: Update, context: CallbackContext) -> int:

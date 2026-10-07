@@ -797,13 +797,8 @@ def _go_to_contact(update: Update, context: CallbackContext) -> int:
 
     if context.user_data.get("contact"):
         return _go_to_photos(update, context)
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=apply_bold_keywords("Ingrese el nombre y teléfono del encargado:"),
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = CONTACT
-    return CONTACT
+    from bot.handlers.campos_tanque import preguntar_contacto
+    return preguntar_contacto(update, context)
 
 
 def _go_to_photos(update: Update, context: CallbackContext) -> int:

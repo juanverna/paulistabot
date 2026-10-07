@@ -186,10 +186,8 @@ def guardar_hora_fin(update: Update, context: CallbackContext, valor: str) -> in
 
     # Si viene del flujo manual post-QR → ir directo a medidas
     if context.user_data.pop("manual_after_qr", False):
-        selected = context.user_data.get("selected_category", "").capitalize()
-        _responder(update, context, f"Indique la medida del tanque de {selected} (ALTO, ANCHO, PROFUNDO):")
-        context.user_data["current_state"] = MEASURE_MAIN
-        return MEASURE_MAIN
+        from bot.handlers.campos_tanque import preguntar_medida
+        return preguntar_medida(update, context, "main")
 
     if service == "Fumigaciones":
         _responder(update, context, "¿Qué unidades contienen insectos?")
@@ -238,35 +236,17 @@ def handle_atras_boton(update: Update, context: CallbackContext) -> int:
     return back_handler(update, context)
 
 
-def get_contact(update: Update, context: CallbackContext) -> int:
-    text = update.message.text
-    if check_special_commands(text, update, context):
-        return ConversationHandler.END
-    if text.lower().replace("á", "a").strip() == "atras":
-        return back_handler(update, context)
-    context.user_data["contact"] = text
-    push_state(context, CONTACT)
+def pedir_fotos_generales(update: Update, context: CallbackContext) -> int:
+    """Después del contacto: las fotos generales (sirve desde un mensaje o desde un botón)."""
     service = context.user_data.get("service")
     if service == "Fumigaciones":
-        update.message.reply_text(
-            apply_bold_keywords("Adjunte fotos de ORDEN DE TRABAJO, LISTADO y PORTERO ELECTRICO:"),
-            parse_mode=ParseMode.HTML,
-        )
+        texto = "Adjunte fotos de ORDEN DE TRABAJO, LISTADO y PORTERO ELECTRICO:"
     elif service == "Avisos":
-        update.message.reply_text(
-            apply_bold_keywords(
-                "Adjunte las fotos de los avisos junto a la chapa del edificio.\n"
-                "Cuando termine, escriba 'Listo'."
-            ),
-            parse_mode=ParseMode.HTML,
-        )
+        texto = ("Adjunte las fotos de los avisos junto a la chapa del edificio.\n"
+                 "Cuando termine, escriba 'Listo'.")
     else:
-        update.message.reply_text(
-            apply_bold_keywords(
-                "📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b>.\n"
-                "Cuando termine, escriba <b>Listo</b>."
-            ),
-            parse_mode=ParseMode.HTML,
-        )
+        texto = ("📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b>.\n"
+                 "Cuando termine, escriba <b>Listo</b>.")
+    _responder(update, context, texto)
     context.user_data["current_state"] = PHOTOS
     return PHOTOS
