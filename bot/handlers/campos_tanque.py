@@ -225,14 +225,20 @@ def _rep_tipo(curso: dict):
 
 
 def _rep_pantalla(context: CallbackContext, sufijo: str):
-    """(texto, botones) según lo que se está eligiendo: reparación, tipo, medida o EA/ciego."""
+    """
+    (texto, botones) de la pantalla actual del menú. Cada pantalla hace una sola pregunta, en
+    negrita, con una línea arriba que dice dónde está. Lo cargado se muestra solo en la pantalla
+    principal (en palabras, no en código), para no mezclarlo con la pregunta.
+    """
     curso = _rep_en_curso(context, sufijo)
     base = f"rp:{sufijo}:"
-    lista = curso["lista"]
-    cargadas = f"\n\nCargadas: <b>{html.escape(', '.join(lista) if lista else 'ninguna todavía')}</b>"
-    titulo = f"🔧 Reparaciones a realizar en {_tanque(context, sufijo).capitalize()}\n"
-    volver = [InlineKeyboardButton("⬅️ Volver", callback_data=f"{base}volver")]
+    tanque = _tanque(context, sufijo).capitalize()
+    volver = [InlineKeyboardButton("⬅️ Volver al menú", callback_data=f"{base}volver")]
     grupo = curso["grupo"]
+
+    def pantalla(donde: str, pregunta: str, ayuda: str = ""):
+        texto = f"🔧 {tanque} › {html.escape(donde)}\n\n<b>{pregunta}</b>"
+        return texto + (f"\n{ayuda}" if ayuda else "")
 
     if grupo is None:
         filas = [[InlineKeyboardButton(f"{campos.EMOJI_REPARACION[clave]} {boton}", callback_data=f"{base}g:{clave}")]
@@ -241,18 +247,25 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
                    InlineKeyboardButton("✅ Listo", callback_data=f"{base}listo")],
                   [InlineKeyboardButton("🚫 Sin reparaciones", callback_data=f"{base}no")],
                   [InlineKeyboardButton("⬅️ ATRAS", callback_data="back")]]
-        texto = "Tocá cada reparación, una por una. Si son 2 iguales, cargala 2 veces. Al terminar, tocá Listo."
-        return titulo + texto + cargadas, InlineKeyboardMarkup(filas)
+        partes = [f"🔧 <b>Reparaciones de {tanque}</b>"]
+        if curso.get("aviso"):
+            partes.append(html.escape(curso["aviso"]))
+        if curso["lista"]:
+            partes.append("Ya cargaste:\n" + "\n".join(f"• {html.escape(campos.legible(i))}" for i in curso["lista"]))
+            partes.append("Tocá otra reparación para agregarla, o <b>✅ Listo</b> si ya están todas.")
+        else:
+            partes.append("Tocá cada reparación que haya que hacer, de a una. Si son 2 iguales, cargala "
+                          "2 veces. Si no hay ninguna, tocá <b>🚫 Sin reparaciones</b>.")
+        return "\n\n".join(partes), InlineKeyboardMarkup(filas)
 
     nombre_grupo, _, tipos = campos.CATALOGO_REPARACIONES[grupo]
     if grupo == "rev":
-        return _rep_pantalla_revoque(curso, base, titulo, cargadas, volver)
+        return _rep_pantalla_revoque(curso, base, pantalla, volver)
 
     tipo = _rep_tipo(curso)
     if curso["medida"]:
-        descripcion = f"{tipos[tipo][1]} {curso['medida']}".strip()
-        texto = f"{html.escape(nombre_grupo)} {html.escape(descripcion)}: ¿es de entrada de agua o ciego?"
-        return titulo + texto + cargadas, InlineKeyboardMarkup([
+        descripcion = f"{nombre_grupo} {tipos[tipo][1]} {curso['medida']}".replace("  ", " ")
+        return pantalla(descripcion, "¿Es la de la entrada de agua o la del ciego?"), InlineKeyboardMarkup([
             [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}v:EA"),
              InlineKeyboardButton("⚫ Ciego", callback_data=f"{base}v:C")], volver])
     if tipo:
@@ -260,33 +273,42 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
         botones = [InlineKeyboardButton(m, callback_data=f"{base}m:{m}") for m in medidas]
         filas = [botones[i:i + 3] for i in range(0, len(botones), 3)] + [volver]
         nombre = f"{nombre_grupo} {nombre_tipo.lower()}".strip() if nombre_tipo else nombre_grupo
-        return titulo + f"{html.escape(nombre)}: ¿qué medida?" + cargadas, InlineKeyboardMarkup(filas)
+        return pantalla(nombre, "¿Qué medida tiene?"), InlineKeyboardMarkup(filas)
     filas = [[InlineKeyboardButton(f"▫️ {boton}", callback_data=f"{base}t:{clave}")]
              for clave, (boton, _, _) in tipos.items()] + [volver]
-    return titulo + f"{html.escape(nombre_grupo)}: ¿de qué tipo?" + cargadas, InlineKeyboardMarkup(filas)
+    return pantalla(nombre_grupo, "¿De qué tipo es?"), InlineKeyboardMarkup(filas)
 
 
-def _rep_pantalla_revoque(curso: dict, base: str, titulo: str, cargadas: str, volver: list):
+def _rep_pantalla_revoque(curso: dict, base: str, pantalla, volver: list):
     """Revoque, de a una cara: cara -> cuba -> completo o parche -> (parche) medidas escritas."""
     cara = campos.CARAS_REVOQUE.get(curso["cara"])
     if not cara:
         filas = [[InlineKeyboardButton(f"▫️ {nombre.capitalize()}", callback_data=f"{base}cara:{clave}")]
                  for clave, nombre in campos.CARAS_REVOQUE.items()] + [volver]
-        return titulo + "🧱 Revoque: ¿qué cara del tanque?" + cargadas, InlineKeyboardMarkup(filas)
+        return pantalla("Revoque", "¿Qué cara del tanque hay que revocar?"), InlineKeyboardMarkup(filas)
     if not curso["cuba"]:
-        texto = (f"🧱 Revoque {cara}: ¿en qué cuba?\n"
-                 "Si el tanque tiene una sola cuba, elegí <b>Entrada de agua</b>.")
-        return titulo + texto + cargadas, InlineKeyboardMarkup([
-            [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}cuba:EA"),
-             InlineKeyboardButton("⚫ Ciego", callback_data=f"{base}cuba:C")], volver])
-    donde = f"{cara} {campos.CUBAS[curso['cuba']]}"
+        return (pantalla(f"Revoque {cara}", "¿En qué cuba?",
+                         "Si el tanque tiene una sola cuba, elegí <b>Entrada de agua</b>."),
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}cuba:EA"),
+                     InlineKeyboardButton("⚫ Ciego", callback_data=f"{base}cuba:C")], volver]))
+    donde = f"Revoque {cara} ({campos.CUBAS[curso['cuba']]})"
     if curso["parche"]:
-        texto = (f"🧱 Revoque {donde}, parche: escribí las medidas en metros, largo x alto "
-                 "(ej: 2x2 o 1,5 x 1,5).")
-        return titulo + texto + cargadas, InlineKeyboardMarkup([volver])
-    return titulo + f"🧱 Revoque {donde}: ¿todo el {cara} o un parche?" + cargadas, InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🧱 Completo (todo el {cara})", callback_data=f"{base}ext:completo")],
-        [InlineKeyboardButton("🩹 Parche (escribís las medidas)", callback_data=f"{base}ext:parche")], volver])
+        return (pantalla(donde, "📏 ¿Cuánto mide el parche?",
+                         "\nEscribí el <b>largo</b> y el <b>alto</b> en metros, con una x en el medio.\n"
+                         "Por ejemplo: <b>2x2</b> · <b>1,5x1,5</b> · <b>0,5x1</b>\n\n"
+                         "👇 Escribilo abajo y mandalo."),
+                InlineKeyboardMarkup([volver]))
+    return pantalla(donde, f"¿Hay que revocar todo el {cara} o es un parche?"), InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🧱 Todo el {cara}", callback_data=f"{base}ext:completo")],
+        [InlineKeyboardButton("🩹 Un parche (después escribís la medida)", callback_data=f"{base}ext:parche")],
+        volver])
+
+
+def _rep_agregar(curso: dict, item: str) -> None:
+    curso["lista"].append(item)
+    curso["aviso"] = f"✅ Agregado: {campos.legible(item)}"
+    _rep_reiniciar_eleccion(curso)
 
 
 def preguntar_reparaciones(update: Update, context: CallbackContext, sufijo: str) -> int:
@@ -307,8 +329,8 @@ def _rep_terminar(update: Update, context: CallbackContext, sufijo: str, lista: 
     context.user_data[clave] = valor
     context.user_data.pop("reparaciones_en_curso", None)
     push_state(context, estado)
-    _editar(update.callback_query,
-            f"✅ Reparaciones de {_tanque(context, sufijo).capitalize()}: {html.escape(valor)}")
+    detalle = ("\n" + "\n".join(f"• {html.escape(campos.legible(i))}" for i in lista)) if lista else " ninguna"
+    _editar(update.callback_query, f"✅ Reparaciones de {_tanque(context, sufijo).capitalize()}:{detalle}")
     if lista:
         return pedir_fotos(update, context, sufijo, "manual")
     # Sin reparaciones: no hay fotos que pedir, ni ítems de una carga anterior
@@ -341,13 +363,14 @@ def boton_reparaciones(sufijo: str):
             query.answer("No cargaste ninguna reparación. Si no hay, tocá «Sin reparaciones».", show_alert=True)
             return estado
         query.answer()
+        curso["aviso"] = None
         catalogo = campos.CATALOGO_REPARACIONES
         tanque = _tanque(context, sufijo)
         grupo, tipo = curso["grupo"], _rep_tipo(curso)
 
         if accion == "g" and valor in catalogo:
             if catalogo[valor][1] is None and valor != "rev":  # flotante, automático: se agregan directo
-                curso["lista"].append(campos.reparacion(valor))
+                _rep_agregar(curso, campos.reparacion(valor))
             else:
                 _rep_reiniciar_eleccion(curso)
                 curso["grupo"] = valor
@@ -359,21 +382,19 @@ def boton_reparaciones(sufijo: str):
         elif accion == "m" and grupo and tipo and valor in catalogo[grupo][2][tipo][2]:
             curso["tipo"], curso["medida"] = tipo, valor
         elif accion == "v" and valor in campos.VARIANTES and curso["medida"]:
-            curso["lista"].append(campos.reparacion(grupo, tanque, valor, tipo, curso["medida"]))
-            _rep_reiniciar_eleccion(curso)
+            _rep_agregar(curso, campos.reparacion(grupo, tanque, valor, tipo, curso["medida"]))
         elif accion == "cara" and grupo == "rev" and valor in campos.CARAS_REVOQUE:
             curso["cara"] = valor
         elif accion == "cuba" and grupo == "rev" and curso["cara"] and valor in campos.CUBAS:
             curso["cuba"] = valor
         elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "completo":
-            curso["lista"].append(campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"]))
-            _rep_reiniciar_eleccion(curso)
+            _rep_agregar(curso, campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"]))
         elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "parche":
             curso["parche"] = True  # las medidas se escriben (texto_reparaciones)
         elif accion == "volver":
             _rep_reiniciar_eleccion(curso)
         elif accion == "borrar" and curso["lista"]:
-            curso["lista"].pop()
+            curso["aviso"] = f"↩️ Borrada: {campos.legible(curso['lista'].pop())}"
         elif accion == "listo":
             return _rep_terminar(update, context, sufijo, curso["lista"])
         elif accion == "no":
@@ -399,9 +420,8 @@ def texto_reparaciones(sufijo: str):
             if problema:
                 update.message.reply_text(f"⚠️ {problema}")
                 return estado
-            curso["lista"].append(campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"],
-                                                    parche=parche))
-            _rep_reiniciar_eleccion(curso)
+            _rep_agregar(curso, campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"],
+                                                  parche=parche))
             _enviar(update, context, *_rep_pantalla(context, sufijo))
             return estado
         # Las reparaciones no se escriben: se vuelve a mostrar el menú (sin perder lo cargado)

@@ -75,6 +75,29 @@ def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "",
     return f"{prefijo}{LETRA_TANQUE[tanque.upper()]}{variante} {descripcion} {medida}".replace("  ", " ")
 
 
+NOMBRE_CODIGO = {"TIT": "Tapa de inspección", "TAT": "Tapa de acceso", "TMT": "Tapa y marco de acceso",
+                 "MAT": "Marco solo"}
+_RE_ITEM_CODIGO = re.compile(r"^(TIT|TAT|TMT|MAT)[CRH](EA|C) (.+)$")
+_RE_ITEM_REVOQUE = re.compile(r"^revoque (.+?) (entrada de agua|ciego) (completo|parche (\S+)x(\S+) m)$")
+
+
+def legible(item: str) -> str:
+    """
+    Una reparación guardada, en palabras para el operario:
+    'TITCEA 30x30' -> 'Tapa de inspección 30x30 (entrada de agua)'
+    'revoque lateral izquierdo ciego parche 1.50x1.00 m'
+        -> 'Revoque lateral izquierdo (ciego): parche de 1.50 x 1.00 m'
+    """
+    m = _RE_ITEM_CODIGO.match(item)
+    if m:
+        return f"{NOMBRE_CODIGO[m.group(1)]} {m.group(3)} ({CUBAS[m.group(2)]})"
+    m = _RE_ITEM_REVOQUE.match(item)
+    if m:
+        extension = f"parche de {m.group(4)} x {m.group(5)} m" if m.group(4) else "completo"
+        return f"Revoque {m.group(1)} ({m.group(2)}): {extension}"
+    return item[:1].upper() + item[1:]
+
+
 _PARCHE_MAX_M = 15.0
 
 

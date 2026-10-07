@@ -180,7 +180,7 @@ class TestPasosDelTanque(unittest.TestCase):
         enviados = _enviados(ctx)
         self.assertIn("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):", enviados)
         self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b> (EJ: masilla, burlete):", enviados)
-        self.assertIn("Reparaciones a realizar en <b>Cisterna</b>", enviados)
+        self.assertIn("Reparaciones de <b>Cisterna</b>", enviados)
         self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN])
 
     def test_tapas_solo_con_las_medidas_de_la_ayuda(self):
@@ -291,7 +291,9 @@ class TestMenuDeReparaciones(unittest.TestCase):
         self.assertEqual(texto(entorno.update_texto("1,5 x 1,5"), ctx), REPAIR_MAIN)
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"],
                          ["revoque lateral derecho ciego parche 1.50x1.50 m"])
-        self.assertIn("Tocá cada reparación", _enviados(ctx))  # vuelve al menú
+        menu = ctx.bot.send_message.call_args.kwargs["text"]  # vuelve al menú, con lo cargado en palabras
+        self.assertIn("✅ Agregado: Revoque lateral derecho (ciego): parche de 1.50 x 1.50 m", menu)
+        self.assertIn("• Revoque lateral derecho (ciego): parche de 1.50 x 1.50 m", menu)
 
     def test_revoque_pide_entrada_de_agua_si_hay_una_sola_cuba(self):
         ctx = self._ctx()
@@ -302,6 +304,40 @@ class TestMenuDeReparaciones(unittest.TestCase):
         texto = upd.callback_query.edit_message_text.call_args.args[0]
         self.assertIn("una sola cuba", texto)
         self.assertIn("Entrada de agua", texto)
+
+    def test_pantalla_del_parche_es_clara_y_sin_la_lista(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        for paso in ("g:tit", "m:30x30", "v:EA", "g:rev", "cara:li", "cuba:EA"):
+            rep(boton(f"rp:main:{paso}"), ctx)
+        upd = boton("rp:main:ext:parche")
+        rep(upd, ctx)
+        texto = upd.callback_query.edit_message_text.call_args.args[0]
+        self.assertIn("Revoque lateral izquierdo (entrada de agua)", texto)
+        self.assertIn("<b>📏 ¿Cuánto mide el parche?</b>", texto)
+        self.assertIn("Escribilo abajo", texto)
+        self.assertNotIn("TITCEA", texto)       # lo cargado no se mezcla con la pregunta
+        self.assertNotIn("Ya cargaste", texto)
+
+    def test_menu_muestra_lo_cargado_en_palabras(self):
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        for paso in ("g:tit", "m:30x30", "v:EA", "g:tat", "t:oct", "m:54x54", "v:C"):
+            rep(boton(f"rp:main:{paso}"), ctx)
+        upd = boton("rp:main:borrar")
+        rep(upd, ctx)
+        texto = upd.callback_query.edit_message_text.call_args.args[0]
+        self.assertIn("↩️ Borrada: Tapa de acceso octogonal con parantes 54x54 (ciego)", texto)
+        self.assertIn("• Tapa de inspección 30x30 (entrada de agua)", texto)
+        self.assertNotIn("TITCEA", texto)
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 30x30"])  # se guarda en código
+
+    def test_legible(self):
+        self.assertEqual(campos.legible("TMTRC 48x48"), "Tapa y marco de acceso 48x48 (ciego)")
+        self.assertEqual(campos.legible("MATCEA 50"), "Marco solo 50 (entrada de agua)")
+        self.assertEqual(campos.legible("revoque piso entrada de agua completo"),
+                         "Revoque piso (entrada de agua): completo")
+        self.assertEqual(campos.legible("flotante"), "Flotante")
 
     def test_revoque_saltear_pasos_no_agrega_nada(self):
         ctx = self._ctx()
