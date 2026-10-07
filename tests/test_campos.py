@@ -163,12 +163,16 @@ class TestPasosDelTanque(unittest.TestCase):
         ok = {("insp", "30 60"): "30, 60", ("insp", "30, 30"): "30, 30", ("insp", "No tiene"): "No tiene",
               ("insp", "ninguna"): "No tiene", ("acceso", "47 48 y 49"): "47, 48, 49",
               ("acceso", "49,5 / 56.5"): "49.5, 56.5", ("acceso", "49,50"): "49, 50",
-              ("acceso", "55"): "55", ("acceso", "65"): "65"}
+              ("acceso", "55"): "55", ("acceso", "65"): "65",
+              # de la planilla del dueño
+              ("acceso", "39x49"): "39x49", ("acceso", "39 x 49 y 53,5"): "39x49, 53.5",
+              ("acceso", "60 69"): "60, 69", ("acceso", "54x54"): "54", ("insp", "60x60"): "60"}
         for (campo, escrito), esperado in ok.items():
             self.assertEqual(campos.normalizar_tapas(campo, escrito), (esperado, None), escrito)
         for campo, escrito in (("insp", "35"), ("insp", "una de 60"), ("insp", "TITCEA 60"),
                                ("acceso", "4789"), ("acceso", "50125"), ("acceso", "57"),
-                               ("acceso", "56.7"), ("acceso", "punta recortada 54"), ("insp", "")):
+                               ("acceso", "56.7"), ("acceso", "punta recortada 54"), ("insp", ""),
+                               ("acceso", "40x50"), ("insp", "69")):
             valor, problema = campos.normalizar_tapas(campo, escrito)
             self.assertIsNone(valor, escrito)
             self.assertIn("Solo se aceptan", problema)

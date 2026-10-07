@@ -71,14 +71,22 @@ def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "",
 
 # Tapas (texto, con la ayuda de siempre en la pregunta): solo se aceptan estas medidas.
 # En la ayuda de acceso "4789" abrevia 47, 48 y 49, y "50125" abrevia 50, 51, 52 y 55.
+# 39x49, 53.5, 60 y 69 vienen de la planilla del dueño (no están en la ayuda).
 MEDIDAS_TAPAS = {
     "insp":   ["30", "40", "50", "60", "80"],
-    "acceso": ["47", "48", "49", "49.5", "50", "51", "51.5", "52", "54", "55", "56", "56.5",
-               "58", "62", "65"],
+    "acceso": ["39x49", "47", "48", "49", "49.5", "50", "51", "51.5", "52", "53.5", "54", "55",
+               "56", "56.5", "58", "60", "62", "65", "69"],
 }
 _SIN_TAPAS = re.compile(r"(no|no tiene|no hay|ninguna|ninguno|nada|sin tapas?|0|-)")
-# Medida de tapa: entero o ",5"/".5" ("49,50" son dos tapas: 49 y 50)
-_MEDIDA_TAPA = re.compile(r"\d+(?:[.,]5(?!\d))?")
+# Medida de tapa: "39x49", o entero o ",5"/".5" ("49,50" son dos tapas: 49 y 50)
+_MEDIDA_TAPA = re.compile(r"\d+(?:[.,]5)?\s*x\s*\d+(?:[.,]5)?|\d+(?:[.,]5(?!\d))?")
+
+
+def _medida_tapa(escrita: str) -> str:
+    """'49,5' -> '49.5'; '39 x 49' -> '39x49'; lado igual ('60x60') -> '60'."""
+    medida = re.sub(r"\s+", "", escrita).replace(",", ".")
+    lados = medida.split("x")
+    return lados[0] if len(lados) == 2 and lados[0] == lados[1] else medida
 
 
 def normalizar_tapas(campo: str, texto: str):
@@ -89,7 +97,7 @@ def normalizar_tapas(campo: str, texto: str):
     t = (texto or "").lower().strip().strip(".")
     if _SIN_TAPAS.fullmatch(t):
         return NO_TIENE, None
-    medidas = [m.replace(",", ".") for m in _MEDIDA_TAPA.findall(t)]
+    medidas = [_medida_tapa(m) for m in _MEDIDA_TAPA.findall(t)]
     sobra = _MEDIDA_TAPA.sub(" ", t)
     validas = MEDIDAS_TAPAS[campo]
     ayuda = (f"Solo se aceptan estas medidas: {' '.join(validas)}. Escribí la medida de cada "
