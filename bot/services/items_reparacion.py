@@ -82,6 +82,11 @@ def detectar_items(texto: str) -> dict:
         item["cantidad"] += 1
         item["variantes"].append(m.group(3).upper())
         item["codigos"].append(m.group(0).strip().upper())
+    # Revoque con la nomenclatura del dueño ("TCEA F COMP", "TRC LI PARC 1.50x1.50"): un revoque
+    from bot.services.campos import RE_CODIGO_REVOQUE
+    if RE_CODIGO_REVOQUE.search(texto):
+        items["revoque"] = {"cantidad": 1, "variantes": [], "codigos": []}
+    texto = RE_CODIGO_REVOQUE.sub(" ", texto)
     resto = _normalizar(_RE_CODIGO.sub(" ", texto))
     # "evita marco" es un tipo de tapa de acceso (menú de reparaciones), no un marco
     resto = resto.replace("evita marco", " ")

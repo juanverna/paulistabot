@@ -92,6 +92,12 @@ def _reparacion(context: CallbackContext, sufijo: str) -> str:
     return context.user_data.get(TANQUES[sufijo][0], "") or ""
 
 
+def _reparacion_en_palabras(context: CallbackContext, sufijo: str) -> str:
+    """Para la IA de fotos: "TCEA F COMP" no le dice nada; "Revoque frente (entrada de agua)..." sí."""
+    from bot.services.campos import legible
+    return ", ".join(legible(i) for i in _reparacion(context, sufijo).split(", ") if i)
+
+
 def _fotos(context: CallbackContext, sufijo: str) -> list:
     return context.user_data.setdefault("fotos_reparaciones", {}).setdefault(sufijo, [])
 
@@ -300,7 +306,7 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
         # Se revisa con IA en segundo plano; si sigue trabado, se destraba en el próximo "Listo"
         revision_fotos.enviar_a_revisar(
             context.bot, update.effective_chat.id, context.user_data, sufijo, foto,
-            _nombre_tanque(context, sufijo), _reparacion(context, sufijo), _items(context, sufijo))
+            _nombre_tanque(context, sufijo), _reparacion_en_palabras(context, sufijo), _items(context, sufijo))
         # Un álbum llega como varios mensajes: respondemos una sola vez por álbum
         grupo = update.message.media_group_id
         if grupo and grupo == ctx.get("ultimo_album"):

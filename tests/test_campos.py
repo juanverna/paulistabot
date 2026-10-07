@@ -90,10 +90,13 @@ class TestCatalogo(unittest.TestCase):
                          "TATHC 12 agujeros punta recortada 56.5")
         self.assertEqual(campos.reparacion("tmt", "RESERVA", "EA", "tm", "48x48"), "TMTREA 48x48")
         self.assertEqual(campos.reparacion("mat", "RESERVA", "C", "ma", "50"), "MATRC 50")
-        self.assertEqual(campos.reparacion("rev", variante="EA", cara="frente"),
-                         "revoque frente entrada de agua completo")
-        self.assertEqual(campos.reparacion("rev", variante="C", cara="li", parche="1.50x1.50"),
-                         "revoque lateral izquierdo ciego parche 1.50x1.50 m")
+        # Revoque: nomenclatura del dueño (tanque + cuba, pared, COMP/PARC y medida del parche)
+        self.assertEqual(campos.reparacion("rev", "CISTERNA", "EA", cara="F"), "TCEA F COMP")
+        self.assertEqual(campos.reparacion("rev", "RESERVA", "C", cara="LI", parche="1.50x1.50"),
+                         "TRC LI PARC 1.50x1.50")
+        self.assertEqual(campos.reparacion("rev", "INTERMEDIARIO", "EA", cara="CF"), "THEA CF COMP")
+        self.assertEqual(campos.reparacion("rev", "CISTERNA", "C", cara="P", parche="2.00x0.50"),
+                         "TCC P PARC 2.00x0.50")
         self.assertEqual(campos.reparacion("flo"), "flotante")
         self.assertEqual(campos.reparacion("aut"), "automático")
 
@@ -114,18 +117,21 @@ class TestCatalogo(unittest.TestCase):
                             self.assertEqual(items[grupo_foto[grupo]]["cantidad"], 1, texto)
         for grupo, foto in (("flo", "flotante"), ("aut", "automatico")):
             self.assertEqual(list(detectar_items(campos.reparacion(grupo))), [foto])
-        for cara in campos.CARAS_REVOQUE:
-            for cuba in campos.CUBAS:
-                for parche in ("", "2.00x2.00"):
-                    texto = campos.reparacion("rev", variante=cuba, cara=cara, parche=parche)
-                    self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"), texto)
-                    self.assertEqual(list(detectar_items(texto)), ["revoque"], texto)
+        for tanque in ("CISTERNA", "RESERVA", "INTERMEDIARIO"):
+            for cara in campos.CARAS_REVOQUE:
+                for cuba in campos.CUBAS:
+                    for parche in ("", "2.00x2.00"):
+                        texto = campos.reparacion("rev", tanque, cuba, cara=cara, parche=parche)
+                        self.assertIsNone(problemas_de_reparaciones(texto, tanque), texto)
+                        self.assertEqual(list(detectar_items(texto)), ["revoque"], texto)
 
     def test_cubas_del_revoque_no_duplican_la_tapa(self):
         # "entrada de agua" y "ciego" de dos revoques no son dos tapas de acceso
-        texto = ("TATCEA 47x47, revoque frente entrada de agua completo, "
-                 "revoque piso ciego parche 1.00x1.00 m")
-        self.assertEqual(detectar_items(texto)["tapa_acceso"]["cantidad"], 1)
+        texto = "TATCEA 47x47, TCEA F COMP, TCC P PARC 1.00x1.00"
+        items = detectar_items(texto)
+        self.assertEqual(items["tapa_acceso"]["cantidad"], 1)
+        self.assertEqual(items["revoque"]["cantidad"], 1)
+        self.assertIsNone(problemas_de_reparaciones(texto, "CISTERNA"))
         # el texto escrito a mano de antes sigue contando 2
         self.assertEqual(detectar_items("tapa de acceso de entrada de agua y ciego")["tapa_acceso"]["cantidad"], 2)
 
@@ -247,7 +253,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
                  "g:tat", "t:pun", "v:EA",                    # punta recortada: una sola medida
                  "g:tmt", "m:48x48", "v:EA",                  # marco y tapa
                  "g:mat", "m:52", "v:C",                      # marco solo
-                 "g:rev", "cara:li", "cuba:EA", "ext:completo",  # revoque lateral izquierdo completo
+                 "g:rev", "cara:LI", "cuba:EA", "ext:completo",  # revoque lateral izquierdo completo
                  "g:flo", "g:aut", "g:aut", "borrar",
                  "g:tat", "volver")                           # se arrepintió
         for paso in pasos:
@@ -256,7 +262,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
         self.assertEqual(ctx.user_data["repairs"],
                          "TITCEA 60x60, TATCC octogonal con parantes 53.5x56.5, "
                          "TATCEA punta recortada con parantes 54, TMTCEA 48x48, MATCC 52, "
-                         "revoque lateral izquierdo entrada de agua completo, flotante, automático")
+                         "TCEA LI COMP, flotante, automático")
         self.assertEqual(ctx.user_data["state_stack"], [SEALING_MAIN, REPAIR_MAIN])
         self.assertIn("Mandá una foto de cada reparación", _enviados(ctx))
         self.assertNotIn("reparaciones_en_curso", ctx.user_data)
@@ -281,7 +287,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
     def test_revoque_con_parche(self):
         ctx = self._ctx()
         rep = ct.boton_reparaciones("main")
-        for paso in ("g:rev", "cara:ld", "cuba:C", "ext:parche"):
+        for paso in ("g:rev", "cara:LD", "cuba:C", "ext:parche"):
             self.assertEqual(rep(boton(f"rp:main:{paso}"), ctx), REPAIR_MAIN, paso)
         texto = ct.texto_reparaciones("main")
         upd = entorno.update_texto("grande")
@@ -289,8 +295,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
         self.assertIn("2 medidas del parche", entorno.mensajes_enviados(ctx, upd))
         self.assertEqual(texto(entorno.update_texto("1,5 x 1,5"), ctx), REPAIR_MAIN)
-        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"],
-                         ["revoque lateral derecho ciego parche 1.50x1.50 m"])
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TCC LD PARC 1.50x1.50"])
         menu = ctx.bot.send_message.call_args.kwargs["text"]  # vuelve al menú, con lo cargado en palabras
         self.assertIn("✅ Agregado: Revoque lateral derecho (ciego): parche de 1.50 x 1.50 m", menu)
         self.assertIn("• Revoque lateral derecho (ciego): parche de 1.50 x 1.50 m", menu)
@@ -299,7 +304,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
         ctx = self._ctx()
         rep = ct.boton_reparaciones("main")
         rep(boton("rp:main:g:rev"), ctx)
-        upd = boton("rp:main:cara:frente")
+        upd = boton("rp:main:cara:F")
         rep(upd, ctx)
         texto = upd.callback_query.edit_message_text.call_args.args[0]
         self.assertIn("una sola cuba", texto)
@@ -308,7 +313,7 @@ class TestMenuDeReparaciones(unittest.TestCase):
     def test_pantalla_del_parche_es_clara_y_sin_la_lista(self):
         ctx = self._ctx()
         rep = ct.boton_reparaciones("main")
-        for paso in ("g:tit", "m:30x30", "v:EA", "g:rev", "cara:li", "cuba:EA"):
+        for paso in ("g:tit", "m:30x30", "v:EA", "g:rev", "cara:LI", "cuba:EA"):
             rep(boton(f"rp:main:{paso}"), ctx)
         upd = boton("rp:main:ext:parche")
         rep(upd, ctx)
@@ -332,11 +337,22 @@ class TestMenuDeReparaciones(unittest.TestCase):
         self.assertNotIn("TITCEA", texto)
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 30x30"])  # se guarda en código
 
+    def test_funciones_para_extract_reports(self):
+        for d in ("TCEA F COMP", "TRC LI PARC 1.50x1.50", "THEA CF COMP", "tcc p parc 2.00x0.50",
+                  "revoque lateral derecho"):
+            self.assertTrue(campos.es_revoque(d), d)
+        for d in ("TITCEA 30x30", "TATCC 47x47", "flotante", "MATCEA 50"):
+            self.assertFalse(campos.es_revoque(d), d)
+        self.assertEqual(campos.medidas_tanque_m("1.80, 2.00, 1.50"), [1.8, 2.0, 1.5])  # formato del bot
+        self.assertEqual(campos.medidas_tanque_m("180 200 150"), [1.8, 2.0, 1.5])       # viejos, en cm
+        self.assertEqual(campos.medidas_tanque_m(""), [])
+
     def test_legible(self):
         self.assertEqual(campos.legible("TMTRC 48x48"), "Tapa y marco de acceso 48x48 (ciego)")
         self.assertEqual(campos.legible("MATCEA 50"), "Marco solo 50 (entrada de agua)")
-        self.assertEqual(campos.legible("revoque piso entrada de agua completo"),
-                         "Revoque piso (entrada de agua): completo")
+        self.assertEqual(campos.legible("TCEA P COMP"), "Revoque piso (entrada de agua): completo")
+        self.assertEqual(campos.legible("TRC CF PARC 1.50x2.00"),
+                         "Revoque contrafrente (ciego): parche de 1.50 x 2.00 m")
         self.assertEqual(campos.legible("flotante"), "Flotante")
 
     def test_revoque_saltear_pasos_no_agrega_nada(self):
@@ -419,15 +435,21 @@ class TestContacto(unittest.TestCase):
         ctx = entorno.contexto(_datos(current_state=CONTACT))
         self.assertEqual(ct.recibir_nombre(entorno.update_texto("1135456067"), ctx), CONTACT)
 
-    def test_sin_encargado_y_sin_telefono(self):
+    def test_nombre_y_telefono_son_obligatorios(self):
         ctx = entorno.contexto(_datos(current_state=CONTACT))
-        self.assertEqual(ct.boton_contacto(boton("ct:sin"), ctx), PHOTOS)
-        self.assertEqual(ctx.user_data["contact"], "Sin encargado")
-
-        ctx = entorno.contexto(_datos(current_state=CONTACT))
-        ct.recibir_nombre(entorno.update_texto("Daniel"), ctx)
-        self.assertEqual(ct.boton_contacto(boton("ct:sintel"), ctx), PHOTOS)
-        self.assertEqual(ctx.user_data["contact"], "Daniel (sin teléfono)")
+        ct.preguntar_contacto(entorno.update_texto(None), ctx)
+        markup = ctx.bot.send_message.call_args.kwargs["reply_markup"]
+        datos = [b.callback_data for fila in markup.inline_keyboard for b in fila]
+        self.assertEqual(datos, ["back"])  # sin "No había encargado"
+        for escrito in ("no había", "-", "no"):
+            self.assertEqual(ct.recibir_nombre(entorno.update_texto(escrito), ctx), CONTACT, escrito)
+        self.assertEqual(ct.recibir_nombre(entorno.update_texto("Daniel"), ctx), CONTACT_PHONE)
+        ct.preguntar_telefono(entorno.update_texto(None), ctx)
+        markup = ctx.bot.send_message.call_args.kwargs["reply_markup"]
+        self.assertEqual([b.callback_data for fila in markup.inline_keyboard for b in fila], ["back"])
+        for escrito in ("no tiene", "no lo dio", "123"):
+            self.assertEqual(ct.recibir_telefono(entorno.update_texto(escrito), ctx), CONTACT_PHONE, escrito)
+        self.assertNotIn("contact", ctx.user_data)
 
 
 class TestConversacion(unittest.TestCase):

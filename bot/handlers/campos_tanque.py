@@ -14,7 +14,6 @@ Botones (el sufijo va en el botón: uno de un paso que ya terminó no se toma):
                                  revoque: cara, cuba y si es completo o un parche (medidas escritas)
   "rp:<sufijo>:<volver|borrar|listo|no>"
   "md:<sufijo>:<plastico|cilindrico|acero>" material de un tanque en litros
-  "ct:<sin|sintel>"              sin encargado / sin teléfono
 """
 
 import html
@@ -393,7 +392,7 @@ def boton_reparaciones(sufijo: str):
         elif accion == "cuba" and grupo == "rev" and curso["cara"] and valor in campos.CUBAS:
             curso["cuba"] = valor
         elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "completo":
-            _rep_agregar(curso, campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"]))
+            _rep_agregar(curso, campos.reparacion("rev", tanque, curso["cuba"], cara=curso["cara"]))
         elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "parche":
             curso["parche"] = True  # las medidas se escriben (texto_reparaciones)
         elif accion == "volver":
@@ -425,8 +424,8 @@ def texto_reparaciones(sufijo: str):
             if problema:
                 update.message.reply_text(f"⚠️ {problema}")
                 return estado
-            _rep_agregar(curso, campos.reparacion("rev", variante=curso["cuba"], cara=curso["cara"],
-                                                  parche=parche))
+            _rep_agregar(curso, campos.reparacion("rev", _tanque(context, sufijo), curso["cuba"],
+                                                  cara=curso["cara"], parche=parche))
             _enviar(update, context, *_rep_pantalla(context, sufijo))
             return estado
         # Las reparaciones no se escriben: se vuelve a mostrar el menú (sin perder lo cargado)
@@ -442,13 +441,13 @@ def texto_reparaciones(sufijo: str):
 # Contacto: nombre y después teléfono
 # =============================================================================
 def preguntar_contacto(update: Update, context: CallbackContext) -> int:
-    markup = teclado_atras([[InlineKeyboardButton("No había encargado", callback_data="ct:sin")]])
+    markup = teclado_atras()
     _enviar(update, context, "👤 ¿Cómo se llama el encargado? (solo el nombre)", markup)
     return _ir(context, CONTACT)
 
 
 def preguntar_telefono(update: Update, context: CallbackContext) -> int:
-    markup = teclado_atras([[InlineKeyboardButton("No dio teléfono", callback_data="ct:sintel")]])
+    markup = teclado_atras()
     _enviar(update, context, "📞 Teléfono del encargado, con código de área (ej: 1135456067):", markup)
     return _ir(context, CONTACT_PHONE)
 
@@ -457,10 +456,7 @@ def _guardar_contacto(update: Update, context: CallbackContext, nombre: str, tel
     from bot.handlers.shared import pedir_fotos_generales
     context.user_data["contact_nombre"] = nombre
     context.user_data["contact_telefono"] = telefono
-    if not nombre:
-        context.user_data["contact"] = "Sin encargado"
-    else:
-        context.user_data["contact"] = f"{nombre} {telefono or '(sin teléfono)'}"
+    context.user_data["contact"] = f"{nombre} {telefono}"
     fin = terminar_edicion(update, context)
     if fin is not None:
         return fin
@@ -473,8 +469,7 @@ def recibir_nombre(update: Update, context: CallbackContext) -> int:
         return siguiente
     nombre, telefono = campos.separar_nombre_telefono(update.message.text)
     if not campos.nombre_valido(nombre):
-        update.message.reply_text("⚠️ Escribí el nombre del encargado (ej: Daniel). "
-                                  "Si no había, tocá «No había encargado».")
+        update.message.reply_text("⚠️ Escribí el nombre del encargado (ej: Daniel). Es obligatorio.")
         return CONTACT
     context.user_data["contact_nombre"] = nombre
     push_state(context, CONTACT)
@@ -490,22 +485,7 @@ def recibir_telefono(update: Update, context: CallbackContext) -> int:
     telefono = campos.normalizar_telefono(update.message.text)
     if not telefono:
         update.message.reply_text("⚠️ El teléfono tiene que tener 10 dígitos con el código de área "
-                                  "(ej: 1135456067 o 2214567890). Si no lo dio, tocá «No dio teléfono».")
+                                  "(ej: 1135456067 o 2214567890). Es obligatorio.")
         return CONTACT_PHONE
     push_state(context, CONTACT_PHONE)
     return _guardar_contacto(update, context, context.user_data.get("contact_nombre", ""), telefono)
-
-
-def boton_contacto(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    actual = context.user_data.get("current_state")
-    if (query.data, actual) not in (("ct:sin", CONTACT), ("ct:sintel", CONTACT_PHONE)):
-        _boton_vencido(query)
-        return actual
-    query.answer()
-    query.edit_message_reply_markup(reply_markup=None)
-    push_state(context, actual)
-    if query.data == "ct:sin":
-        context.user_data.pop("contact_nombre", None)
-        return _guardar_contacto(update, context, "", None)
-    return _guardar_contacto(update, context, context.user_data.get("contact_nombre", ""), None)

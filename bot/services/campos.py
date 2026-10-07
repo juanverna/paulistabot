@@ -48,11 +48,14 @@ CATALOGO_REPARACIONES = {
 }
 # Emoji de cada botón del menú, para distinguirlos de un vistazo
 EMOJI_REPARACION = {"tit": "🔍", "tat": "🚪", "tmt": "🔲", "mat": "🖼", "rev": "🧱", "flo": "🛟", "aut": "⚡"}
-# Revoque: un ítem por cara. Cuba de entrada de agua o ciego (si hay una sola cuba, entrada de
-# agua), y la cara completa o un parche con sus medidas en metros.
-# extract_reports.py busca "frente", "lateral" y "piso" en el texto.
-CARAS_REVOQUE = {"frente": "frente", "li": "lateral izquierdo", "ld": "lateral derecho", "piso": "piso"}
+# Revoque: un ítem por cara, con la nomenclatura del dueño (2026-10-07):
+#   T + tanque (C/R/H) + cuba (EA/C), espacio, pared (F, CF, LI, LD, P), espacio, COMP o PARC,
+#   y si es parche, espacio y la medida en metros:  "TCEA F COMP", "TRC LI PARC 1.50x1.50".
+# Si el tanque tiene una sola cuba, va EA.
+CARAS_REVOQUE = {"F": "frente", "CF": "contrafrente", "LI": "lateral izquierdo",
+                 "LD": "lateral derecho", "P": "piso"}
 CUBAS = {"EA": "entrada de agua", "C": "ciego"}
+RE_CODIGO_REVOQUE = re.compile(r"\bT([CRH])(EA|C) (F|CF|LI|LD|P) (COMP|PARC)(?: (\d+(?:\.\d+)?)x(\d+(?:\.\d+)?))?\b")
 
 
 def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "", medida: str = "",
@@ -60,41 +63,55 @@ def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "",
     """
     Texto estándar de una reparación del catálogo (sin comas: las reparaciones se separan con coma):
     ('tat', 'CISTERNA', 'EA', 'oct', '54x54')        -> 'TATCEA octogonal con parantes 54x54'
-    ('rev', variante='EA', cara='frente')            -> 'revoque frente entrada de agua completo'
-    ('rev', variante='C', cara='li', parche='1.50x1.50')
-                                                     -> 'revoque lateral izquierdo ciego parche 1.50x1.50 m'
+    ('rev', 'CISTERNA', 'EA', cara='F')              -> 'TCEA F COMP'
+    ('rev', 'RESERVA', 'C', cara='LI', parche='1.50x1.50')
+                                                     -> 'TRC LI PARC 1.50x1.50'
     ('flo',)                                         -> 'flotante'
     """
     boton, prefijo, tipos = CATALOGO_REPARACIONES[grupo]
     if grupo == "rev":
-        extension = f"parche {parche} m" if parche else "completo"
-        return f"revoque {CARAS_REVOQUE[cara]} {CUBAS[variante]} {extension}"
+        extension = f"PARC {parche}" if parche else "COMP"
+        return f"T{LETRA_TANQUE[tanque.upper()]}{variante} {cara} {extension}"
     if prefijo is None:
         return boton.lower()
     descripcion = tipos[tipo][1]
     return f"{prefijo}{LETRA_TANQUE[tanque.upper()]}{variante} {descripcion} {medida}".replace("  ", " ")
 
 
+def es_revoque(descripcion: str) -> bool:
+    """Para extract_reports.py: revoque en código ("TCEA F COMP") o escrito ("revoque lateral...")."""
+    d = (descripcion or "").strip()
+    return d.lower().startswith("revoque") or bool(RE_CODIGO_REVOQUE.match(d.upper()))
+
+
+def medidas_tanque_m(texto: str) -> list:
+    """
+    Para extract_reports.py: alto, ancho y profundo en metros. El bot las manda "1.80, 2.00, 1.50";
+    en reportes viejos pueden venir en centímetros ("180 200 150"): más de 15 se toma como cm.
+    """
+    numeros = [float(n.replace(",", ".")) for n in _NUMERO.findall(texto or "")]
+    return [n / 100 if n > _MAX_M else n for n in numeros[:3]]
+
+
 NOMBRE_CODIGO = {"TIT": "Tapa de inspección", "TAT": "Tapa de acceso", "TMT": "Tapa y marco de acceso",
                  "MAT": "Marco solo"}
 _RE_ITEM_CODIGO = re.compile(r"^(TIT|TAT|TMT|MAT)[CRH](EA|C) (.+)$")
-_RE_ITEM_REVOQUE = re.compile(r"^revoque (.+?) (entrada de agua|ciego) (completo|parche (\S+)x(\S+) m)$")
+
 
 
 def legible(item: str) -> str:
     """
     Una reparación guardada, en palabras para el operario:
     'TITCEA 30x30' -> 'Tapa de inspección 30x30 (entrada de agua)'
-    'revoque lateral izquierdo ciego parche 1.50x1.00 m'
-        -> 'Revoque lateral izquierdo (ciego): parche de 1.50 x 1.00 m'
+    'TRC LI PARC 1.50x1.00' -> 'Revoque lateral izquierdo (ciego): parche de 1.50 x 1.00 m'
     """
     m = _RE_ITEM_CODIGO.match(item)
     if m:
         return f"{NOMBRE_CODIGO[m.group(1)]} {m.group(3)} ({CUBAS[m.group(2)]})"
-    m = _RE_ITEM_REVOQUE.match(item)
+    m = RE_CODIGO_REVOQUE.fullmatch(item)
     if m:
-        extension = f"parche de {m.group(4)} x {m.group(5)} m" if m.group(4) else "completo"
-        return f"Revoque {m.group(1)} ({m.group(2)}): {extension}"
+        extension = f"parche de {m.group(5)} x {m.group(6)} m" if m.group(4) == "PARC" else "completo"
+        return f"Revoque {CARAS_REVOQUE[m.group(3)]} ({CUBAS[m.group(2)]}): {extension}"
     return item[:1].upper() + item[1:]
 
 
@@ -243,5 +260,14 @@ def separar_nombre_telefono(texto: str):
     return re.sub(r"\s+", " ", nombre), normalizar_telefono(m.group(0))
 
 
+# Respuestas para esquivar el nombre del encargado (es obligatorio)
+_SIN_NOMBRE = re.compile(r"(no|nadie|ninguno|ninguna|n/?a|no (habia|hay|estaba|tiene|se|sabe|dio|dijo)\b.*"
+                         r"|sin (encargado|nombre|dato)s?|desconocido|no se sabe|-+|\.+)")
+
+
 def nombre_valido(nombre: str) -> bool:
-    return bool(re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}", nombre or "")) and len(nombre) <= 60
+    t = (nombre or "").strip()
+    sin_tildes = t.lower().translate(str.maketrans("áéíóú", "aeiou"))
+    if _SIN_NOMBRE.fullmatch(sin_tildes):
+        return False
+    return bool(re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}", t)) and len(t) <= 60

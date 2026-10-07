@@ -17,7 +17,11 @@ bash scripts/correr.sh              # corre el bot
 En Limpieza y Presupuestos, el operario elige las reparaciones de cada tanque con un menú de
 botones (catálogo en `bot/services/campos.py`; no se escriben) y el bot le pide las fotos de esas
 reparaciones. Puede mandar varias y termina con "Listo". Con "Sin reparaciones" no se piden fotos.
-La carga es solo manual (la nota de voz se sacó el 2026-10-07). "Modificar algo", en el resumen
+Las reparaciones se guardan en código: tapas y marcos con el del CSV de artículos
+(`TITCEA 30x30`, `TATCC octogonal con parantes 54x54`) y el revoque con la nomenclatura del dueño:
+tanque + cuba (`TC`/`TR`/`TH` + `EA`/`C`), pared (`F`, `CF`, `LI`, `LD`, `P`) y `COMP` o `PARC` con la
+medida en metros (`TCEA F COMP`, `TRC LI PARC 1.50x1.50`). La carga es solo manual (la nota de voz
+se sacó el 2026-10-07). "Modificar algo", en el resumen
 final, vuelve a hacer la pregunta del campo elegido con los mismos controles.
 
 Si escribe "Listo" o "no tengo" sin haber mandado ninguna foto, el paso queda trabado hasta que:

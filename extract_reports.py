@@ -14,6 +14,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
+# Revoque ("TCEA F COMP", "TRC LI PARC 1.50x1.50") y medidas del tanque en metros: las mismas
+# reglas que usa el bot
+from bot.services.campos import es_revoque, medidas_tanque_m
+
 # ----------------------------------
 # 0) CONFIGURACIÓN — REEMPLAZA ESTOS VALORES
 # ----------------------------------
@@ -170,7 +174,7 @@ def fill_placeholders(docs_srv, doc_id, report_dict, summary):
         })
     
     # Usar las descripciones mejoradas para los items
-    if len(summary['items']) == 1 and 'revoque' in summary['items'][0]['descripción'].lower():
+    if len(summary['items']) == 1 and es_revoque(summary['items'][0]['descripción']):
         items_text = summary['items'][0]['descripción_final']
     else:
         items_text = "\n".join(f"- {itm['descripción_final']}" for itm in summary['items'])
@@ -316,6 +320,14 @@ Reparaciones CISTERNA: Presupuestar TITCEA30 y revoque lateral derecho
     {"subtanque":"CISTERNA","descripción":"revoque lateral derecho"}
 ]''' + """
 
+Ejemplo 4 (formato del bot: ítems separados por coma, cada código va tal cual):
+Reparaciones CISTERNA: TITCEA 30x30, TCEA F COMP, TCC LI PARC 1.50x1.50
+""" + '''→ [
+    {"subtanque":"CISTERNA","descripción":"TITCEA 30x30"},
+    {"subtanque":"CISTERNA","descripción":"TCEA F COMP"},
+    {"subtanque":"CISTERNA","descripción":"TCC LI PARC 1.50x1.50"}
+]''' + """
+
 Ahora convierte estos campos:
 """ + json.dumps(repair_fields, ensure_ascii=False, indent=2) + """
 
@@ -345,20 +357,20 @@ def update_presupuesto_online(items: list, reports: list):
    sheet     = client.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
    start_row = 9
    updates   = []
-   only_rev  = all(itm['descripción'].lower().strip().startswith('revoque') for itm in items)
+   only_rev  = all(es_revoque(itm['descripción']) for itm in items)
    for idx, (itm, report) in enumerate(zip(items, reports)):
        sub = itm['subtanque'].upper(); raw = itm['descripción'].lower().strip(); row = start_row + idx
-       if raw.startswith('revoque'):
+       if es_revoque(raw):
            field = 'Medida principal' if sub == 'CISTERNA' else f"Medida {sub.capitalize()}"
-           medidas = re.split(r'[/\s]+', report.get(field, '').strip())[:3]
+           medidas = medidas_tanque_m(report.get(field, ''))
            if len(medidas) >= 3:
-               alto_m, ancho_m, prof_m = float(medidas[0])/100, float(medidas[1])/100, float(medidas[2])/100
+               alto_m, ancho_m, prof_m = medidas
                sheet.update('O5', [[alto_m]])
                sheet.update('O6', [[ancho_m]]) 
                sheet.update('O7', [[prof_m]])
            cell_map = {'frente':'R12','lateral':'R13','piso':'R14'} if only_rev else {'frente':'P12','lateral':'P13','piso':'P14'}
            surfaces = []
-           if re.search(r'\b(f|frente|fondo|contrafrente)\b', raw): surfaces.append('frente')
+           if re.search(r'\b(f|cf|frente|fondo|contrafrente)\b', raw): surfaces.append('frente')
            if re.search(r'\b(ld|li|lateral|lado)\b', raw): surfaces.append('lateral')
            if re.search(r'\b(p|piso)\b', raw): surfaces.append('piso')
            for surf in surfaces:

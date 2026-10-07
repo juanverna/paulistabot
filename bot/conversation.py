@@ -92,10 +92,8 @@ def build_conversation_handler() -> ConversationHandler:
             ],
 
             # Contacto: nombre y después teléfono
-            CONTACT:       [BACK, CallbackQueryHandler(ct.boton_contacto, pattern="^ct:"),
-                            MessageHandler(TEXT, ct.recibir_nombre)],
-            CONTACT_PHONE: [BACK, CallbackQueryHandler(ct.boton_contacto, pattern="^ct:"),
-                            MessageHandler(TEXT, ct.recibir_telefono)],
+            CONTACT:       [BACK, MessageHandler(TEXT, ct.recibir_nombre)],
+            CONTACT_PHONE: [BACK, MessageHandler(TEXT, ct.recibir_telefono)],
 
             PHOTOS: [
                 BACK,
