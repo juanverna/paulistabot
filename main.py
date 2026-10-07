@@ -10,15 +10,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def crear_updater(token: str) -> Updater:
+    """Updater con el bot que deja el botón ATRAS solo en la última pregunta (bot/utils/bot_atras.py)."""
+    from telegram.utils.request import Request
+    from bot.utils.bot_atras import BotConAtrasUnico
+    # con_pool_size: los 4 hilos del dispatcher + 4, lo que Updater arma cuando recibe el token
+    request = Request(con_pool_size=8, read_timeout=60, connect_timeout=60)
+    return Updater(bot=BotConAtrasUnico(token, request=request), use_context=True)
+
+
 def main():
     logger.info("Iniciando bot...")
     from bot.services.articles_service import load_articles
     load_articles()
-    updater = Updater(
-        TELEGRAM_BOT_TOKEN,
-        use_context=True,
-        request_kwargs={"read_timeout": 60, "connect_timeout": 60},
-    )
+    updater = crear_updater(TELEGRAM_BOT_TOKEN)
     updater.dispatcher.add_handler(build_conversation_handler())
     updater.start_polling()
     logger.info("Bot en línea. Esperando mensajes.")
