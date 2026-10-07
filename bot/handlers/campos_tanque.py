@@ -5,9 +5,10 @@ Carga manual con formato fijo (ver bot/services/campos.py): medida validada, tap
 con botones, y el contacto en dos pasos (nombre y teléfono).
 
 Botones (el sufijo y el campo van en el botón: uno de un paso que ya terminó no se toma):
-  "tp:<sufijo>:<insp|acceso>:m:<medida>"   elige la medida de una tapa
+  "tp:<sufijo>:<insp|acceso>:t:<tipo>"     tipo de tapa de acceso (catálogo en services/campos.py)
+  "tp:<sufijo>:<campo>:m:<medida>"         medida de esa tapa
   "tp:<sufijo>:<campo>:v:<EA|C>"           entrada de agua o ciego de esa tapa
-  "tp:<sufijo>:<campo>:<volver|borrar|listo|no|otra>"
+  "tp:<sufijo>:<campo>:<volver|borrar|listo|no>"
   "se:<sufijo>:<masilla|burlete|silicona|listo|no|otro>"
   "md:<sufijo>:<plastico|cilindrico|acero>" material de un tanque en litros
   "ct:<sin|sintel>"                        sin encargado / sin teléfono
@@ -153,50 +154,63 @@ def _guardar_medida(update: Update, context: CallbackContext, sufijo: str, valor
 def _en_curso(context: CallbackContext, sufijo: str, campo: str) -> dict:
     actual = context.user_data.get("tapas_en_curso")
     if not actual or actual.get("sufijo") != sufijo or actual.get("campo") != campo:
-        actual = {"sufijo": sufijo, "campo": campo, "lista": [], "medida": None, "escribiendo": False}
+        actual = {"sufijo": sufijo, "campo": campo, "lista": [], "tipo": None, "medida": None}
         context.user_data["tapas_en_curso"] = actual
     return actual
 
 
-def _texto_tapas(context: CallbackContext, sufijo: str, campo: str) -> str:
-    lista = _en_curso(context, sufijo, campo)["lista"]
-    cargadas = ", ".join(lista) if lista else "ninguna todavía"
-    return (f"🔍 Tapas de <b>{NOMBRE_CAMPO[campo]}</b> de {_tanque(context, sufijo).capitalize()}\n"
-            "Tocá la medida de cada tapa, una por una (después te pregunto si es de entrada de "
-            "agua o ciego). Al terminar, tocá Listo.\n\n"
-            f"Cargadas: <b>{html.escape(cargadas)}</b>")
+def _tipo_unico(campo: str):
+    """Inspección tiene un solo tipo: se va directo a las medidas."""
+    tipos = campos.CATALOGO_TAPAS[campo]
+    return next(iter(tipos)) if len(tipos) == 1 else None
 
 
-def _teclado_medidas(sufijo: str, campo: str) -> InlineKeyboardMarkup:
+def _pantalla_tapas(context: CallbackContext, sufijo: str, campo: str):
+    """(texto, botones) según lo que se está eligiendo: tipo, medida o entrada de agua/ciego."""
+    curso = _en_curso(context, sufijo, campo)
     base = f"tp:{sufijo}:{campo}:"
-    botones = [InlineKeyboardButton(m, callback_data=f"{base}m:{m}") for m in campos.MEDIDAS_TAPA[campo]]
-    if campo == "acceso":
-        botones.append(InlineKeyboardButton("✏️ Otra", callback_data=f"{base}otra"))
-    filas = [botones[i:i + 5] for i in range(0, len(botones), 5)]
-    filas += [[InlineKeyboardButton("↩️ Borrar última", callback_data=f"{base}borrar"),
-               InlineKeyboardButton("✅ Listo", callback_data=f"{base}listo")],
-              [InlineKeyboardButton("🚫 No tiene", callback_data=f"{base}no")],
-              [InlineKeyboardButton("ATRAS", callback_data="back")]]
-    return InlineKeyboardMarkup(filas)
+    lista = curso["lista"]
+    cargadas = f"\n\nCargadas: <b>{html.escape(', '.join(lista) if lista else 'ninguna todavía')}</b>"
+    titulo = f"🔍 Tapas de <b>{NOMBRE_CAMPO[campo]}</b> de {_tanque(context, sufijo).capitalize()}\n"
+    volver = [InlineKeyboardButton("← Volver", callback_data=f"{base}volver")]
+    tipo = curso["tipo"] or _tipo_unico(campo)
+
+    if curso["medida"]:
+        texto = (f"Tapa de {NOMBRE_CAMPO[campo].lower()} "
+                 f"{html.escape(campos.tapa(campo, curso['tipo'], curso['medida']))}: "
+                 "¿es de entrada de agua o ciego?")
+        return titulo + texto + cargadas, InlineKeyboardMarkup([
+            [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}v:EA"),
+             InlineKeyboardButton("Ciego", callback_data=f"{base}v:C")], volver])
+
+    if tipo:
+        boton, _, medidas = campos.CATALOGO_TAPAS[campo][tipo]
+        botones = [InlineKeyboardButton(m, callback_data=f"{base}m:{m}") for m in medidas]
+        filas = [botones[i:i + 3] for i in range(0, len(botones), 3)]
+        if curso["tipo"] is None:  # inspección: es la pantalla inicial
+            texto = ("Tocá la medida de cada tapa, una por una (después te pregunto si es de entrada "
+                     "de agua o ciego). Al terminar, tocá Listo.")
+            return titulo + texto + cargadas, InlineKeyboardMarkup(filas + _controles_tapas(base))
+        return (titulo + f"{html.escape(boton)}: ¿qué medida?" + cargadas,
+                InlineKeyboardMarkup(filas + [volver]))
+
+    texto = ("Tocá el tipo de cada tapa, una por una (después la medida y si es de entrada de agua "
+             "o ciego). Al terminar, tocá Listo.")
+    filas = [[InlineKeyboardButton(boton, callback_data=f"{base}t:{clave}")]
+             for clave, (boton, _, _) in campos.CATALOGO_TAPAS[campo].items()]
+    return titulo + texto + cargadas, InlineKeyboardMarkup(filas + _controles_tapas(base))
 
 
-def _teclado_variante(sufijo: str, campo: str) -> InlineKeyboardMarkup:
-    base = f"tp:{sufijo}:{campo}:"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}v:EA"),
-         InlineKeyboardButton("Ciego", callback_data=f"{base}v:C")],
-        [InlineKeyboardButton("← Volver a las medidas", callback_data=f"{base}volver")],
-    ])
-
-
-def _texto_variante(context: CallbackContext, sufijo: str, campo: str) -> str:
-    medida = _en_curso(context, sufijo, campo)["medida"]
-    return f"Tapa de {NOMBRE_CAMPO[campo].lower()} de {html.escape(medida)}: ¿es de entrada de agua o ciego?"
+def _controles_tapas(base: str) -> list:
+    return [[InlineKeyboardButton("↩️ Borrar última", callback_data=f"{base}borrar"),
+             InlineKeyboardButton("✅ Listo", callback_data=f"{base}listo")],
+            [InlineKeyboardButton("🚫 No tiene", callback_data=f"{base}no")],
+            [InlineKeyboardButton("ATRAS", callback_data="back")]]
 
 
 def preguntar_tapas(update: Update, context: CallbackContext, sufijo: str, campo: str) -> int:
     context.user_data.pop("tapas_en_curso", None)
-    _enviar(update, context, _texto_tapas(context, sufijo, campo), _teclado_medidas(sufijo, campo))
+    _enviar(update, context, *_pantalla_tapas(context, sufijo, campo))
     return _ir(context, PASOS[sufijo][campo][0])
 
 
@@ -218,22 +232,24 @@ def boton_tapas(sufijo: str, campo: str):
             query.answer("No cargaste ninguna tapa. Si no tiene, tocá «No tiene».", show_alert=True)
             return estado
         query.answer()
+        catalogo = campos.CATALOGO_TAPAS[campo]
+        tipo = curso["tipo"] or _tipo_unico(campo)
 
-        if accion == "m" and valor in campos.MEDIDAS_TAPA[campo]:
-            curso["medida"] = valor
-            _editar(query, _texto_variante(context, sufijo, campo), _teclado_variante(sufijo, campo))
-            return estado
-        if accion == "v" and valor in campos.VARIANTES and curso["medida"]:
-            curso["lista"].append(campos.codigo_tapa(campo, _tanque(context, sufijo), valor, curso["medida"]))
-            curso["medida"] = None
+        if accion == "t" and valor in catalogo:
+            curso["tipo"] = valor
+            medidas = catalogo[valor][2]
+            if len(medidas) == 1:  # una sola medida (punta recortada 54): no hay que elegirla
+                curso["medida"] = medidas[0]
+        elif accion == "m" and tipo and valor in catalogo[tipo][2]:
+            curso["tipo"], curso["medida"] = tipo, valor
+        elif accion == "v" and valor in campos.VARIANTES and curso["medida"]:
+            curso["lista"].append(campos.codigo_tapa(campo, _tanque(context, sufijo), valor,
+                                                     curso["tipo"], curso["medida"]))
+            curso["tipo"] = curso["medida"] = None
         elif accion == "volver":
-            curso["medida"] = None
+            curso["tipo"] = curso["medida"] = None
         elif accion == "borrar" and curso["lista"]:
             curso["lista"].pop()
-        elif accion == "otra" and campo == "acceso":
-            curso["escribiendo"] = True
-            _editar(query, "✏️ Escribí la medida de la tapa de acceso (solo el número, ej: 57):")
-            return estado
         elif accion in ("listo", "no"):
             valor_final = ", ".join(curso["lista"]) if accion == "listo" else campos.NO_TIENE
             context.user_data[clave] = valor_final
@@ -244,7 +260,7 @@ def boton_tapas(sufijo: str, campo: str):
             if campo == "insp":
                 return preguntar_tapas(update, context, sufijo, "acceso")
             return preguntar_sellado(update, context, sufijo)
-        _editar(query, _texto_tapas(context, sufijo, campo), _teclado_medidas(sufijo, campo))
+        _editar(query, *_pantalla_tapas(context, sufijo, campo))
         return estado
 
     handler.__name__ = f"boton_tapas_{sufijo}_{campo}"
@@ -259,19 +275,9 @@ def texto_tapas(sufijo: str, campo: str):
         if siguiente is not None:
             context.user_data.pop("tapas_en_curso", None)
             return siguiente
-        curso = _en_curso(context, sufijo, campo)
-        if curso["escribiendo"]:
-            medida = campos.medida_tapa_escrita(update.message.text)
-            if not medida:
-                update.message.reply_text("⚠️ Escribí solo el número de la medida (ej: 57 o 57.5).")
-                return estado
-            curso["escribiendo"] = False
-            curso["medida"] = medida
-            _enviar(update, context, _texto_variante(context, sufijo, campo), _teclado_variante(sufijo, campo))
-            return estado
-        # Texto en vez de botones: se vuelve a mostrar la botonera (sin perder lo cargado)
-        _enviar(update, context, "👇 Usá los botones para cargar las tapas.\n\n" +
-                _texto_tapas(context, sufijo, campo), _teclado_medidas(sufijo, campo))
+        # Las tapas no se escriben: se vuelve a mostrar la botonera (sin perder lo cargado)
+        texto, botones = _pantalla_tapas(context, sufijo, campo)
+        _enviar(update, context, "👇 Las tapas se cargan con los botones.\n\n" + texto, botones)
         return estado
 
     handler.__name__ = f"texto_tapas_{sufijo}_{campo}"

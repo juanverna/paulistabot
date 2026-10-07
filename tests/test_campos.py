@@ -68,16 +68,21 @@ class TestTelefonoYSellado(unittest.TestCase):
         self.assertEqual(campos.texto_sellado(["masilla"], "Cinta"), "Masilla y cinta")
         self.assertEqual(campos.texto_sellado([]), "No tiene")
 
-    def test_medidas_de_acceso_sin_abreviaturas(self):
-        medidas = campos.MEDIDAS_TAPA["acceso"]
-        for m in ("47", "48", "49", "50", "51", "52", "55"):
-            self.assertIn(m, medidas)
-        self.assertNotIn("4789", medidas)
-        self.assertNotIn("50125", medidas)
+    def test_catalogo_de_tapas(self):
+        cat = campos.CATALOGO_TAPAS
+        self.assertEqual(cat["insp"]["ins"][2], ["30x30", "40x40", "50x50", "60x60", "80x80"])
+        self.assertEqual(cat["acceso"]["com"][2], ["47x47", "48x48", "49x49", "50x50", "52x52"])
+        self.assertEqual(cat["acceso"]["est"][2], ["39x49", "54", "60"])
+        self.assertEqual(cat["acceso"]["oct"][2], ["53.5x56.5", "54x54"])
+        self.assertEqual(cat["acceso"]["pun"][2], ["54"])
+        self.assertEqual(cat["acceso"]["12a"][2], ["49.5", "56", "56.5", "58"])
+        self.assertEqual(cat["acceso"]["evi"][2], ["62", "69"])
 
     def test_codigo_tapa(self):
-        self.assertEqual(campos.codigo_tapa("insp", "CISTERNA", "EA", "60"), "TITCEA 60")
-        self.assertEqual(campos.codigo_tapa("acceso", "INTERMEDIARIO", "C", "56.5"), "TATHC 56.5")
+        self.assertEqual(campos.codigo_tapa("insp", "CISTERNA", "EA", "ins", "60x60"), "TITCEA 60x60")
+        self.assertEqual(campos.codigo_tapa("acceso", "INTERMEDIARIO", "C", "12a", "56.5"),
+                         "TATHC 12 agujeros punta recortada 56.5")
+        self.assertEqual(campos.codigo_tapa("acceso", "RESERVA", "EA", "com", "48x48"), "TATREA 48x48")
 
 
 class TestPasosConBotones(unittest.TestCase):
@@ -105,20 +110,37 @@ class TestPasosConBotones(unittest.TestCase):
     def test_tapas_con_botones(self):
         ctx = entorno.contexto(_datos())
         insp = ct.boton_tapas("main", "insp")
-        for data in ("tp:main:insp:m:60", "tp:main:insp:v:EA", "tp:main:insp:m:30", "tp:main:insp:v:C"):
+        for data in ("tp:main:insp:m:60x60", "tp:main:insp:v:EA", "tp:main:insp:m:30x30", "tp:main:insp:v:C"):
             self.assertEqual(insp(boton(data), ctx), TAPAS_INSPECCION_MAIN)
         self.assertEqual(insp(boton("tp:main:insp:listo"), ctx), TAPAS_ACCESO_MAIN)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "TITCEA 60, TITCC 30")
+        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "TITCEA 60x60, TITCC 30x30")
 
         acceso = ct.boton_tapas("main", "acceso")
-        acceso(boton("tp:main:acceso:otra"), ctx)
-        ct.texto_tapas("main", "acceso")(entorno.update_texto("57,5"), ctx)
-        acceso(boton("tp:main:acceso:v:EA"), ctx)
-        acceso(boton("tp:main:acceso:m:56.5"), ctx)
-        acceso(boton("tp:main:acceso:v:C"), ctx)
-        acceso(boton("tp:main:acceso:borrar"), ctx)
+        for data in ("tp:main:acceso:t:oct", "tp:main:acceso:m:53.5x56.5", "tp:main:acceso:v:EA",
+                     "tp:main:acceso:t:pun", "tp:main:acceso:v:C",          # una sola medida: no se elige
+                     "tp:main:acceso:t:evi", "tp:main:acceso:m:69", "tp:main:acceso:v:EA",
+                     "tp:main:acceso:borrar",
+                     "tp:main:acceso:t:com", "tp:main:acceso:volver",       # se arrepintió
+                     "tp:main:acceso:t:12a", "tp:main:acceso:m:56.5", "tp:main:acceso:v:C"):
+            self.assertEqual(acceso(boton(data), ctx), TAPAS_ACCESO_MAIN, data)
         self.assertEqual(acceso(boton("tp:main:acceso:listo"), ctx), SEALING_MAIN)
-        self.assertEqual(ctx.user_data["tapas_acceso_main"], "TATCEA 57.5")
+        self.assertEqual(ctx.user_data["tapas_acceso_main"],
+                         "TATCEA octogonal con parantes 53.5x56.5, TATCC punta recortada con parantes 54, "
+                         "TATCC 12 agujeros punta recortada 56.5")
+
+    def test_medida_de_otro_tipo_no_se_toma(self):
+        ctx = entorno.contexto(_datos())
+        acceso = ct.boton_tapas("main", "acceso")
+        acceso(boton("tp:main:acceso:t:com"), ctx)
+        acceso(boton("tp:main:acceso:m:69"), ctx)  # 69 es de evita marco, no de las comunes
+        self.assertIsNone(ctx.user_data["tapas_en_curso"]["medida"])
+
+    def test_tapas_no_se_escriben(self):
+        ctx = entorno.contexto(_datos())
+        upd = entorno.update_texto("TATCEA 57")
+        self.assertEqual(ct.texto_tapas("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
+        self.assertNotIn("tapas_acceso_main", ctx.user_data)
+        self.assertIn("con los botones", entorno.mensajes_enviados(ctx, upd))
 
     def test_no_tiene_y_listo_vacio(self):
         ctx = entorno.contexto(_datos())
@@ -129,16 +151,10 @@ class TestPasosConBotones(unittest.TestCase):
 
     def test_boton_de_otro_paso_no_se_toma(self):
         ctx = entorno.contexto(_datos())
-        upd = boton("tp:main:insp:m:60")
+        upd = boton("tp:main:insp:m:60x60")
         self.assertEqual(ct.boton_tapas("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
         upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
         self.assertNotIn("tapas_en_curso", ctx.user_data)
-
-    def test_texto_en_tapas_reenvia_los_botones(self):
-        ctx = entorno.contexto(_datos())
-        upd = entorno.update_texto("TITCEA 60")
-        self.assertEqual(ct.texto_tapas("main", "insp")(upd, ctx), TAPAS_INSPECCION_MAIN)
-        self.assertIn("Usá los botones", entorno.mensajes_enviados(ctx, upd))
 
     def test_sellado(self):
         ctx = entorno.contexto(_datos())

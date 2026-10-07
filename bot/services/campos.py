@@ -7,7 +7,8 @@ informe reciban siempre lo mismo:
 - Medida: metros con 2 decimales, "alto, ancho, profundo" -> "1.80, 2.00, 1.50" (igual que la
   nota de voz). Varios tanques: "2 tanques: 1.80, ..." o "Tanque 1: ... | Tanque 2: ...".
   En litros: "2000 lts (plástico)".
-- Tapas: códigos del CSV de artículos + medida -> "TITCEA 60, TATCC 56.5", o "No tiene".
+- Tapas: código del CSV de artículos + tipo y medida del catálogo -> "TITCEA 60x60,
+  TATCC 12 agujeros punta recortada 56.5", o "No tiene".
 - Sellado: "Masilla", "Masilla y burlete", "No tiene"...
 - Teléfono: 10 dígitos con código de área, sin espacios -> "1135456067".
 """
@@ -18,12 +19,20 @@ LETRA_TANQUE = {"CISTERNA": "C", "RESERVA": "R", "INTERMEDIARIO": "H"}
 PREFIJO_TAPA = {"insp": "TIT", "acceso": "TAT"}
 VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
 
-# Medidas que aparecen en el CSV de artículos y en la pregunta que se usaba antes
-MEDIDAS_TAPA = {
-    "insp":   ["30", "40", "50", "60", "80"],
-    # La pregunta vieja abreviaba "4789" (47, 48, 49) y "50125" (50, 51, 52, 55): son medidas sueltas
-    "acceso": ["47", "48", "49", "49.5", "50", "51", "51.5", "52", "53.5", "54",
-               "55", "56", "56.5", "58", "60", "62", "65"],
+# Catálogo de tapas (planilla del dueño, 2026-10-07): {campo: {tipo: (botón, descripción, medidas)}}.
+# El operario elige de acá; no se escribe nada. La descripción va en el valor guardado.
+CATALOGO_TAPAS = {
+    "insp": {
+        "ins": ("Inspección", "", ["30x30", "40x40", "50x50", "60x60", "80x80"]),
+    },
+    "acceso": {
+        "com": ("Comunes (47 a 52)", "", ["47x47", "48x48", "49x49", "50x50", "52x52"]),
+        "est": ("39x49 / 54 / 60", "", ["39x49", "54", "60"]),
+        "oct": ("Octogonal con parantes", "octogonal con parantes", ["53.5x56.5", "54x54"]),
+        "pun": ("Punta recortada con parantes", "punta recortada con parantes", ["54"]),
+        "12a": ("12 agujeros punta recortada", "12 agujeros punta recortada", ["49.5", "56", "56.5", "58"]),
+        "evi": ("Evita marco", "evita marco", ["62", "69"]),
+    },
 }
 
 SELLADOS = {"masilla": "Masilla", "burlete": "Burlete", "silicona": "Silicona"}
@@ -94,15 +103,15 @@ def normalizar_medida(texto: str):
     return None, f"Necesito 3 medidas por tanque y encontré {len(numeros)}."
 
 
-def codigo_tapa(campo: str, tanque: str, variante: str, medida: str) -> str:
-    """('insp', 'CISTERNA', 'EA', '60') -> 'TITCEA 60'."""
-    return f"{PREFIJO_TAPA[campo]}{LETRA_TANQUE[tanque.upper()]}{variante} {medida}"
+def tapa(campo: str, tipo: str, medida: str) -> str:
+    """Descripción + medida: ('acceso', 'oct', '54x54') -> 'octogonal con parantes 54x54'."""
+    descripcion = CATALOGO_TAPAS[campo][tipo][1]
+    return f"{descripcion} {medida}".strip()
 
 
-def medida_tapa_escrita(texto: str):
-    """Medida de tapa escrita a mano ('51,5' -> '51.5'), o None si no es un número."""
-    t = (texto or "").strip().lower().replace("cm", "").strip().replace(",", ".")
-    return t if re.fullmatch(r"\d{2,5}(?:\.\d)?", t) else None
+def codigo_tapa(campo: str, tanque: str, variante: str, tipo: str, medida: str) -> str:
+    """('acceso', 'CISTERNA', 'EA', 'oct', '54x54') -> 'TATCEA octogonal con parantes 54x54'."""
+    return f"{PREFIJO_TAPA[campo]}{LETRA_TANQUE[tanque.upper()]}{variante} {tapa(campo, tipo, medida)}"
 
 
 def texto_sellado(elegidos: list, otro: str = "") -> str:
