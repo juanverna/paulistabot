@@ -4,7 +4,7 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords, is_valid_time
-from bot.handlers.common import push_state, back_handler, check_special_commands
+from bot.handlers.common import push_state, back_handler, check_special_commands, teclado_atras
 from bot.services.email_service import send_email
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ def fumigation_data(update: Update, context: CallbackContext) -> int:
     push_state(context, FUMIGATION)
     update.message.reply_text(
         apply_bold_keywords("Marque las observaciones para la próxima visita:"),
+        reply_markup=teclado_atras(),
         parse_mode=ParseMode.HTML,
     )
     context.user_data["current_state"] = FUM_OBS

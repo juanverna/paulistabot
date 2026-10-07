@@ -112,20 +112,6 @@ def scan_qr(update: Update, context: CallbackContext) -> int:
     push_state(context, SCAN_QR)
     update.message.reply_text("✅ QR leído correctamente.")
 
-    if service == "Fumigaciones":
-        from bot.handlers.shared import pedir_hora
-        return pedir_hora(update, context, "inicio")
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
-         InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
-         InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
-        [InlineKeyboardButton("ATRAS",         callback_data="back")],
-    ])
-    update.message.reply_text(
-        apply_bold_keywords("Seleccione el tipo de tanque:"),
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
-    )
-    context.user_data["current_state"] = TANK_TYPE
-    return TANK_TYPE
+    # Lo primero después del QR es la hora de inicio (después la de fin y el tipo de tanque)
+    from bot.handlers.shared import pedir_hora
+    return pedir_hora(update, context, "inicio")

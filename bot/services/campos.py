@@ -17,6 +17,7 @@ import re
 LETRA_TANQUE = {"CISTERNA": "C", "RESERVA": "R", "INTERMEDIARIO": "H"}
 VARIANTES = {"EA": "entrada de agua", "C": "ciego"}
 SIN_REPARACIONES = "No"
+NO_TIENE = "No tiene"
 
 # Catálogo de reparaciones (planilla del dueño, 2026-10-07). El operario elige de acá; no se
 # escribe nada. {grupo: (botón, prefijo del código, {tipo: (botón, descripción, medidas)})}.
@@ -33,16 +34,18 @@ CATALOGO_REPARACIONES = {
         "12a": ("12 agujeros punta recortada", "12 agujeros punta recortada", ["49.5", "56", "56.5", "58"]),
         "evi": ("Evita marco", "evita marco", ["62", "69"]),
     }),
-    "tmt": ("Cambio de marco y tapa de acceso", "TMT", {
+    "tmt": ("Tapa y marco de acceso", "TMT", {
         "tm": ("", "", ["48x48", "49x49", "50x50", "52x52", "54x54", "60x60"]),
     }),
-    "mat": ("Cambio de marco solo", "MAT", {
+    "mat": ("Marco solo", "MAT", {
         "ma": ("", "", ["48", "49", "50", "52", "54", "60"]),
     }),
     "rev": ("Revoque", None, {}),
     "flo": ("Flotante", None, {}),
     "aut": ("Automático", None, {}),
 }
+# Emoji de cada botón del menú, para distinguirlos de un vistazo
+EMOJI_REPARACION = {"tit": "🔍", "tat": "🚪", "tmt": "🔲", "mat": "🖼", "rev": "🧱", "flo": "🛟", "aut": "⚡"}
 # Caras del tanque para el revoque (extract_reports.py busca frente, lateral y piso)
 CARAS_REVOQUE = {"frente": "frente", "lateral": "lateral", "piso": "piso"}
 
@@ -64,6 +67,39 @@ def reparacion(grupo: str, tanque: str = "", variante: str = "", tipo: str = "",
         return texto
     descripcion = tipos[tipo][1]
     return f"{prefijo}{LETRA_TANQUE[tanque.upper()]}{variante} {descripcion} {medida}".replace("  ", " ")
+
+
+# Tapas (texto, con la ayuda de siempre en la pregunta): solo se aceptan estas medidas.
+# En la ayuda de acceso "4789" abrevia 47, 48 y 49, y "50125" abrevia 50, 51, 52 y 55.
+MEDIDAS_TAPAS = {
+    "insp":   ["30", "40", "50", "60", "80"],
+    "acceso": ["47", "48", "49", "49.5", "50", "51", "51.5", "52", "54", "55", "56", "56.5",
+               "58", "62", "65"],
+}
+_SIN_TAPAS = re.compile(r"(no|no tiene|no hay|ninguna|ninguno|nada|sin tapas?|0|-)")
+# Medida de tapa: entero o ",5"/".5" ("49,50" son dos tapas: 49 y 50)
+_MEDIDA_TAPA = re.compile(r"\d+(?:[.,]5(?!\d))?")
+
+
+def normalizar_tapas(campo: str, texto: str):
+    """
+    (valor, None) con las medidas separadas por coma ("30, 60") o "No tiene"; (None, motivo) si
+    hay algo que no es una de las medidas aceptadas.
+    """
+    t = (texto or "").lower().strip().strip(".")
+    if _SIN_TAPAS.fullmatch(t):
+        return NO_TIENE, None
+    medidas = [m.replace(",", ".") for m in _MEDIDA_TAPA.findall(t)]
+    sobra = _MEDIDA_TAPA.sub(" ", t)
+    validas = MEDIDAS_TAPAS[campo]
+    ayuda = (f"Solo se aceptan estas medidas: {' '.join(validas)}. Escribí la medida de cada "
+             "tapa (ej: " + ("30 60" if campo == "insp" else "47 56.5") + "), o «No tiene».")
+    if not medidas or re.search(r"[^\s,;/\-y]", sobra):
+        return None, ayuda
+    invalidas = [m for m in medidas if m not in validas]
+    if invalidas:
+        return None, f"{', '.join(invalidas)} no es una medida válida. {ayuda}"
+    return ", ".join(medidas), None
 
 
 MATERIALES = {"plastico": "plástico", "cilindrico": "cilíndrico", "acero": "acero inoxidable"}

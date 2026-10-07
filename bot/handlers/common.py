@@ -20,6 +20,25 @@ def pop_state(context: CallbackContext):
 
 
 # =============================================================================
+# Botón ATRAS: va en todas las preguntas (callback "back")
+# =============================================================================
+def teclado_atras(filas: list = None) -> InlineKeyboardMarkup:
+    """Los botones de la pregunta (si tiene) más una fila con ATRAS."""
+    return InlineKeyboardMarkup((filas or []) + [[InlineKeyboardButton("⬅️ ATRAS", callback_data="back")]])
+
+
+def atras_boton(update: Update, context: CallbackContext) -> int:
+    """ATRAS tocado en una pregunta cuyo paso no maneja el botón él mismo (fallback de la conversación)."""
+    query = update.callback_query
+    query.answer()
+    try:
+        query.edit_message_reply_markup(reply_markup=None)
+    except Exception:  # el mensaje ya no tenía botones o es muy viejo: no importa
+        pass
+    return back_handler(update, context)
+
+
+# =============================================================================
 # Comandos especiales
 # =============================================================================
 def check_special_commands(text: str, update: Update, context: CallbackContext) -> bool:
@@ -92,6 +111,9 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
 
     def send(text, markup=None):
+        # Toda pregunta lleva ATRAS, menos la primera (el código)
+        if markup is None and state != CODE:
+            markup = teclado_atras()
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords(text),
@@ -124,6 +146,8 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
              InlineKeyboardButton("Avisos",        callback_data="Avisos")],
         ])
         send("¿Qué servicio se realizó?", kb)
+    elif state == SCAN_QR:
+        send("📷 Por favor, envíe la foto del código QR de la orden:")
     elif state == ORDER:
         send("Por favor, ingrese el número de orden (7 dígitos):")
     elif state == ADDRESS:

@@ -43,8 +43,7 @@ class TestTeclados(unittest.TestCase):
 class TestFlujo(unittest.TestCase):
 
     def setUp(self):
-        self.ctx = entorno.contexto({"service": "Limpieza y Reparacion de Tanques", "state_stack": [],
-                                     "manual_after_qr": True, "selected_category": "CISTERNA"})
+        self.ctx = entorno.contexto({"service": "Limpieza y Reparacion de Tanques", "state_stack": []})
         self.assertEqual(pedir_hora(entorno.update_texto(""), self.ctx, "inicio"), START_TIME)
 
     def _ultimo(self):
@@ -66,8 +65,8 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(self.ctx.user_data["start_time"], "08:30")
         upd.callback_query.edit_message_text.assert_called_with("✅ Hora de inicio: 08:30")
         self.assertIn("¿A qué hora terminaste el trabajo?", self._ultimo()["text"])
-        # Fin: flujo manual después del QR → medidas del tanque
-        self.assertEqual(handle_hora_boton(boton("hora:fin:m:13:05"), self.ctx), MEASURE_MAIN)
+        # Fin: después de la hora (que va primero, apenas se lee el QR) se elige el tanque
+        self.assertEqual(handle_hora_boton(boton("hora:fin:m:13:05"), self.ctx), TANK_TYPE)
         self.assertEqual(self.ctx.user_data["end_time"], "13:05")
         self.assertEqual(self.ctx.user_data["state_stack"], [START_TIME, END_TIME])
 
@@ -94,8 +93,7 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(get_start_time(upd, self.ctx), START_TIME)
         self.assertIn("24 hs", upd.message.reply_text.call_args.args[0])
 
-    def test_sin_manual_despues_del_qr(self):
-        self.ctx.user_data.pop("manual_after_qr")
+    def test_despues_de_la_hora_tanque_o_fumigacion(self):
         handle_hora_boton(boton("hora:inicio:m:08:00"), self.ctx)
         self.assertEqual(handle_hora_boton(boton("hora:fin:m:12:00"), self.ctx), TANK_TYPE)
         self.ctx.user_data["service"] = "Fumigaciones"

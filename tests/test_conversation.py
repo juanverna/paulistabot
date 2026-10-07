@@ -23,7 +23,7 @@ class TestConversacion(unittest.TestCase):
         from bot.states import ASK_SECOND, ASK_THIRD, TANK_TYPE
         handler = build_conversation_handler()
         update = MagicMock(spec=Update)
-        [fallback] = handler.fallbacks
+        fallback = handler.fallbacks[0]  # botones vencidos (el otro es ATRAS)
         for data in ("rf:main:3:c", "hora:inicio:h:08"):
             update.callback_query.data = data
             for estado in (ASK_SECOND, ASK_THIRD, TANK_TYPE):

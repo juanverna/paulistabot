@@ -4,7 +4,8 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords, is_valid_time
-from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
+from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
+                                 teclado_atras)
 from bot.handlers import hora
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("📷 Por favor, envíe la foto del código QR:"),
+            reply_markup=teclado_atras(),
             parse_mode=ParseMode.HTML,
         )
         context.user_data["current_state"] = SCAN_QR
@@ -68,6 +70,7 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("📷 Por favor, envíe la foto del código QR de la orden:"),
+            reply_markup=teclado_atras(),
             parse_mode=ParseMode.HTML,
         )
         context.user_data["current_state"] = SCAN_QR
@@ -77,6 +80,7 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Ingrese la dirección:"),
+            reply_markup=teclado_atras(),
             parse_mode=ParseMode.HTML,
         )
         context.user_data["current_state"] = ADDRESS
@@ -86,6 +90,7 @@ def service_selection(update: Update, context: CallbackContext) -> int:
         context.bot.send_message(
             chat_id=chat_id,
             text=apply_bold_keywords("Indique dirección/es donde se entregaron avisos:"),
+            reply_markup=teclado_atras(),
             parse_mode=ParseMode.HTML,
         )
         context.user_data["current_state"] = AVISOS_ADDRESS
@@ -108,6 +113,7 @@ def get_order(update: Update, context: CallbackContext) -> int:
     push_state(context, ORDER)
     update.message.reply_text(
         apply_bold_keywords("Ingrese la dirección:"),
+        reply_markup=teclado_atras(),
         parse_mode=ParseMode.HTML,
     )
     context.user_data["current_state"] = ADDRESS
@@ -190,13 +196,8 @@ def guardar_hora_fin(update: Update, context: CallbackContext, valor: str) -> in
         return fin
     service = context.user_data.get("service")
 
-    # Si viene del flujo manual post-QR → ir directo a medidas
-    if context.user_data.pop("manual_after_qr", False):
-        from bot.handlers.campos_tanque import preguntar_medida
-        return preguntar_medida(update, context, "main")
-
     if service == "Fumigaciones":
-        _responder(update, context, "¿Qué unidades contienen insectos?")
+        _responder(update, context, "¿Qué unidades contienen insectos?", teclado_atras())
         context.user_data["current_state"] = FUMIGATION
         return FUMIGATION
     keyboard = InlineKeyboardMarkup([
@@ -253,6 +254,6 @@ def pedir_fotos_generales(update: Update, context: CallbackContext) -> int:
     else:
         texto = ("📎 Adjunte las fotos de <b>ORDEN DE TRABAJO, FICHA y TANQUES</b>.\n"
                  "Cuando termine, escriba <b>Listo</b>.")
-    _responder(update, context, texto)
+    _responder(update, context, texto, teclado_atras())
     context.user_data["current_state"] = PHOTOS
     return PHOTOS

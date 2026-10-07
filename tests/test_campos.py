@@ -147,17 +147,57 @@ class TestPasosDelTanque(unittest.TestCase):
 
     def test_tapas_y_sellado_como_antes(self):
         ctx = entorno.contexto(_datos())
-        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("una de 60"), ctx), TAPAS_ACCESO_MAIN)
-        self.assertEqual(ct.recibir_texto("main", "acceso")(entorno.update_texto("56.5"), ctx), SEALING_MAIN)
+        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("60"), ctx), TAPAS_ACCESO_MAIN)
+        self.assertEqual(ct.recibir_texto("main", "acceso")(entorno.update_texto("56,5"), ctx), SEALING_MAIN)
         self.assertEqual(ct.recibir_texto("main", "sellado")(entorno.update_texto("masilla"), ctx), REPAIR_MAIN)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "una de 60")
-        self.assertEqual(ctx.user_data["tapas_acceso_main"], "56.5")
+        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "60")
+        self.assertEqual(ctx.user_data["tapas_acceso_main"], "56.5")  # la coma decimal se normaliza
         self.assertEqual(ctx.user_data["sealing_main"], "masilla")
         enviados = _enviados(ctx)
         self.assertIn("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):", enviados)
         self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b> (EJ: masilla, burlete):", enviados)
         self.assertIn("Reparaciones a realizar en <b>Cisterna</b>", enviados)
         self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN])
+
+    def test_tapas_solo_con_las_medidas_de_la_ayuda(self):
+        ok = {("insp", "30 60"): "30, 60", ("insp", "30, 30"): "30, 30", ("insp", "No tiene"): "No tiene",
+              ("insp", "ninguna"): "No tiene", ("acceso", "47 48 y 49"): "47, 48, 49",
+              ("acceso", "49,5 / 56.5"): "49.5, 56.5", ("acceso", "49,50"): "49, 50",
+              ("acceso", "55"): "55", ("acceso", "65"): "65"}
+        for (campo, escrito), esperado in ok.items():
+            self.assertEqual(campos.normalizar_tapas(campo, escrito), (esperado, None), escrito)
+        for campo, escrito in (("insp", "35"), ("insp", "una de 60"), ("insp", "TITCEA 60"),
+                               ("acceso", "4789"), ("acceso", "50125"), ("acceso", "57"),
+                               ("acceso", "56.7"), ("acceso", "punta recortada 54"), ("insp", "")):
+            valor, problema = campos.normalizar_tapas(campo, escrito)
+            self.assertIsNone(valor, escrito)
+            self.assertIn("Solo se aceptan", problema)
+
+    def test_tapa_invalida_se_vuelve_a_pedir(self):
+        ctx = entorno.contexto(_datos())
+        upd = entorno.update_texto("4789")
+        self.assertEqual(ct.recibir_texto("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
+        self.assertNotIn("tapas_acceso_main", ctx.user_data)
+        self.assertIn("4789 no es una medida válida", entorno.mensajes_enviados(ctx, upd))
+
+    def test_todas_las_preguntas_tienen_atras(self):
+        ctx = entorno.contexto(_datos())
+        ct.preguntar_medida(entorno.update_texto(None), ctx, "main")
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "main", "insp")
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "main", "sellado")
+        ct.preguntar_reparaciones(entorno.update_texto(None), ctx, "main")
+        ct.preguntar_contacto(entorno.update_texto(None), ctx)
+        ct.preguntar_telefono(entorno.update_texto(None), ctx)
+        for llamada in ctx.bot.send_message.call_args_list:
+            markup = llamada.kwargs["reply_markup"]
+            datos = [b.callback_data for fila in markup.inline_keyboard for b in fila]
+            self.assertIn("back", datos, llamada.kwargs["text"])
+
+    def test_boton_atras_generico(self):
+        from bot.handlers.common import atras_boton
+        ctx = entorno.contexto(_datos(state_stack=[MEASURE_MAIN], current_state=TAPAS_INSPECCION_MAIN))
+        self.assertEqual(atras_boton(boton("back"), ctx), MEASURE_MAIN)
+        self.assertIn("Medida del tanque", _enviados(ctx))
 
     def test_atras_desde_tapas_vuelve_a_la_medida(self):
         ctx = entorno.contexto(_datos(state_stack=[MEASURE_MAIN], current_state=TAPAS_INSPECCION_MAIN,
@@ -239,6 +279,24 @@ class TestMenuDeReparaciones(unittest.TestCase):
         ct.preguntar_reparaciones(entorno.update_texto(None), ctx, "main")
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 60x60", "flotante"])
 
+    def test_botones_del_menu_con_emoji_y_uno_por_fila(self):
+        ctx = self._ctx()
+        _, botones = ct._rep_pantalla(ctx, "main")
+        textos = [fila[0].text for fila in botones.inline_keyboard[:7]]
+        self.assertEqual(textos, ["🔍 Tapa de inspección", "🚪 Tapa de acceso", "🔲 Tapa y marco de acceso",
+                                  "🖼 Marco solo", "🧱 Revoque", "🛟 Flotante", "⚡ Automático"])
+        self.assertTrue(all(len(fila) == 1 for fila in botones.inline_keyboard[:7]))
+
+    def test_atras_en_el_pedido_de_fotos_vuelve_al_menu(self):
+        from bot.handlers.fotos_reparaciones import handle_repair_photos_atras
+        ctx = self._ctx()
+        rep = ct.boton_reparaciones("main")
+        rep(boton("rp:main:g:flo"), ctx)
+        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(handle_repair_photos_atras(boton("back"), ctx), REPAIR_MAIN)
+        self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["flotante"])  # conserva lo cargado
+        self.assertNotIn("rep_fotos", ctx.user_data)
+
     def test_atras_vuelve_al_sellado(self):
         ctx = self._ctx()
         self.assertEqual(ct.boton_reparaciones("main")(boton("back"), ctx), SEALING_MAIN)
@@ -283,7 +341,7 @@ class TestConversacion(unittest.TestCase):
         from bot.states import TANK_TYPE
         handler = build_conversation_handler()
         update = MagicMock(spec=Update)
-        [fallback] = handler.fallbacks
+        fallback = handler.fallbacks[0]  # botones vencidos (el otro es ATRAS)
         for data in ("rp:main:g:tit", "md:main:plastico", "ct:sin", "tp:main:insp:m:60x60"):
             update.callback_query.data = data
             for h in handler.states[TANK_TYPE]:
@@ -294,21 +352,24 @@ class TestConversacion(unittest.TestCase):
 
 class TestElegirTanque(unittest.TestCase):
 
-    def test_limpieza_va_directo_a_la_hora_sin_nota_de_voz(self):
-        from bot.handlers.tanques import handle_tank_type
+    def test_qr_pide_primero_la_hora(self):
+        from unittest.mock import patch
+        from bot.services import qr_service
         from bot.states import START_TIME
         ctx = entorno.contexto({"state_stack": [], "service": "Limpieza y Reparacion de Tanques"})
-        self.assertEqual(handle_tank_type(boton("RESERVA"), ctx), START_TIME)
+        upd = entorno.update_foto("qr")
+        with patch.object(qr_service, "_decode_qr_opencv", return_value="1234567|Av. Siempre Viva 1|99|LIMPIEZA"):
+            self.assertEqual(qr_service.scan_qr(upd, ctx), START_TIME)
+        self.assertIn("¿A qué hora empezaste el trabajo?", _enviados(ctx))
+
+    def test_despues_del_tanque_va_a_la_medida(self):
+        from bot.handlers.tanques import handle_tank_type
+        ctx = entorno.contexto({"state_stack": [], "service": "Limpieza y Reparacion de Tanques",
+                                "start_time": "08:00", "end_time": "10:00"})
+        self.assertEqual(handle_tank_type(boton("RESERVA"), ctx), MEASURE_MAIN)
         self.assertEqual(ctx.user_data["selected_category"], "RESERVA")
         self.assertEqual(ctx.user_data["modo_ingreso"], "MANUAL")
-        self.assertTrue(ctx.user_data["manual_after_qr"])
         self.assertNotIn("NOTA DE VOZ", _enviados(ctx))
-
-    def test_presupuesto_ya_tiene_la_hora_y_va_a_la_medida(self):
-        from bot.handlers.tanques import handle_tank_type
-        ctx = entorno.contexto({"state_stack": [], "service": "Presupuestos",
-                                "start_time": "08:00", "end_time": "10:00"})
-        self.assertEqual(handle_tank_type(boton("CISTERNA"), ctx), MEASURE_MAIN)
 
     def test_boton_viejo_de_voz_no_es_un_tanque(self):
         from bot.handlers.tanques import handle_tank_type

@@ -185,7 +185,8 @@ def _editar_campo(update: Update, context: CallbackContext, data: str) -> int:
     if campo == "sugerencias":
         estado, _ = SUGERENCIAS[sufijo]
         tanque = ud.get(campos_tanque.PASOS[sufijo]["tanque"], "").capitalize()
-        campos_tanque._enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {tanque}:")
+        campos_tanque._enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {tanque}:",
+                              campos_tanque.teclado_atras())
         ud["current_state"] = estado
         return estado
     return campos_tanque.preguntar_texto(update, context, sufijo, campo)

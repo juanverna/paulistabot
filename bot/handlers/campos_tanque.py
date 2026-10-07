@@ -24,7 +24,8 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
+from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
+                                 teclado_atras)
 from bot.services import campos
 
 PASOS = {
@@ -91,7 +92,7 @@ def _volver(update: Update, context: CallbackContext) -> int:
 # =============================================================================
 def preguntar_medida(update: Update, context: CallbackContext, sufijo: str) -> int:
     _enviar(update, context, f"📏 Medida del tanque de {_tanque(context, sufijo).capitalize()}: "
-                             "alto, ancho y profundo (ej: 1.80 2 1.50 o 180 200 150).")
+                             "alto, ancho y profundo (ej: 1.80 2 1.50 o 180 200 150).", teclado_atras())
     return _ir(context, PASOS[sufijo]["medida"][0])
 
 
@@ -112,7 +113,7 @@ def recibir_medida(sufijo: str):
             botones = [[InlineKeyboardButton(nombre.capitalize(), callback_data=f"md:{sufijo}:{clave_m}")
                         for clave_m, nombre in campos.MATERIALES.items()]]
             update.message.reply_text(f"Tanque de {litros} litros. ¿De qué material es?",
-                                      reply_markup=InlineKeyboardMarkup(botones))
+                                      reply_markup=teclado_atras(botones))
             return estado
         return _guardar_medida(update, context, sufijo, valor)
 
@@ -153,7 +154,7 @@ def _guardar_medida(update: Update, context: CallbackContext, sufijo: str, valor
 
 
 # =============================================================================
-# Tapas de inspección, tapas de acceso y sellado: texto libre, como antes
+# Tapas de inspección y de acceso (texto, solo las medidas de la ayuda) y sellado (texto libre)
 # =============================================================================
 def _pregunta_texto(context: CallbackContext, sufijo: str, campo: str) -> str:
     if campo == "insp":
@@ -167,7 +168,7 @@ def _pregunta_texto(context: CallbackContext, sufijo: str, campo: str) -> str:
 
 
 def preguntar_texto(update: Update, context: CallbackContext, sufijo: str, campo: str) -> int:
-    _enviar(update, context, _pregunta_texto(context, sufijo, campo))
+    _enviar(update, context, _pregunta_texto(context, sufijo, campo), teclado_atras())
     return _ir(context, PASOS[sufijo][campo][0])
 
 
@@ -179,7 +180,13 @@ def recibir_texto(sufijo: str, campo: str):
         siguiente = _texto_comun(update, context)
         if siguiente is not None:
             return siguiente
-        context.user_data[clave] = update.message.text
+        valor = update.message.text
+        if campo in campos.MEDIDAS_TAPAS:  # tapas: solo las medidas de la ayuda
+            valor, problema = campos.normalizar_tapas(campo, valor)
+            if problema:
+                update.message.reply_text(f"⚠️ {problema}")
+                return estado
+        context.user_data[clave] = valor
         push_state(context, estado)
         fin = terminar_edicion(update, context)
         if fin is not None:
@@ -222,17 +229,16 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
     lista = curso["lista"]
     cargadas = f"\n\nCargadas: <b>{html.escape(', '.join(lista) if lista else 'ninguna todavía')}</b>"
     titulo = f"🔧 Reparaciones a realizar en {_tanque(context, sufijo).capitalize()}\n"
-    volver = [InlineKeyboardButton("← Volver", callback_data=f"{base}volver")]
+    volver = [InlineKeyboardButton("⬅️ Volver", callback_data=f"{base}volver")]
     grupo = curso["grupo"]
 
     if grupo is None:
-        botones = [InlineKeyboardButton(boton, callback_data=f"{base}g:{clave}")
-                   for clave, (boton, _, _) in campos.CATALOGO_REPARACIONES.items()]
-        filas = [botones[i:i + 2] for i in range(0, len(botones), 2)]
+        filas = [[InlineKeyboardButton(f"{campos.EMOJI_REPARACION[clave]} {boton}", callback_data=f"{base}g:{clave}")]
+                 for clave, (boton, _, _) in campos.CATALOGO_REPARACIONES.items()]
         filas += [[InlineKeyboardButton("↩️ Borrar última", callback_data=f"{base}borrar"),
                    InlineKeyboardButton("✅ Listo", callback_data=f"{base}listo")],
                   [InlineKeyboardButton("🚫 Sin reparaciones", callback_data=f"{base}no")],
-                  [InlineKeyboardButton("ATRAS", callback_data="back")]]
+                  [InlineKeyboardButton("⬅️ ATRAS", callback_data="back")]]
         texto = "Tocá cada reparación, una por una. Si son 2 iguales, cargala 2 veces. Al terminar, tocá Listo."
         return titulo + texto + cargadas, InlineKeyboardMarkup(filas)
 
@@ -251,14 +257,14 @@ def _rep_pantalla(context: CallbackContext, sufijo: str):
         texto = f"{html.escape(nombre_grupo)} {html.escape(descripcion)}: ¿es de entrada de agua o ciego?"
         return titulo + texto + cargadas, InlineKeyboardMarkup([
             [InlineKeyboardButton("💧 Entrada de agua", callback_data=f"{base}v:EA"),
-             InlineKeyboardButton("Ciego", callback_data=f"{base}v:C")], volver])
+             InlineKeyboardButton("⚫ Ciego", callback_data=f"{base}v:C")], volver])
     if tipo:
         nombre_tipo, _, medidas = tipos[tipo]
         botones = [InlineKeyboardButton(m, callback_data=f"{base}m:{m}") for m in medidas]
         filas = [botones[i:i + 3] for i in range(0, len(botones), 3)] + [volver]
         nombre = f"{nombre_grupo} {nombre_tipo.lower()}".strip() if nombre_tipo else nombre_grupo
         return titulo + f"{html.escape(nombre)}: ¿qué medida?" + cargadas, InlineKeyboardMarkup(filas)
-    filas = [[InlineKeyboardButton(boton, callback_data=f"{base}t:{clave}")]
+    filas = [[InlineKeyboardButton(f"▫️ {boton}", callback_data=f"{base}t:{clave}")]
              for clave, (boton, _, _) in tipos.items()] + [volver]
     return titulo + f"{html.escape(nombre_grupo)}: ¿de qué tipo?" + cargadas, InlineKeyboardMarkup(filas)
 
@@ -292,7 +298,8 @@ def _rep_terminar(update: Update, context: CallbackContext, sufijo: str, lista: 
     if fin is not None:
         return fin
     siguiente = SIGUIENTE_MANUAL[sufijo][0]
-    _enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {_tanque(context, sufijo).capitalize()}:")
+    _enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {_tanque(context, sufijo).capitalize()}:",
+            teclado_atras())
     return _ir(context, siguiente)
 
 
@@ -379,13 +386,13 @@ def texto_reparaciones(sufijo: str):
 # Contacto: nombre y después teléfono
 # =============================================================================
 def preguntar_contacto(update: Update, context: CallbackContext) -> int:
-    markup = InlineKeyboardMarkup([[InlineKeyboardButton("No había encargado", callback_data="ct:sin")]])
+    markup = teclado_atras([[InlineKeyboardButton("No había encargado", callback_data="ct:sin")]])
     _enviar(update, context, "👤 ¿Cómo se llama el encargado? (solo el nombre)", markup)
     return _ir(context, CONTACT)
 
 
 def preguntar_telefono(update: Update, context: CallbackContext) -> int:
-    markup = InlineKeyboardMarkup([[InlineKeyboardButton("No dio teléfono", callback_data="ct:sintel")]])
+    markup = teclado_atras([[InlineKeyboardButton("No dio teléfono", callback_data="ct:sintel")]])
     _enviar(update, context, "📞 Teléfono del encargado, con código de área (ej: 1135456067):", markup)
     return _ir(context, CONTACT_PHONE)
 

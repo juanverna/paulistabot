@@ -29,7 +29,8 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import (REPAIR_PHOTOS, SUGGESTIONS_MAIN, SUGGESTIONS_ALT1, SUGGESTIONS_ALT2)
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
+from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
+                                 teclado_atras)
 from bot.services import destrabe, revision_fotos, vision_service
 from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
                                            problemas_de_reparaciones)
@@ -99,10 +100,11 @@ def _items(context: CallbackContext, sufijo: str) -> dict:
     return context.user_data.get("items_reparacion", {}).get(sufijo, {}).get("items", {})
 
 
-def _send(update: Update, context: CallbackContext, text: str) -> None:
+def _send(update: Update, context: CallbackContext, text: str, atras: bool = False) -> None:
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=apply_bold_keywords(text),
+        reply_markup=teclado_atras() if atras else None,
         parse_mode=ParseMode.HTML,
     )
 
@@ -136,7 +138,7 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
         context.user_data["rep_fotos"]["corregir_codigos"] = True
         _send(update, context, corregir)
         return REPAIR_PHOTOS
-    _send(update, context, texto_pedido(context, sufijo))
+    _send(update, context, texto_pedido(context, sufijo), atras=True)
     return REPAIR_PHOTOS
 
 
@@ -167,7 +169,7 @@ def reanudar_manual(update: Update, context: CallbackContext, sufijo: str) -> No
     _preparar(context, sufijo, "manual")
     n = len(_fotos(context, sufijo))
     extra = f"\nYa tenés {n} foto(s) cargada(s)." if n else ""
-    _send(update, context, texto_pedido(context, sufijo) + extra)
+    _send(update, context, texto_pedido(context, sufijo) + extra, atras=True)
 
 
 def _continuar(update: Update, context: CallbackContext) -> int:
@@ -183,7 +185,7 @@ def _continuar(update: Update, context: CallbackContext) -> int:
         return fin
     siguiente, clave_nombre = SIGUIENTE_MANUAL[sufijo]
     nombre = context.user_data.get(clave_nombre, "").capitalize()
-    _send(update, context, f"Indique sugerencias p/ la próx limpieza para {nombre}:")
+    _send(update, context, f"Indique sugerencias p/ la próx limpieza para {nombre}:", atras=True)
     context.user_data["current_state"] = siguiente
     return siguiente
 
@@ -284,11 +286,7 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
 
     normal = _normalizar(text)
     if normal == "atras":
-        # Vuelve a pedir el texto de reparaciones: las fotos de este tanque se descartan
-        context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
-        context.user_data.get("items_reparacion", {}).pop(sufijo, None)
-        context.user_data.pop("rep_fotos", None)
-        return back_handler(update, context)
+        return _atras(update, context, sufijo)
 
     if ctx.get("corregir_codigos"):
         return _corregir_codigos(update, context, ctx, text)
@@ -324,6 +322,26 @@ def handle_repair_photos(update: Update, context: CallbackContext) -> int:
 # =============================================================================
 # Botones de las fotos: [Cambiar], "¿De cuál tapa es?", "Sí es de las reparaciones"
 # =============================================================================
+def _atras(update: Update, context: CallbackContext, sufijo: str) -> int:
+    """Vuelve al menú de reparaciones (con lo cargado); las fotos de este tanque se descartan."""
+    context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
+    context.user_data.get("items_reparacion", {}).pop(sufijo, None)
+    context.user_data.pop("rep_fotos", None)
+    return back_handler(update, context)
+
+
+def handle_repair_photos_atras(update: Update, context: CallbackContext) -> int:
+    """Botón ATRAS del pedido de fotos: lo mismo que escribir "atrás"."""
+    query = update.callback_query
+    query.answer()
+    try:
+        query.edit_message_reply_markup(reply_markup=None)
+    except Exception:  # el mensaje ya no tenía botones: no importa
+        pass
+    sufijo = context.user_data.get("rep_fotos", {}).get("sufijo", "main")
+    return _atras(update, context, sufijo)
+
+
 def handle_repair_photo_button(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     partes = query.data.split(":")  # rf:<sufijo>:<pid>:c  |  rf:<sufijo>:<pid>:g:<grupo>

@@ -4,7 +4,8 @@ from telegram.ext import CallbackContext, ConversationHandler
 
 from bot.states import *
 from bot.utils.helpers import apply_bold_keywords
-from bot.handlers.common import push_state, back_handler, check_special_commands, terminar_edicion
+from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
+                                 teclado_atras)
 from bot.services.email_service import send_email
 from bot.handlers.fotos_reparaciones import necesita_fotos, pedir_fotos
 from bot.handlers.campos_tanque import preguntar_medida, preguntar_contacto
@@ -38,12 +39,8 @@ def handle_tank_type(update: Update, context: CallbackContext) -> int:
         apply_bold_keywords(f"Tipo de tanque seleccionado: {selected.capitalize()}"),
         parse_mode=ParseMode.HTML,
     )
-    # Presupuestos ya pidió la hora antes del tanque; Limpieza (después del QR) la pide ahora
-    if context.user_data.get("start_time") and context.user_data.get("end_time"):
-        return preguntar_medida(update, context, "main")
-    context.user_data["manual_after_qr"] = True  # después de la hora de fin, a la medida
-    from bot.handlers.shared import pedir_hora
-    return pedir_hora(update, context, "inicio")
+    # La hora ya se pidió antes (después del QR, o de la dirección en Presupuestos)
+    return preguntar_medida(update, context, "main")
 
 
 # =============================================================================
