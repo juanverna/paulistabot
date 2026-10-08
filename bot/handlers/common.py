@@ -82,7 +82,7 @@ def start_conversation(update: Update, context: CallbackContext) -> int:
 # =============================================================================
 # "Modificar algo" del resumen final (final_summary.py)
 # =============================================================================
-_EN_CURSO = ("reparaciones_en_curso", "rep_fotos", "litros_pendiente")
+_EN_CURSO = ("reparaciones_en_curso", "rep_fotos", "litros_pendiente", "tapas_en_curso")
 
 
 def terminar_edicion(update: Update, context: CallbackContext):

@@ -53,9 +53,12 @@ def build_conversation_handler() -> ConversationHandler:
             # Pasos de cada tanque (el tanque es user_data["tanque_actual"])
             MEASURE:          [CallbackQueryHandler(ct.boton_material, pattern="^md:"),
                                MessageHandler(TEXT, ct.recibir_medida)],
-            TAPAS_INSPECCION: [MessageHandler(TEXT, ct.recibir_texto("tapas_inspeccion"))],
-            TAPAS_ACCESO:     [MessageHandler(TEXT, ct.recibir_texto("tapas_acceso"))],
-            SEALING:          [MessageHandler(TEXT, ct.recibir_texto("sealing"))],
+            TAPAS_INSPECCION: [CallbackQueryHandler(ct.boton_cantidad_tapas, pattern="^ti:"),
+                               CallbackQueryHandler(ct.atras_tapas, pattern="^back$"),
+                               MessageHandler(TEXT, ct.recibir_tapa("tapas_inspeccion"))],
+            TAPAS_ACCESO:     [CallbackQueryHandler(ct.atras_tapas, pattern="^back$"),
+                               MessageHandler(TEXT, ct.recibir_tapa("tapas_acceso"))],
+            SEALING:          [MessageHandler(TEXT, ct.recibir_sellado)],
             REPAIR:           [CallbackQueryHandler(ct.boton_reparaciones, pattern="^(rp:|back$)"),
                                MessageHandler(TEXT, ct.texto_reparaciones)],
             SUGGESTIONS:      [MessageHandler(TEXT, ct.recibir_sugerencias)],
@@ -92,7 +95,7 @@ def build_conversation_handler() -> ConversationHandler:
         # Botón de un paso que ya terminó (foto, hora, reparaciones, material, edición, tanques).
         # "tp", "se" y "ct": tapas, sellado y contacto con botones de versiones anteriores
         fallbacks=[CallbackQueryHandler(handle_boton_vencido,
-                                        pattern="^(rf|hora|tp|se|md|ct|rp|ed|cu|tq|cp|ot|cb):"),
+                                        pattern="^(rf|hora|tp|se|md|ct|rp|ed|cu|tq|cp|ot|cb|ti):"),
                    # ATRAS de las preguntas cuyo paso no lo maneja él mismo (medida, tapas, contacto...)
                    CallbackQueryHandler(atras_boton, pattern="^back$")],
     )

@@ -17,7 +17,9 @@ bash scripts/correr.sh              # corre el bot
 En Limpieza y Presupuestos, después de la hora el bot pregunta cuántos cuerpos tiene el edificio
 y el operario carga los tanques de a uno, todos los que haya (puede haber 2 reservas o 2 cisternas),
 diciendo de qué cuerpo es cada uno (frente, fondo, izquierda o derecha) si hay más de uno y cuántas
-cubas tiene (con 1 cuba no se pregunta entrada de agua o ciego: es entrada de agua). En el
+cubas tiene (con 1 cuba no se pregunta entrada de agua o ciego: es entrada de agua). Las tapas de
+inspección se cargan de a una (cuántas hay y la medida de cada una: "30, 60") y las de acceso, una
+por cuba ("EA 47, C 56.5"). En el
 mail cada tanque tiene sus líneas con su nombre: "Reparaciones Reserva 2 (fondo): ..."
 (`bot/services/tanques_reporte.py`). El operario elige las reparaciones de cada tanque con un menú de
 botones (catálogo en `bot/services/campos.py`; no se escriben) y el bot le pide las fotos de esas

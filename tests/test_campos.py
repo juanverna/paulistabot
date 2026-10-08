@@ -161,7 +161,7 @@ class TestPasosDelTanque(unittest.TestCase):
         estado = ct.recibir_medida(entorno.update_texto("180 200 150"), ctx)
         self.assertEqual(estado, TAPAS_INSPECCION)
         self.assertEqual(ctx.user_data["measure_t1"], "1.80, 2.00, 1.50")
-        self.assertIn("Indique TAPAS INSPECCIÓN (30 40 50 60 80):", _enviados(ctx))
+        self.assertIn("¿Cuántas tapas de <b>INSPECCIÓN</b> tiene el tanque de <b>Cisterna</b>?", _enviados(ctx))
 
     def test_medida_invalida_se_vuelve_a_pedir(self):
         ctx = entorno.contexto(_datos())
@@ -178,19 +178,80 @@ class TestPasosDelTanque(unittest.TestCase):
         self.assertEqual(ct.boton_material(boton("md:t2:plastico"), ctx), TAPAS_INSPECCION)
         self.assertEqual(ctx.user_data["measure_t2"], "1000 lts (plástico)")
 
-    def test_tapas_y_sellado_como_antes(self):
-        ctx = entorno.contexto(_datos())
-        self.assertEqual(ct.recibir_texto("tapas_inspeccion")(entorno.update_texto("60"), ctx), TAPAS_ACCESO)
-        self.assertEqual(ct.recibir_texto("tapas_acceso")(entorno.update_texto("56,5"), ctx), SEALING)
-        self.assertEqual(ct.recibir_texto("sealing")(entorno.update_texto("masilla"), ctx), REPAIR)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_t1"], "60")
-        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "56.5")  # la coma decimal se normaliza
+    def _ctx_tapas(self, cubas=2):
+        ctx = entorno.contexto(_datos(current_state=TAPAS_INSPECCION))
+        ctx.user_data["tanques"][0]["cubas"] = cubas
+        return ctx
+
+    def test_dos_tapas_de_inspeccion_de_distinta_medida_y_acceso_por_cuba(self):
+        ctx = self._ctx_tapas(cubas=2)
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_inspeccion")
+        self.assertEqual(ct.boton_cantidad_tapas(boton("ti:2"), ctx), TAPAS_INSPECCION)
+        insp = ct.recibir_tapa("tapas_inspeccion")
+        self.assertIn("Tapa de inspección 1 de 2: ¿qué medida tiene? (30 40 50 60 80)", _enviados(ctx))
+        self.assertEqual(insp(entorno.update_texto("30"), ctx), TAPAS_INSPECCION)
+        self.assertIn("Tapa de inspección 2 de 2", _enviados(ctx))
+        self.assertEqual(insp(entorno.update_texto("60"), ctx), TAPAS_ACCESO)
+        self.assertEqual(ctx.user_data["tapas_inspeccion_t1"], "30, 60")
+        acc = ct.recibir_tapa("tapas_acceso")
+        self.assertIn("Tapa de <b>ACCESO</b> de la cuba de <b>ENTRADA DE AGUA</b>", _enviados(ctx))
+        self.assertEqual(acc(entorno.update_texto("47"), ctx), TAPAS_ACCESO)
+        self.assertIn("Tapa de <b>ACCESO</b> de la cuba del <b>CIEGO</b>", _enviados(ctx))
+        self.assertEqual(acc(entorno.update_texto("56,5"), ctx), SEALING)
+        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "EA 47, C 56.5")
+        self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION, TAPAS_ACCESO])
+
+    def test_una_cuba_una_sola_tapa_de_acceso(self):
+        ctx = self._ctx_tapas(cubas=1)
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_inspeccion")
+        self.assertEqual(ct.boton_cantidad_tapas(boton("ti:0"), ctx), TAPAS_ACCESO)  # no tiene
+        self.assertEqual(ctx.user_data["tapas_inspeccion_t1"], "No tiene")
+        self.assertEqual(ct.recibir_tapa("tapas_acceso")(entorno.update_texto("48"), ctx), SEALING)
+        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "EA 48")
+        self.assertNotIn("CIEGO", _enviados(ctx))
+
+    def test_acceso_sin_tapa_en_una_o_en_las_dos_cubas(self):
+        ctx = self._ctx_tapas(cubas=2)
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_acceso")
+        ctx.user_data["current_state"] = TAPAS_ACCESO
+        acc = ct.recibir_tapa("tapas_acceso")
+        acc(entorno.update_texto("No tiene"), ctx)
+        acc(entorno.update_texto("47"), ctx)
+        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "EA No tiene, C 47")
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_acceso")
+        acc(entorno.update_texto("no"), ctx)
+        acc(entorno.update_texto("ninguna"), ctx)
+        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "No tiene")
+
+    def test_una_medida_por_respuesta(self):
+        ctx = self._ctx_tapas()
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_inspeccion")
+        insp = ct.recibir_tapa("tapas_inspeccion")
+        upd = entorno.update_texto("30")
+        self.assertEqual(insp(upd, ctx), TAPAS_INSPECCION)  # primero cuántas
+        self.assertIn("Primero tocá cuántas", entorno.mensajes_enviados(ctx, upd))
+        ct.boton_cantidad_tapas(boton("ti:2"), ctx)
+        for escrito in ("30 60", "35", "no tiene"):
+            upd = entorno.update_texto(escrito)
+            self.assertEqual(insp(upd, ctx), TAPAS_INSPECCION, escrito)
+        self.assertEqual(ctx.user_data["tapas_en_curso"]["medidas"], [])
+
+    def test_atras_a_mitad_de_las_tapas_vuelve_a_empezar_el_paso(self):
+        ctx = self._ctx_tapas()
+        ctx.user_data["state_stack"] = [MEASURE]
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_inspeccion")
+        ct.boton_cantidad_tapas(boton("ti:2"), ctx)
+        ct.recibir_tapa("tapas_inspeccion")(entorno.update_texto("30"), ctx)
+        self.assertEqual(ct.atras_tapas(boton("back"), ctx), TAPAS_INSPECCION)  # vuelve a "¿cuántas?"
+        curso = ctx.user_data["tapas_en_curso"]
+        self.assertEqual((curso["total"], curso["medidas"]), (None, []))  # lo cargado se descartó
+        self.assertEqual(ct.atras_tapas(boton("back"), ctx), MEASURE)  # y de ahí, a la medida
+
+    def test_sellado_y_despues_reparaciones(self):
+        ctx = entorno.contexto(_datos(current_state=SEALING))
+        self.assertEqual(ct.recibir_sellado(entorno.update_texto("masilla"), ctx), REPAIR)
         self.assertEqual(ctx.user_data["sealing_t1"], "masilla")
-        enviados = _enviados(ctx)
-        self.assertIn("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):", enviados)
-        self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b> (EJ: masilla, burlete):", enviados)
-        self.assertIn("Reparaciones de <b>Cisterna</b>", enviados)
-        self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION, TAPAS_ACCESO, SEALING])
+        self.assertIn("Reparaciones de <b>Cisterna</b>", _enviados(ctx))
 
     def test_tapas_solo_con_las_medidas_de_la_ayuda(self):
         ok = {("insp", "30 60"): "30, 60", ("insp", "30, 30"): "30, 30", ("insp", "No tiene"): "No tiene",
@@ -212,8 +273,9 @@ class TestPasosDelTanque(unittest.TestCase):
 
     def test_tapa_invalida_se_vuelve_a_pedir(self):
         ctx = entorno.contexto(_datos())
+        ctx.user_data["current_state"] = TAPAS_ACCESO
         upd = entorno.update_texto("4789")
-        self.assertEqual(ct.recibir_texto("tapas_acceso")(upd, ctx), TAPAS_ACCESO)
+        self.assertEqual(ct.recibir_tapa("tapas_acceso")(upd, ctx), TAPAS_ACCESO)
         self.assertNotIn("tapas_acceso_t1", ctx.user_data)
         self.assertIn("4789 no es una medida válida", entorno.mensajes_enviados(ctx, upd))
 
@@ -239,7 +301,7 @@ class TestPasosDelTanque(unittest.TestCase):
     def test_atras_desde_tapas_vuelve_a_la_medida(self):
         ctx = entorno.contexto(_datos(state_stack=[MEASURE], current_state=TAPAS_INSPECCION,
                                       measure_t1="1.80, 2.00, 1.50"))
-        self.assertEqual(ct.recibir_texto("tapas_inspeccion")(entorno.update_texto("atrás"), ctx), MEASURE)
+        self.assertEqual(ct.recibir_tapa("tapas_inspeccion")(entorno.update_texto("atrás"), ctx), MEASURE)
         self.assertIn("Medida del tanque", _enviados(ctx))
 
 
@@ -522,9 +584,11 @@ class TestVariosTanques(unittest.TestCase):
         self.assertEqual(self._toca(f"cb:{cubas}", ct.boton_cubas), MEASURE)
         tid = self.ctx.user_data["tanque_actual"]
         self._escribe(medida, ct.recibir_medida)
-        self._escribe("60", ct.recibir_texto("tapas_inspeccion"))
-        self._escribe("No tiene", ct.recibir_texto("tapas_acceso"))
-        self.assertEqual(self._escribe("masilla", ct.recibir_texto("sealing")), REPAIR)
+        self._toca("ti:1", ct.boton_cantidad_tapas)
+        self._escribe("60", ct.recibir_tapa("tapas_inspeccion"))
+        for _ in range(cubas):  # una tapa de acceso por cuba
+            self._escribe("No tiene", ct.recibir_tapa("tapas_acceso"))
+        self.assertEqual(self._escribe("masilla", ct.recibir_sellado), REPAIR)
         for paso in reparaciones:
             self._toca(f"rp:{tid}:{paso}", ct.boton_reparaciones)
         self._toca(f"rp:{tid}:no" if not reparaciones else f"rp:{tid}:listo", ct.boton_reparaciones)
@@ -710,7 +774,7 @@ class TestModificarAlgo(unittest.TestCase):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
         self._boton("ed:f:t1:sealing", ctx)
-        self.assertEqual(ct.recibir_texto("sealing")(entorno.update_texto("atras"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ct.recibir_sellado(entorno.update_texto("atras"), ctx), FINAL_SUMMARY)
         self.assertEqual(ctx.user_data["sealing_t1"], "masilla")
 
     def test_modificar_sugerencias_y_contacto(self):

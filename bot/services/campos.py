@@ -186,6 +186,21 @@ def normalizar_tapas(campo: str, texto: str):
     return ", ".join(medidas), None
 
 
+def normalizar_una_tapa(campo: str, texto: str, acepta_no_tiene: bool = False):
+    """
+    Una sola tapa por respuesta (se pregunta de a una): (medida o "No tiene", None) o (None, motivo).
+    campo: "insp" o "acceso".
+    """
+    valor, problema = normalizar_tapas(campo, texto)
+    if problema:
+        return None, problema.replace("Escribí la medida de cada tapa", "Escribí la medida de esta tapa")
+    if valor == NO_TIENE and not acepta_no_tiene:
+        return None, f"Escribí la medida de esta tapa ({' '.join(MEDIDAS_TAPAS[campo])})."
+    if ", " in valor:
+        return None, "Escribí una sola medida: después te pregunto por la siguiente tapa."
+    return valor, None
+
+
 MATERIALES = {"plastico": "plástico", "cilindrico": "cilíndrico", "acero": "acero inoxidable"}
 
 AYUDA_MEDIDA = ("Escribí las 3 medidas: alto, ancho y profundo, en metros o en centímetros.\n"

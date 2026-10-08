@@ -6,7 +6,8 @@ fijo donde importa (bot/services/campos.py):
 
   cuántos cuerpos tiene el edificio -> tipo de tanque -> (si hay más de un cuerpo) de qué cuerpo
   -> cuántas cubas tiene (con 1 cuba no se pregunta "entrada de agua o ciego": es entrada de agua)
-  -> medida (validada) -> tapas de inspección y de acceso (solo medidas válidas) -> sellado
+  -> medida (validada) -> tapas de inspección (cuántas y la medida de cada una) -> tapas de acceso
+  (una por cuba: entrada de agua y ciego) -> sellado
   -> reparaciones (menú del catálogo del dueño) -> fotos de las reparaciones -> sugerencias
   -> ¿hay otro tanque? (sí: otra vez desde el tipo; no: contacto, en dos pasos)
 
@@ -17,6 +18,7 @@ Botones (el tanque va en el botón: uno de un tanque o paso que ya terminó no s
   "tq:<CISTERNA|RESERVA|INTERMEDIARIO>"   tipo del tanque nuevo
   "cp:<frente|fondo|izquierda|derecha>"   cuerpo del tanque nuevo
   "cb:<1|2>"                     cubas del tanque (nuevo, o el actual si se está modificando)
+  "ti:<0..4>"                    cuántas tapas de inspección tiene (0 = no tiene)
   "ot:<si|no>"                   ¿hay otro tanque?
   "md:<tanque>:<plastico|cilindrico|acero>" material de un tanque en litros
   "rp:<tanque>:g:<grupo>"        reparación (tapa de inspección, de acceso, marco, revoque...)
@@ -288,50 +290,146 @@ def _guardar_medida(update: Update, context: CallbackContext, valor: str) -> int
 
 
 # =============================================================================
-# Tapas de inspección y de acceso (texto, solo las medidas de la ayuda) y sellado (texto libre)
+# Tapas de inspección: cuántas y la medida de cada una (pueden ser de distinta medida).
+# Tapas de acceso: una por cuba como máximo; con 2 cubas, la de la entrada de agua y la del ciego.
+# Se guardan "30, 60" y "EA 47, C 56.5" (o "No tiene"). El sellado es texto libre.
 # =============================================================================
 ESTADO_TEXTO = {"tapas_inspeccion": TAPAS_INSPECCION, "tapas_acceso": TAPAS_ACCESO, "sealing": SEALING}
 _MEDIDAS_TAPA = {"tapas_inspeccion": "insp", "tapas_acceso": "acceso"}  # campo -> clave en campos.py
+AYUDA_INSPECCION = "30 40 50 60 80"
+AYUDA_ACCESO = "4789/50125/49.5 56 56.5 58 54 51.5 62 65"
 
 
-def _pregunta_texto(context: CallbackContext, campo: str) -> str:
-    if campo == "tapas_inspeccion":
-        return "Indique TAPAS INSPECCIÓN (30 40 50 60 80):"
-    if campo == "tapas_acceso":
-        return "Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"
-    return f"Indique cómo selló el tanque de {_nombre(context)} (EJ: masilla, burlete):"
+def _tapas_en_curso(context: CallbackContext, campo: str) -> dict:
+    actual = context.user_data.get("tapas_en_curso")
+    if not actual or actual.get("campo") != campo or actual.get("tanque") != _actual(context):
+        actual = {"campo": campo, "tanque": _actual(context), "total": None, "medidas": []}
+        if campo == "tapas_acceso":  # una por cuba
+            actual["cubas"] = ["EA"] if tq.cubas(context.user_data, _actual(context)) == 1 else ["EA", "C"]
+        context.user_data["tapas_en_curso"] = actual
+    return actual
 
 
 def preguntar_texto(update: Update, context: CallbackContext, campo: str) -> int:
-    _enviar(update, context, _pregunta_texto(context, campo), teclado_atras())
-    return _ir(context, ESTADO_TEXTO[campo])
+    if campo in _MEDIDAS_TAPA:
+        context.user_data.pop("tapas_en_curso", None)  # (re)empieza el paso
+        return _preguntar_tapa(update, context, campo)
+    _enviar(update, context, f"Indique cómo selló el tanque de {_nombre(context)} (EJ: masilla, burlete):",
+            teclado_atras())
+    return _ir(context, SEALING)
 
 
-def recibir_texto(campo: str):
+def _preguntar_tapa(update: Update, context: CallbackContext, campo: str) -> int:
+    """La pregunta que sigue del paso de tapas (cuántas, o la medida de la próxima)."""
+    curso = _tapas_en_curso(context, campo)
     estado = ESTADO_TEXTO[campo]
-    siguiente_campo = {"tapas_inspeccion": "tapas_acceso", "tapas_acceso": "sealing"}.get(campo)
+    if campo == "tapas_inspeccion":
+        if curso["total"] is None:
+            botones = [[InlineKeyboardButton("No tiene", callback_data="ti:0")] +
+                       [InlineKeyboardButton(str(n), callback_data=f"ti:{n}") for n in range(1, 5)]]
+            _enviar(update, context, f"🔍 ¿Cuántas tapas de <b>INSPECCIÓN</b> tiene el tanque de "
+                                     f"{_nombre(context)}?", teclado_atras(botones))
+        else:
+            n = len(curso["medidas"]) + 1
+            cual = f" {n} de {curso['total']}" if curso["total"] > 1 else ""
+            _enviar(update, context, f"🔍 Tapa de inspección{cual}: ¿qué medida tiene? ({AYUDA_INSPECCION})",
+                    teclado_atras())
+        return _ir(context, estado)
+    cuba = curso["cubas"][len(curso["medidas"])]
+    de = "" if len(curso["cubas"]) == 1 else (" de la cuba de <b>ENTRADA DE AGUA</b>" if cuba == "EA"
+                                               else " de la cuba del <b>CIEGO</b>")
+    _enviar(update, context, f"🚪 Tapa de <b>ACCESO</b>{de}: ¿qué medida tiene? ({AYUDA_ACCESO})\n"
+                             "Si no tiene, escribí <b>No tiene</b>.", teclado_atras())
+    return _ir(context, estado)
+
+
+def boton_cantidad_tapas(update: Update, context: CallbackContext) -> int:
+    """"ti:<n>": cuántas tapas de inspección tiene el tanque (0 = no tiene)."""
+    valor = _boton(update, "ti", ("0", "1", "2", "3", "4"), TAPAS_INSPECCION, context)
+    if valor is None:
+        return context.user_data.get("current_state")
+    n = int(valor)
+    _editar(update.callback_query, "🔍 Tapas de inspección: " + ("no tiene" if n == 0 else str(n)))
+    curso = _tapas_en_curso(context, "tapas_inspeccion")
+    curso["total"] = n
+    if n == 0:
+        return _guardar_tapas(update, context, "tapas_inspeccion", campos.NO_TIENE)
+    return _preguntar_tapa(update, context, "tapas_inspeccion")
+
+
+def atras_tapas(update: Update, context: CallbackContext) -> int:
+    """ATRAS en el paso de tapas: si ya había empezado a cargarlas, vuelve a empezar el paso."""
+    query = update.callback_query
+    if query:
+        query.answer()
+        try:
+            query.edit_message_reply_markup(reply_markup=None)
+        except Exception:  # el mensaje ya no tenía botones: no importa
+            pass
+    campo = CAMPO_DEL_PASO.get(context.user_data.get("current_state"))
+    curso = context.user_data.get("tapas_en_curso")
+    if campo in _MEDIDAS_TAPA and curso and curso.get("campo") == campo and \
+            (curso["medidas"] or (campo == "tapas_inspeccion" and curso["total"] is not None)):
+        return preguntar_texto(update, context, campo)
+    context.user_data.pop("tapas_en_curso", None)
+    return back_handler(update, context)
+
+
+def _guardar_tapas(update: Update, context: CallbackContext, campo: str, valor: str) -> int:
+    context.user_data[_clave(context, campo)] = valor
+    context.user_data.pop("tapas_en_curso", None)
+    push_state(context, ESTADO_TEXTO[campo])
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
+    return preguntar_texto(update, context, "tapas_acceso" if campo == "tapas_inspeccion" else "sealing")
+
+
+def recibir_tapa(campo: str):
+    """La medida de una tapa (se pregunta de a una)."""
+    estado = ESTADO_TEXTO[campo]
 
     def handler(update: Update, context: CallbackContext) -> int:
-        siguiente = _texto_comun(update, context)
-        if siguiente is not None:
-            return siguiente
-        valor = update.message.text
-        if campo in _MEDIDAS_TAPA:  # tapas: solo las medidas de la ayuda
-            valor, problema = campos.normalizar_tapas(_MEDIDAS_TAPA[campo], valor)
-            if problema:
-                update.message.reply_text(f"⚠️ {problema}")
-                return estado
-        context.user_data[_clave(context, campo)] = valor
-        push_state(context, estado)
-        fin = terminar_edicion(update, context)
-        if fin is not None:
-            return fin
-        if siguiente_campo:
-            return preguntar_texto(update, context, siguiente_campo)
-        return preguntar_reparaciones(update, context)
+        text = update.message.text
+        if check_special_commands(text, update, context):
+            return ConversationHandler.END
+        if text.lower().replace("á", "a").strip() == "atras":
+            return atras_tapas(update, context)
+        curso = _tapas_en_curso(context, campo)
+        if campo == "tapas_inspeccion" and curso["total"] is None:
+            update.message.reply_text("👆 Primero tocá cuántas tapas de inspección tiene.")
+            return estado
+        medida, problema = campos.normalizar_una_tapa(_MEDIDAS_TAPA[campo], text,
+                                                       acepta_no_tiene=(campo == "tapas_acceso"))
+        if problema:
+            update.message.reply_text(f"⚠️ {problema}")
+            return estado
+        curso["medidas"].append(medida)
+        if campo == "tapas_inspeccion":
+            if len(curso["medidas"]) < curso["total"]:
+                return _preguntar_tapa(update, context, campo)
+            return _guardar_tapas(update, context, campo, ", ".join(curso["medidas"]))
+        if len(curso["medidas"]) < len(curso["cubas"]):
+            return _preguntar_tapa(update, context, campo)
+        if all(m == campos.NO_TIENE for m in curso["medidas"]):
+            return _guardar_tapas(update, context, campo, campos.NO_TIENE)
+        valor = ", ".join(f"{c} {m}" for c, m in zip(curso["cubas"], curso["medidas"]))
+        return _guardar_tapas(update, context, campo, valor)
 
     handler.__name__ = f"recibir_{campo}"
     return handler
+
+
+def recibir_sellado(update: Update, context: CallbackContext) -> int:
+    siguiente = _texto_comun(update, context)
+    if siguiente is not None:
+        return siguiente
+    context.user_data[_clave(context, "sealing")] = update.message.text
+    push_state(context, SEALING)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
+    return preguntar_reparaciones(update, context)
 
 
 # =============================================================================
