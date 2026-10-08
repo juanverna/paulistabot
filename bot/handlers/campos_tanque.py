@@ -5,6 +5,7 @@ Carga manual de los tanques del reporte, de a uno (bot/services/tanques_reporte.
 fijo donde importa (bot/services/campos.py):
 
   cuántos cuerpos tiene el edificio -> tipo de tanque -> (si hay más de un cuerpo) de qué cuerpo
+  -> cuántas cubas tiene (con 1 cuba no se pregunta "entrada de agua o ciego": es entrada de agua)
   -> medida (validada) -> tapas de inspección y de acceso (solo medidas válidas) -> sellado
   -> reparaciones (menú del catálogo del dueño) -> fotos de las reparaciones -> sugerencias
   -> ¿hay otro tanque? (sí: otra vez desde el tipo; no: contacto, en dos pasos)
@@ -15,6 +16,7 @@ Botones (el tanque va en el botón: uno de un tanque o paso que ya terminó no s
   "cu:<1|2|3>"                   cuántos cuerpos tiene el edificio
   "tq:<CISTERNA|RESERVA|INTERMEDIARIO>"   tipo del tanque nuevo
   "cp:<frente|fondo|izquierda|derecha>"   cuerpo del tanque nuevo
+  "cb:<1|2>"                     cubas del tanque (nuevo, o el actual si se está modificando)
   "ot:<si|no>"                   ¿hay otro tanque?
   "md:<tanque>:<plastico|cilindrico|acero>" material de un tanque en litros
   "rp:<tanque>:g:<grupo>"        reparación (tapa de inspección, de acceso, marco, revoque...)
@@ -142,10 +144,10 @@ def boton_tipo_tanque(update: Update, context: CallbackContext) -> int:
     _editar(update.callback_query, f"Tipo de tanque: {tipo.capitalize()}")
     context.user_data["modo_ingreso"] = "MANUAL"
     push_state(context, TANK_TYPE)
+    context.user_data.update({"tanque_nuevo_tipo": tipo, "tanque_nuevo_cuerpo": None})
     if context.user_data.get("cuerpos", 1) > 1:
-        context.user_data["tanque_nuevo_tipo"] = tipo
         return preguntar_cuerpo_tanque(update, context)
-    return _empezar_tanque(update, context, tipo, None)
+    return preguntar_cubas(update, context)
 
 
 def preguntar_cuerpo_tanque(update: Update, context: CallbackContext) -> int:
@@ -161,12 +163,41 @@ def boton_cuerpo_tanque(update: Update, context: CallbackContext) -> int:
         return context.user_data.get("current_state")
     _editar(update.callback_query, f"🏢 Cuerpo: {tq.CUERPOS[cuerpo]}")
     push_state(context, TANK_CUERPO)
-    # El tipo queda guardado: si vuelve con "atrás" a esta pregunta, se vuelve a mostrar
-    return _empezar_tanque(update, context, context.user_data.get("tanque_nuevo_tipo", ""), cuerpo)
+    context.user_data["tanque_nuevo_cuerpo"] = cuerpo
+    return preguntar_cubas(update, context)
 
 
-def _empezar_tanque(update: Update, context: CallbackContext, tipo: str, cuerpo) -> int:
-    context.user_data["tanque_actual"] = tq.nuevo(context.user_data, tipo, cuerpo)
+def _nombre_nuevo(context: CallbackContext) -> str:
+    """Nombre del tanque que se está por crear (tipo y cuerpo elegidos), para las preguntas."""
+    ud = context.user_data
+    if "editando" in ud:
+        return _nombre(context)
+    nombre = ud.get("tanque_nuevo_tipo", "").capitalize()
+    cuerpo = ud.get("tanque_nuevo_cuerpo")
+    return f"{nombre} ({tq.CUERPOS.get(cuerpo, cuerpo)})" if cuerpo else nombre
+
+
+def preguntar_cubas(update: Update, context: CallbackContext) -> int:
+    botones = [[InlineKeyboardButton("1 cuba", callback_data="cb:1"),
+                InlineKeyboardButton("2 cubas", callback_data="cb:2")]]
+    _enviar(update, context, f"🪣 ¿Cuántas cubas tiene este tanque de {_nombre_nuevo(context)}?",
+            teclado_atras(botones))
+    return _ir(context, TANK_CUBAS)
+
+
+def boton_cubas(update: Update, context: CallbackContext) -> int:
+    valor = _boton(update, "cb", ("1", "2"), TANK_CUBAS, context)
+    if valor is None:
+        return context.user_data.get("current_state")
+    n = int(valor)
+    _editar(update.callback_query, f"🪣 {n} cuba" + ("s" if n > 1 else ""))
+    ud = context.user_data
+    if "editando" in ud:  # "Modificar algo": cambia las cubas del tanque y vuelve al resumen
+        tq.buscar(ud, _actual(context))["cubas"] = n
+        push_state(context, TANK_CUBAS)
+        return terminar_edicion(update, context)
+    push_state(context, TANK_CUBAS)
+    ud["tanque_actual"] = tq.nuevo(ud, ud.get("tanque_nuevo_tipo", ""), ud.get("tanque_nuevo_cuerpo"), n)
     return preguntar_medida(update, context)
 
 
@@ -488,6 +519,7 @@ def boton_reparaciones(update: Update, context: CallbackContext) -> int:
     curso["aviso"] = None
     catalogo = campos.CATALOGO_REPARACIONES
     tanque = tq.tipo(context.user_data, _actual(context))
+    una_cuba = tq.cubas(context.user_data, _actual(context)) == 1
     grupo, tipo = curso["grupo"], _rep_tipo(curso)
 
     if accion == "g" and valor in catalogo:
@@ -501,12 +533,19 @@ def boton_reparaciones(update: Update, context: CallbackContext) -> int:
         medidas = catalogo[grupo][2][valor][2]
         if len(medidas) == 1:  # una sola medida (punta recortada 54): no hay que elegirla
             curso["medida"] = medidas[0]
+            if una_cuba:
+                _rep_agregar(curso, campos.reparacion(grupo, tanque, "EA", valor, medidas[0]))
     elif accion == "m" and grupo and tipo and valor in catalogo[grupo][2][tipo][2]:
-        curso["tipo"], curso["medida"] = tipo, valor
+        if una_cuba:  # una sola cuba: es la de la entrada de agua
+            _rep_agregar(curso, campos.reparacion(grupo, tanque, "EA", tipo, valor))
+        else:
+            curso["tipo"], curso["medida"] = tipo, valor
     elif accion == "v" and valor in campos.VARIANTES and curso["medida"]:
         _rep_agregar(curso, campos.reparacion(grupo, tanque, valor, tipo, curso["medida"]))
     elif accion == "cara" and grupo == "rev" and valor in campos.CARAS_REVOQUE:
         curso["cara"] = valor
+        if una_cuba:
+            curso["cuba"] = "EA"
     elif accion == "cuba" and grupo == "rev" and curso["cara"] and valor in campos.CUBAS:
         curso["cuba"] = valor
     elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "completo":

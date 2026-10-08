@@ -1,7 +1,7 @@
 (CODE, SERVICE, ORDER, ADDRESS, START_TIME, END_TIME, FUMIGATION, FUM_OBS,
  FUM_PHOTOS, CONTACT, TANK_TYPE, MEASURE, TAPAS_INSPECCION, TAPAS_ACCESO, SEALING, REPAIR,
  SUGGESTIONS, PHOTOS, AVISOS_CODE, AVISOS_ADDRESS, AVISOS_PHOTOS, SCAN_QR, FINAL_SUMMARY,
- REPAIR_PHOTOS, CONTACT_PHONE, CUERPOS, TANK_CUERPO, OTRO_TANQUE) = range(28)
+ REPAIR_PHOTOS, CONTACT_PHONE, CUERPOS, TANK_CUERPO, OTRO_TANQUE, TANK_CUBAS) = range(29)
 
 # Pasos de cada tanque (se repiten por cada tanque; el tanque es user_data["tanque_actual"]).
 # Estado → campo del tanque (ver bot/services/tanques_reporte.py).
@@ -33,4 +33,5 @@ STATE_KEYS = {
     REPAIR_PHOTOS:         None,
     TANK_CUERPO:           None,
     OTRO_TANQUE:           None,
+    TANK_CUBAS:            None,
 }

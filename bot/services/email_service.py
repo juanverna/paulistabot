@@ -66,10 +66,12 @@ def _build_body(user_data: dict) -> str:
                 ordered_fields.append(("cuerpos", "Cuerpos del edificio"))
             tanques = tq.lista(user_data)
             if tanques:
-                user_data = dict(user_data, _tanques=", ".join(tq.nombre(user_data, t["id"]) for t in tanques))
+                user_data = dict(user_data, _tanques=", ".join(tq.nombre(user_data, t["id"]) for t in tanques),
+                                 **{f"_cubas_{t['id']}": t["cubas"] for t in tanques if t.get("cubas")})
                 ordered_fields.append(("_tanques", "Tanques"))
             for t in tanques:
                 nombre = tq.nombre(user_data, t["id"])
+                ordered_fields.append((f"_cubas_{t['id']}", f"Cubas {nombre}"))
                 ordered_fields += [(tq.clave(campo, t["id"]), f"{etiqueta} {nombre}")
                                    for campo, etiqueta in tq.CAMPOS.items()]
 

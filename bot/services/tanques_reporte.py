@@ -7,7 +7,8 @@ Un edificio puede tener más de un cuerpo (dos edificios en la misma dirección)
 tanque de cada tipo (2 reservas, y a veces 2 cisternas). El operario los carga de a uno, todos
 los que haya, y a cada uno se le dice de qué cuerpo es si el edificio tiene más de uno.
 
-  user_data["tanques"] = [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None}, ...]   (en orden)
+  user_data["tanques"] = [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None, "cubas": 2}, ...]
+                         (en orden; cubas: 1 o 2. Con 1 cuba todo es "entrada de agua")
   user_data["cuerpos"] = 1, 2 o 3
   datos de cada tanque: user_data[f"{campo}_{id}"], campo en CAMPOS (ej: "repairs_t2")
   fotos e ítems de reparación: user_data["fotos_reparaciones"][id], ["items_reparacion"][id]
@@ -47,13 +48,19 @@ def tipo(user_data: dict, tanque_id: str) -> str:
     return t["tipo"] if t else ""
 
 
-def nuevo(user_data: dict, tipo_tanque: str, cuerpo: str = None) -> str:
+def nuevo(user_data: dict, tipo_tanque: str, cuerpo: str = None, cubas: int = 2) -> str:
     """Agrega un tanque y devuelve su id."""
     tanques = lista(user_data)
     numero = max((int(t["id"][1:]) for t in tanques), default=0) + 1
     tanque_id = f"t{numero}"
-    tanques.append({"id": tanque_id, "tipo": tipo_tanque, "cuerpo": cuerpo})
+    tanques.append({"id": tanque_id, "tipo": tipo_tanque, "cuerpo": cuerpo, "cubas": cubas})
     return tanque_id
+
+
+def cubas(user_data: dict, tanque_id: str) -> int:
+    """1 o 2. Si no se sabe (reportes anteriores a la pregunta), 2: se pregunta entrada de agua o ciego."""
+    t = buscar(user_data, tanque_id)
+    return (t or {}).get("cubas") or 2
 
 
 def tiene_datos(user_data: dict, tanque_id: str) -> bool:

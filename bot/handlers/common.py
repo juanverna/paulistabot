@@ -163,15 +163,15 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         send("¿Qué unidades contienen insectos?")
     elif state == FUM_OBS:
         send("Marque las observaciones para la próxima visita:")
-    elif state in (CUERPOS, TANK_TYPE, TANK_CUERPO, OTRO_TANQUE):
+    elif state in (CUERPOS, TANK_TYPE, TANK_CUERPO, TANK_CUBAS, OTRO_TANQUE):
         # Preguntas de los tanques. Al volver a elegir un tanque, el que se había empezado sin
         # cargarle nada se descarta
         from bot.handlers import campos_tanque
         from bot.services import tanques_reporte
-        if state in (TANK_TYPE, TANK_CUERPO):
+        if state in (TANK_TYPE, TANK_CUERPO, TANK_CUBAS):
             tanques_reporte.descartar_vacios(context.user_data)
         {CUERPOS: campos_tanque.preguntar_cuerpos, TANK_TYPE: campos_tanque.preguntar_tipo_tanque,
-         TANK_CUERPO: campos_tanque.preguntar_cuerpo_tanque,
+         TANK_CUERPO: campos_tanque.preguntar_cuerpo_tanque, TANK_CUBAS: campos_tanque.preguntar_cubas,
          OTRO_TANQUE: campos_tanque.preguntar_otro_tanque}[state](update, context)
     elif state in CAMPO_DEL_PASO:
         # Pasos de cada tanque: la misma pregunta que la primera vez, del tanque actual

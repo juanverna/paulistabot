@@ -73,7 +73,8 @@ def tanques(user_data: dict) -> list:
     for tanque in tq.lista(user_data):
         sufijo = tanque["id"]
         valor = lambda campo: user_data.get(tq.clave(campo, sufijo))
-        datos = [("Medidas", valor("measure")), ("Tapas de inspección", valor("tapas_inspeccion")),
+        datos = [("Cubas", tanque.get("cubas")),
+                 ("Medidas", valor("measure")), ("Tapas de inspección", valor("tapas_inspeccion")),
                  ("Tapas de acceso", valor("tapas_acceso")), ("Sellado", valor("sealing")),
                  ("Sugerencias", valor("suggestions"))]
         reparacion = valor("repairs")

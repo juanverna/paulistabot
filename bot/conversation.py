@@ -47,6 +47,7 @@ def build_conversation_handler() -> ConversationHandler:
             CUERPOS:     [BACK, CallbackQueryHandler(ct.boton_cuerpos, pattern="^cu:")],
             TANK_TYPE:   [BACK, CallbackQueryHandler(ct.boton_tipo_tanque, pattern="^tq:")],
             TANK_CUERPO: [BACK, CallbackQueryHandler(ct.boton_cuerpo_tanque, pattern="^cp:")],
+            TANK_CUBAS:  [BACK, CallbackQueryHandler(ct.boton_cubas, pattern="^cb:")],
             OTRO_TANQUE: [BACK, CallbackQueryHandler(ct.boton_otro_tanque, pattern="^ot:")],
 
             # Pasos de cada tanque (el tanque es user_data["tanque_actual"])
@@ -91,7 +92,7 @@ def build_conversation_handler() -> ConversationHandler:
         # Botón de un paso que ya terminó (foto, hora, reparaciones, material, edición, tanques).
         # "tp", "se" y "ct": tapas, sellado y contacto con botones de versiones anteriores
         fallbacks=[CallbackQueryHandler(handle_boton_vencido,
-                                        pattern="^(rf|hora|tp|se|md|ct|rp|ed|cu|tq|cp|ot):"),
+                                        pattern="^(rf|hora|tp|se|md|ct|rp|ed|cu|tq|cp|ot|cb):"),
                    # ATRAS de las preguntas cuyo paso no lo maneja él mismo (medida, tapas, contacto...)
                    CallbackQueryHandler(atras_boton, pattern="^back$")],
     )

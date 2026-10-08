@@ -8,7 +8,7 @@ from bot.services import campos
 from bot.services.items_reparacion import detectar_items, problemas_de_reparaciones
 from bot.states import (MEASURE, TAPAS_INSPECCION, TAPAS_ACCESO, SEALING, REPAIR, REPAIR_PHOTOS,
                         SUGGESTIONS, CONTACT, CONTACT_PHONE, PHOTOS, CUERPOS, TANK_TYPE, TANK_CUERPO,
-                        OTRO_TANQUE, FINAL_SUMMARY)
+                        OTRO_TANQUE, FINAL_SUMMARY, TANK_CUBAS)
 from bot.handlers import campos_tanque as ct
 from bot.handlers.common import atras_boton
 
@@ -514,11 +514,12 @@ class TestVariosTanques(unittest.TestCase):
     def _escribe(self, texto, handler):
         return handler(entorno.update_texto(texto), self.ctx)
 
-    def _cargar_tanque(self, tipo, cuerpo=None, reparaciones=("g:flo",), medida="1.80 2 1.50"):
-        """Elige el tipo (y el cuerpo), carga los pasos y llega a "¿hay otro tanque?"."""
-        self.assertEqual(self._toca(f"tq:{tipo}", ct.boton_tipo_tanque), TANK_CUERPO if cuerpo else MEASURE)
+    def _cargar_tanque(self, tipo, cuerpo=None, reparaciones=("g:flo",), medida="1.80 2 1.50", cubas=2):
+        """Elige el tipo (el cuerpo y las cubas), carga los pasos y llega a "¿hay otro tanque?"."""
+        self.assertEqual(self._toca(f"tq:{tipo}", ct.boton_tipo_tanque), TANK_CUERPO if cuerpo else TANK_CUBAS)
         if cuerpo:
-            self.assertEqual(self._toca(f"cp:{cuerpo}", ct.boton_cuerpo_tanque), MEASURE)
+            self.assertEqual(self._toca(f"cp:{cuerpo}", ct.boton_cuerpo_tanque), TANK_CUBAS)
+        self.assertEqual(self._toca(f"cb:{cubas}", ct.boton_cubas), MEASURE)
         tid = self.ctx.user_data["tanque_actual"]
         self._escribe(medida, ct.recibir_medida)
         self._escribe("60", ct.recibir_texto("tapas_inspeccion"))
@@ -583,10 +584,13 @@ class TestVariosTanques(unittest.TestCase):
         self._toca("ot:si", ct.boton_otro_tanque)
         self._toca("tq:RESERVA", ct.boton_tipo_tanque)
         self._toca("cp:fondo", ct.boton_cuerpo_tanque)
+        self._toca("cb:2", ct.boton_cubas)
         self.assertEqual(len(tq.lista(self.ctx.user_data)), 2)
-        # ATRAS desde la medida de la reserva: vuelve al cuerpo, y la reserva vacía se descarta
-        self.assertEqual(self._escribe("atrás", ct.recibir_medida), TANK_CUERPO)
+        # ATRAS desde la medida de la reserva: vuelve a las cubas, y la reserva vacía se descarta
+        self.assertEqual(self._escribe("atrás", ct.recibir_medida), TANK_CUBAS)
         self.assertEqual([t["id"] for t in tq.lista(self.ctx.user_data)], [t1])
+        self.assertIn("¿Cuántas cubas tiene este tanque de <b>Reserva</b> (fondo)?", _enviados(self.ctx))
+        self.assertEqual(self._toca("back", atras_boton), TANK_CUERPO)
         self.assertEqual(self._toca("back", atras_boton),
                          TANK_TYPE)
         self.assertEqual(self._toca("back", atras_boton),
@@ -600,8 +604,45 @@ class TestVariosTanques(unittest.TestCase):
 
     def test_un_cuerpo_no_pregunta_el_cuerpo(self):
         self._toca("cu:1", ct.boton_cuerpos)
-        self.assertEqual(self._toca("tq:RESERVA", ct.boton_tipo_tanque), MEASURE)
+        self.assertEqual(self._toca("tq:RESERVA", ct.boton_tipo_tanque), TANK_CUBAS)
         self.assertNotIn("¿De qué cuerpo", _enviados(self.ctx))
+
+    def test_una_cuba_no_pregunta_entrada_de_agua_o_ciego(self):
+        self._toca("cu:1", ct.boton_cuerpos)
+        tid = self._cargar_tanque("RESERVA", cubas=1, reparaciones=(
+            "g:tit", "m:60x60",                     # tapa de inspección: sin preguntar EA/ciego
+            "g:tat", "t:pun",                       # punta recortada (una sola medida)
+            "g:rev", "cara:F", "ext:completo"))     # revoque: sin preguntar la cuba
+        self.assertEqual(self.ctx.user_data[f"repairs_{tid}"],
+                         "TITREA 60x60, TATREA punta recortada con parantes 54, TREA F COMP")
+        enviados = _enviados(self.ctx)
+        self.assertNotIn("¿Es la de la entrada de agua o la del ciego?", enviados)
+
+    def test_dos_cubas_pregunta_entrada_de_agua_o_ciego(self):
+        self._toca("cu:1", ct.boton_cuerpos)
+        tid = self._cargar_tanque("CISTERNA", cubas=2, reparaciones=("g:tit", "m:60x60", "v:C"))
+        self.assertEqual(self.ctx.user_data[f"repairs_{tid}"], "TITCC 60x60")
+
+    def test_cubas_en_el_mail_y_en_el_resumen(self):
+        from bot.services.email_service import _build_body
+        from bot.handlers.final_summary import build_full_summary
+        self._toca("cu:1", ct.boton_cuerpos)
+        self._cargar_tanque("CISTERNA", cubas=2)
+        self._toca("ot:si", ct.boton_otro_tanque)
+        self._cargar_tanque("RESERVA", cubas=1)
+        body = _build_body(self.ctx.user_data)
+        self.assertIn("Cubas Cisterna: 2", body)
+        self.assertIn("Cubas Reserva: 1", body)
+        self.assertIn("• Cubas: 1", build_full_summary(self.ctx.user_data))
+
+    def test_boton_de_cubas_viejo_no_crea_tanques(self):
+        from bot.services import tanques_reporte as tq
+        self._toca("cu:1", ct.boton_cuerpos)
+        self._cargar_tanque("CISTERNA")
+        upd = boton("cb:1")
+        self.assertEqual(ct.boton_cubas(upd, self.ctx), OTRO_TANQUE)
+        upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
+        self.assertEqual(len(tq.lista(self.ctx.user_data)), 1)
 
     def test_cuerpos_con_los_nombres_del_dueno(self):
         self._toca("cu:3", ct.boton_cuerpos)
@@ -693,6 +734,14 @@ class TestModificarAlgo(unittest.TestCase):
         self.assertEqual(handle_hora_boton(boton("hora:inicio:m:09:15"), ctx), FINAL_SUMMARY)
         self.assertEqual(ctx.user_data["start_time"], "09:15")
         self.assertEqual(ctx.user_data["end_time"], "10:00")
+
+    def test_modificar_las_cubas(self):
+        ctx = self._ctx()
+        self.assertEqual(self._boton("ed:cb:t1", ctx), TANK_CUBAS)
+        self.assertIn("¿Cuántas cubas tiene este tanque de <b>Cisterna</b>?", _enviados(ctx))
+        self.assertEqual(ct.boton_cubas(boton("cb:1"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["tanques"][0]["cubas"], 1)
+        self.assertEqual(len(ctx.user_data["tanques"]), 1)  # no crea otro tanque
 
     def test_texto_en_el_resumen_pide_usar_los_botones(self):
         from bot.states import FINAL_SUMMARY

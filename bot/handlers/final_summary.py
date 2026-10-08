@@ -7,7 +7,7 @@ Muestra un resumen completo del formulario antes de enviarlo.
 esa misma pregunta, con los mismos controles (medida validada, menú de reparaciones y sus
 fotos, hora con botones...). Al terminar ese campo vuelve al resumen (common.terminar_edicion).
 Botones: "ed:menu", "ed:hora", "ed:h:<inicio|fin>", "ed:c" (contacto), "ed:t:<sufijo>",
-"ed:f:<sufijo>:<campo>" y "ed:volver".
+"ed:f:<sufijo>:<campo>", "ed:cb:<tanque>" (cubas) y "ed:volver".
 """
 
 import logging
@@ -43,7 +43,7 @@ def build_full_summary(user_data: dict) -> str:
     for tanque in tq.lista(user_data):
         tid = tanque["id"]
         nombre = tq.nombre(user_data, tid)
-        section = []
+        section = [("Cubas", tanque["cubas"])] if tanque.get("cubas") else []
         for campo, etiqueta in tq.CAMPOS.items():
             valor = user_data.get(tq.clave(campo, tid))
             if not valor:
@@ -98,8 +98,9 @@ def _menu(user_data: dict, nivel: str):
             [InlineKeyboardButton("Hora de inicio", callback_data="ed:h:inicio"),
              InlineKeyboardButton("Hora de fin", callback_data="ed:h:fin")], volver])
     if tq.buscar(user_data, nivel):
-        botones = [InlineKeyboardButton(etiqueta, callback_data=f"ed:f:{nivel}:{campo}")
-                   for campo, etiqueta in tq.CAMPOS.items()]
+        botones = [InlineKeyboardButton("Cubas", callback_data=f"ed:cb:{nivel}")]
+        botones += [InlineKeyboardButton(etiqueta, callback_data=f"ed:f:{nivel}:{campo}")
+                    for campo, etiqueta in tq.CAMPOS.items()]
         filas = [botones[i:i + 2] for i in range(0, len(botones), 2)] + [volver]
         return f"¿Qué querés cambiar de {tq.nombre(user_data, nivel)}?", InlineKeyboardMarkup(filas)
     filas = [[InlineKeyboardButton("🕒 Horario", callback_data="ed:hora"),
@@ -124,7 +125,12 @@ def _editar_campo(update: Update, context: CallbackContext, data: str) -> int:
         return pedir_hora(update, context, partes[2])
     if partes[1] == "c":
         return campos_tanque.preguntar_contacto(update, context)
+    if partes[1] == "cb" and not tq.buscar(ud, partes[2]):
+        ud.pop("editando", None)
+        return show_final_summary(update, context)
     ud["tanque_actual"] = partes[2]
+    if partes[1] == "cb":
+        return campos_tanque.preguntar_cubas(update, context)
     estado = next(e for e, c in CAMPO_DEL_PASO.items() if c == partes[3])
     return campos_tanque.preguntar_paso(update, context, estado)
 
@@ -151,7 +157,7 @@ def handle_final_summary_callback(update: Update, context: CallbackContext) -> i
     elif data == "ed:volver":
         query.edit_message_reply_markup(reply_markup=None)
         return show_final_summary(update, context)
-    elif data.startswith(("ed:h:", "ed:f:")) or data == "ed:c":
+    elif data.startswith(("ed:h:", "ed:f:", "ed:cb:")) or data == "ed:c":
         query.edit_message_reply_markup(reply_markup=None)
         return _editar_campo(update, context, data)
     else:
