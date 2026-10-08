@@ -11,10 +11,10 @@ entorno.preparar()
 
 from PIL import Image
 
-from bot.states import REPAIR_PHOTOS, SUGGESTIONS_MAIN
+from bot.states import REPAIR_PHOTOS, SUGGESTIONS
 from bot.services import vision_service, revision_fotos
 from bot.handlers import fotos_reparaciones as fr
-from bot.handlers.tanques import get_repair_main
+from bot.handlers.tanques import reparaciones_escritas
 from bot.services.email_service import _build_body, _photo_attachments
 
 
@@ -225,9 +225,9 @@ class FlujoConIA(unittest.TestCase):
         parche = patch.object(vision_service, "huella", side_effect=huella_fija)
         self.huella = parche.start()
         self.addCleanup(parche.stop)
-        self.ctx = entorno.contexto({"selected_category": "CISTERNA", "alternative_1": "RESERVA",
-                                     "alternative_2": "INTERMEDIARIO", "state_stack": []})
-        get_repair_main(entorno.update_texto(self.REPARACIONES), self.ctx)
+        self.ctx = entorno.contexto({"tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None}],
+                                     "tanque_actual": "t1", "state_stack": []})
+        reparaciones_escritas(entorno.update_texto(self.REPARACIONES), self.ctx)
         # get_file(file_id).download() escribe el file_id: así _analizar sabe qué foto es
         self.ctx.bot.get_file.side_effect = lambda fid: MagicMock(
             download=lambda out: out.write(fid.encode()))
@@ -247,7 +247,7 @@ class FlujoConIA(unittest.TestCase):
         entorno.esperar_revisiones(self._fotos())
 
     def _fotos(self):
-        return self.ctx.user_data["fotos_reparaciones"]["main"]
+        return self.ctx.user_data["fotos_reparaciones"]["t1"]
 
     def _pid(self, file_id):
         fotos = self._fotos() + self.ctx.user_data.get("fotos_descartadas", [])
@@ -278,7 +278,7 @@ class TestUnItem(FlujoConIA):
         aviso = self._enviados()[-1]
         self.assertIn("📷 Tapa de acceso ✅", aviso["text"])
         self.assertEqual(aviso["reply_to_message_id"], 55)
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         [foto] = self._fotos()
         self.assertEqual((foto["estado"], foto["grupo"], foto["analisis"]["estado"]),
                          ("validada", "tapa_acceso", "malo"))
@@ -289,7 +289,7 @@ class TestUnItem(FlujoConIA):
                    message_id=77)
         self.assertEqual(entorno.ids(self._fotos()), ["ok"])
         [descartada] = self.ctx.user_data["fotos_descartadas"]
-        self.assertEqual((descartada["file_id"], descartada["sufijo"]), ("piso", "main"))
+        self.assertEqual((descartada["file_id"], descartada["sufijo"]), ("piso", "t1"))
         aviso = self._enviados()[-1]
         self.assertIn("parece el piso del tanque y eso no está en las reparaciones que pusiste para <b>Cisterna</b>",
                       aviso["text"])
@@ -297,15 +297,15 @@ class TestUnItem(FlujoConIA):
         self.assertEqual(aviso["reply_to_message_id"], 77)
         self.assertNotIn("piso", [fid for fid, _ in _photo_attachments(self.ctx.user_data)])
         self.assertIn("Fotos descartadas por no coincidir Cisterna: 1", _build_body(self.ctx.user_data))
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
 
     def test_descartada_se_recupera_con_el_boton(self):
         self._foto("f1", analisis(elemento_detectado="otro", coincide_con_lo_declarado=False))
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         pid = self._pid("f1")
-        upd, _ = self._boton(f"rf:main:{pid}:c")
+        upd, _ = self._boton(f"rf:t1:{pid}:c")
         upd.callback_query.edit_message_reply_markup.assert_called_once()
-        self._boton(f"rf:main:{pid}:g:tapa_acceso")
+        self._boton(f"rf:t1:{pid}:g:tapa_acceso")
         self.assertEqual(entorno.ids(self._fotos()), ["f1"])
         self.assertEqual(self.ctx.user_data["fotos_descartadas"], [])
         self.assertTrue(self._fotos()[0]["corregida"])
@@ -315,7 +315,7 @@ class TestUnItem(FlujoConIA):
         self.assertIn("aunque ya estén todas las fotos", self._enviados()[-1]["text"])
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         with patch.dict(os.environ, {"ADMIN_DAILY_CODE": "4821"}):
-            self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS_MAIN)
+            self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS)
         [reg] = self.ctx.user_data["destrabes"]
         self.assertEqual(reg["item"], "Tapa de acceso")
         self.assertTrue(reg["motivo"].startswith("foto corregida por el operario"))
@@ -332,7 +332,7 @@ class TestUnItem(FlujoConIA):
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         self.assertIn("La foto de la tapa de acceso salió oscura. Si tenés otra foto del mismo lugar",
                       self._enviados()[-1]["text"])
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS)
         [reg] = self.ctx.user_data["destrabes"]
         self.assertEqual((reg["item"], reg["motivo"]), ("Tapa de acceso", "foto de calidad baja"))
 
@@ -349,18 +349,18 @@ class TestUnItem(FlujoConIA):
         self._listo()
         self._foto("f2", analisis())
         self.assertIn("Escribí <b>Listo</b> para seguir", self._enviados()[-1]["text"])
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertNotIn("destrabes", self.ctx.user_data)
 
     def test_una_buena_y_una_mala_sigue(self):
         self._foto("f1", analisis(calidad_foto="muy_lejos"))
         self._foto("f2", analisis())
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertIn("(validadas por IA: 1, de calidad baja: 1)", _build_body(self.ctx.user_data))
 
     def test_ia_caida_no_traba(self):
         self._foto("f1", None)
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertEqual(self._fotos()[0]["estado"], "sin_validar")
 
     def test_ia_que_tarda_demasiado_no_traba(self):
@@ -376,7 +376,7 @@ class TestUnItem(FlujoConIA):
         fr.handle_repair_photos(entorno.update_foto("lenta"), self.ctx)
         # _cerrar_paso espera VISION_TIMEOUT_S + 10: lo bajamos a 0.2 s para el test
         with patch.object(fr.vision_service, "VISION_TIMEOUT_S", -9.8):
-            self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+            self.assertEqual(self._listo(), SUGGESTIONS)
         liberar.set()
         entorno.esperar_revisiones()
         # El resultado que llegó tarde se ignora: la foto queda sin validar y en su apartado
@@ -388,7 +388,7 @@ class TestUnItem(FlujoConIA):
         self._foto("f1", analisis())
         pid = self._pid("f1")
         self._listo()
-        upd, _ = self._boton(f"rf:main:{pid}:c")
+        upd, _ = self._boton(f"rf:t1:{pid}:c")
         upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
         upd.callback_query.edit_message_reply_markup.assert_not_called()
 
@@ -412,7 +412,7 @@ class TestDosTiposDeTapa(FlujoConIA):
         self.assertIn("Falta la foto de la tapa de acceso. Si tenés otra foto", textos)
         aviso_viejo = self.ctx.bot.send_message.return_value.message_id
         # Una de las dos era en realidad la de acceso: la corrige con [Cambiar], sin mandar nada
-        self._boton(f"rf:main:{self._pid('i2')}:g:tapa_acceso")
+        self._boton(f"rf:t1:{self._pid('i2')}:g:tapa_acceso")
         # El aviso de "falta la foto" ya no vale: se marca y sale uno nuevo, que pide el código
         # igual porque la IA se equivocó
         self.ctx.bot.edit_message_text.assert_called_with(
@@ -423,26 +423,26 @@ class TestDosTiposDeTapa(FlujoConIA):
         self.assertIn("✅ Tapa de acceso (1 foto(s))", self._enviados()[-2]["text"])
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         with patch.dict(os.environ, {"ADMIN_DAILY_CODE": "4821"}):
-            self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS_MAIN)
+            self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), self.ctx), SUGGESTIONS)
         grupos = {f["file_id"]: f["grupo"] for f in self._fotos()}
         self.assertEqual(grupos, {"i1": "tapa_inspeccion", "i2": "tapa_acceso"})
-        self.assertEqual(self.ctx.user_data["items_reparacion"]["main"]["estado"]["tapa_acceso"]["distintas"], 1)
+        self.assertEqual(self.ctx.user_data["items_reparacion"]["t1"]["estado"]["tapa_acceso"]["distintas"], 1)
 
     def test_correccion_antes_de_listo_pide_el_codigo(self):
         self._foto("i1", analisis(**INSPECCION))
         self._foto("i2", analisis(**INSPECCION))
-        self._boton(f"rf:main:{self._pid('i2')}:g:tapa_acceso")  # todavía no escribió Listo
+        self._boton(f"rf:t1:{self._pid('i2')}:g:tapa_acceso")  # todavía no escribió Listo
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         self.assertIn("aunque ya estén todas las fotos", self._enviados()[-1]["text"])
 
     def test_deshacer_la_correccion_destraba(self):
         self._foto("i1", analisis(**INSPECCION))
         self._foto("a1", analisis())
-        self._boton(f"rf:main:{self._pid('a1')}:g:tapa_inspeccion")  # se equivocó al corregir
+        self._boton(f"rf:t1:{self._pid('a1')}:g:tapa_inspeccion")  # se equivocó al corregir
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
-        self._boton(f"rf:main:{self._pid('a1')}:g:tapa_acceso")  # vuelve a lo que dijo la IA
+        self._boton(f"rf:t1:{self._pid('a1')}:g:tapa_acceso")  # vuelve a lo que dijo la IA
         self.assertIn("Ya está todo", self._enviados()[-1]["text"])
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertNotIn("destrabes", self.ctx.user_data)
 
     def test_la_ia_duda_y_pregunta_cual_tapa_es(self):
@@ -451,14 +451,14 @@ class TestDosTiposDeTapa(FlujoConIA):
         self.assertIn("No estoy seguro de qué tapa es esta foto", pregunta["text"])
         botones = [b.callback_data for fila in pregunta["reply_markup"].inline_keyboard for b in fila]
         pid = self._pid("t1")
-        self.assertEqual(botones, [f"rf:main:{pid}:g:tapa_inspeccion", f"rf:main:{pid}:g:tapa_acceso",
-                                   f"rf:main:{pid}:g:otra"])
+        self.assertEqual(botones, [f"rf:t1:{pid}:g:tapa_inspeccion", f"rf:t1:{pid}:g:tapa_acceso",
+                                   f"rf:t1:{pid}:g:otra"])
         self._foto("i1", analisis(**INSPECCION))
         # Sin responder no se puede cerrar el paso
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         self.assertIn("decime de cuál tapa es", self.ultimo_listo.message.reply_text.call_args.args[0])
-        self._boton(f"rf:main:{pid}:g:tapa_acceso")
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self._boton(f"rf:t1:{pid}:g:tapa_acceso")
+        self.assertEqual(self._listo(), SUGGESTIONS)
 
     @patch.dict(os.environ, {"ADMIN_DAILY_CODE": "4821"})
     def test_destrabe_registra_cada_item_que_falta(self):
@@ -491,8 +491,8 @@ class TestDosTapasDeAcceso(FlujoConIA):
         # Manda la del ciego
         self._foto("a3", analisis())
         self.objetos = [0, 0, 1]
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
-        estado = self.ctx.user_data["items_reparacion"]["main"]["estado"]["tapa_acceso"]
+        self.assertEqual(self._listo(), SUGGESTIONS)
+        estado = self.ctx.user_data["items_reparacion"]["t1"]["estado"]["tapa_acceso"]
         self.assertEqual((estado["distintas"], estado["requeridas"], estado["verificado"]), (2, 2, True))
 
     def test_foto_repetida_no_cuenta_dos_veces_ni_llama_a_la_ia(self):
@@ -514,14 +514,14 @@ class TestDosTapasDeAcceso(FlujoConIA):
         self._foto("ea", analisis())
         self._foto("ciego", analisis())
         self.objetos = [0, 1]
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertIn("✅ Tapa de acceso (2 de 2, 2 foto(s))", self._textos())
 
     def test_si_la_ia_no_puede_comparar_no_traba(self):
         self._foto("ea", analisis())
         self._foto("ciego", analisis())
         self.objetos = None
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
         self.assertIn("Tapa de acceso 2/2 sin verificar", _build_body(self.ctx.user_data))
 
 class TestCasoRealTapaDeAccesoComoInspeccion(FlujoConIA):
@@ -536,7 +536,7 @@ class TestCasoRealTapaDeAccesoComoInspeccion(FlujoConIA):
         self._foto("acceso", analisis(tipo_tapa_seguro=False, **INSPECCION))
         self.assertIn("No estoy seguro de qué tapa es esta foto", self._enviados()[-1]["text"])
         # El operario dice que es la tapa y marco de acceso
-        self._boton(f"rf:main:{self._pid('acceso')}:g:tapa_marco")
+        self._boton(f"rf:t1:{self._pid('acceso')}:g:tapa_marco")
         # Falta la de inspección: se traba por eso, no pasa como si fuera la de inspección
         self.assertEqual(self._listo(), REPAIR_PHOTOS)
         self.assertIn("✅ Tapa y marco de acceso (1 foto(s))", self._textos())
@@ -546,7 +546,7 @@ class TestCasoRealTapaDeAccesoComoInspeccion(FlujoConIA):
 
     def test_si_confirma_una_tapa_sin_dano_no_respalda(self):
         self._foto("acceso", analisis(tipo_tapa_seguro=False, respalda_la_reparacion=False, **INSPECCION))
-        self._boton(f"rf:main:{self._pid('acceso')}:g:tapa_marco")
+        self._boton(f"rf:t1:{self._pid('acceso')}:g:tapa_marco")
         self.assertEqual(self._fotos()[0]["estado"], "no_respalda")
 
 
@@ -557,7 +557,7 @@ class TestTapaFaltante(FlujoConIA):
     def test_el_agujero_respalda_colocar_la_tapa(self):
         self._foto("agujero", analisis(tapa_faltante=True, **INSPECCION))
         self.assertIn("📷 Tapa de inspección (falta la tapa propiamente dicha) ✅", self._enviados()[-1]["text"])
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
 
 
 class TestFlotante(FlujoConIA):
@@ -569,7 +569,7 @@ class TestFlotante(FlujoConIA):
         self.assertIn("parece una tapa de acceso y eso no está en las reparaciones", self._enviados()[-1]["text"])
         self._foto("bocha", analisis(elemento_detectado="flotante", comentario="Bocha rota."))
         self.assertIn("📷 Flotante ✅", self._enviados()[-1]["text"])
-        self.assertEqual(self._listo(), SUGGESTIONS_MAIN)
+        self.assertEqual(self._listo(), SUGGESTIONS)
 
 
 class TestReferencias(unittest.TestCase):

@@ -32,12 +32,6 @@ AMBAR, AMBAR_FONDO = "#92400e", "#fef3c7"
 ROJO, ROJO_FONDO = "#991b1b", "#fee2e2"
 VIOLETA, VIOLETA_FONDO = "#5b21b6", "#ede9fe"
 
-TANQUES = (("main", "selected_category", "measure_main", "tapas_inspeccion_main", "tapas_acceso_main",
-            "sealing_main", "repairs", "suggestions"),
-           ("alt1", "alternative_1", "measure_alt1", "tapas_inspeccion_alt1", "tapas_acceso_alt1",
-            "sealing_alt1", "repair_alt1", "suggestions_alt1"),
-           ("alt2", "alternative_2", "measure_alt2", "tapas_inspeccion_alt2", "tapas_acceso_alt2",
-            "sealing_alt2", "repair_alt2", "suggestions_alt2"))
 
 SERVICIOS_CON_INFORME = ("Limpieza y Reparacion de Tanques", "Presupuestos")
 NOMBRE_SERVICIO = {"Limpieza y Reparacion de Tanques": "Limpieza y Reparación de Tanques"}
@@ -74,19 +68,22 @@ def _grupo(foto: dict):
 
 def tanques(user_data: dict) -> list:
     """Tanques con datos, en orden: dicts con nombre, datos, reparación, ítems y fotos."""
+    from bot.services import tanques_reporte as tq
     resultado = []
-    for sufijo, k_nombre, k_med, k_insp, k_acc, k_sell, k_rep, k_sug in TANQUES:
-        datos = [("Medidas", user_data.get(k_med)), ("Tapas de inspección", user_data.get(k_insp)),
-                 ("Tapas de acceso", user_data.get(k_acc)), ("Sellado", user_data.get(k_sell)),
-                 ("Sugerencias", user_data.get(k_sug))]
-        reparacion = user_data.get(k_rep)
+    for tanque in tq.lista(user_data):
+        sufijo = tanque["id"]
+        valor = lambda campo: user_data.get(tq.clave(campo, sufijo))
+        datos = [("Medidas", valor("measure")), ("Tapas de inspección", valor("tapas_inspeccion")),
+                 ("Tapas de acceso", valor("tapas_acceso")), ("Sellado", valor("sealing")),
+                 ("Sugerencias", valor("suggestions"))]
+        reparacion = valor("repairs")
         fotos = [_fotos_de(f) for f in user_data.get("fotos_reparaciones", {}).get(sufijo, [])]
         if not any(v for _, v in datos) and not reparacion and not fotos:
             continue
         items = user_data.get("items_reparacion", {}).get(sufijo, {})
         resultado.append({
             "sufijo": sufijo,
-            "nombre": (user_data.get(k_nombre) or sufijo).capitalize(),
+            "nombre": tq.nombre(user_data, sufijo),
             "datos": [(k, v) for k, v in datos if v],
             "reparacion": reparacion,
             "items": items.get("items") or {},

@@ -45,24 +45,25 @@ def reporte():
         "address": "Av. Corrientes 1234 <b>", "codigo_interno": "C-778", "numero_evento": "1234567",
         "start_time": "08:00", "end_time": "12:30", "contact": "Daniel 1135456067",
         "modo_ingreso": "MANUAL",
-        "selected_category": "CISTERNA", "alternative_1": "RESERVA", "alternative_2": "INTERMEDIARIO",
-        "measure_main": "2.00, 2.00, 1.80", "tapas_inspeccion_main": "TITCEA 40", "tapas_acceso_main": "TATCEA 56",
-        "sealing_main": "masilla", "suggestions": "llevar escalera", "repairs": "TMTCEA 49, TITCEA 40 y TITCC 40",
-        "measure_alt1": "1.50, 1.50, 1.50", "sealing_alt1": "burlete", "repair_alt1": "revocar paredes",
+        "tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None},
+                    {"id": "t2", "tipo": "RESERVA", "cuerpo": None}],
+        "measure_t1": "2.00, 2.00, 1.80", "tapas_inspeccion_t1": "TITCEA 40", "tapas_acceso_t1": "TATCEA 56",
+        "sealing_t1": "masilla", "suggestions_t1": "llevar escalera", "repairs_t1": "TMTCEA 49, TITCEA 40 y TITCC 40",
+        "measure_t2": "1.50, 1.50, 1.50", "sealing_t2": "burlete", "repairs_t2": "revocar paredes",
         "items_reparacion": {
-            "main": {"items": {
+            "t1": {"items": {
                 "tapa_marco": {"cantidad": 1, "variantes": ["EA"], "codigos": ["TMTCEA 49"]},
                 "tapa_inspeccion": {"cantidad": 2, "variantes": ["EA", "C"], "codigos": ["TITCEA 40", "TITCC 40"]},
             }, "estado": {
                 "tapa_marco": {"requeridas": 1, "distintas": 1, "fotos": 1, "verificado": True, "ok": True},
                 "tapa_inspeccion": {"requeridas": 2, "distintas": 1, "fotos": 2, "verificado": True, "ok": False},
             }},
-            "alt1": {"items": {"revoque": {"cantidad": 1, "variantes": [], "codigos": []}},
+            "t2": {"items": {"revoque": {"cantidad": 1, "variantes": [], "codigos": []}},
                      "estado": {"revoque": {"requeridas": 1, "distintas": 1, "fotos": 1, "verificado": True,
                                             "ok": True}}},
         },
         "fotos_reparaciones": {
-            "main": [
+            "t1": [
                 {"pid": 1, "file_id": "acceso1", "estado": "validada", "grupo": "tapa_marco", "analisis": analisis()},
                 {"pid": 2, "file_id": "insp1", "estado": "validada", "grupo": "tapa_inspeccion", "corregida": True,
                  "analisis": analisis(elemento_detectado="tapa_inspeccion", requiere_revoque=True,
@@ -70,12 +71,12 @@ def reporte():
                 {"pid": 3, "file_id": "insp2", "estado": "validada", "grupo": "tapa_inspeccion",
                  "analisis": analisis(elemento_detectado="tapa_inspeccion", estado="regular")},
             ],
-            "alt1": [{"pid": 4, "file_id": "revoque1", "estado": "validada", "grupo": "revoque",
+            "t2": [{"pid": 4, "file_id": "revoque1", "estado": "validada", "grupo": "revoque",
                       "analisis": analisis(elemento_detectado="pared_revoque", requiere_revoque=True,
                                            danos_visibles=["placas desprendidas"],
                                            comentario="Revoque desprendido en varias paredes.")}],
         },
-        "fotos_descartadas": [{"pid": 5, "file_id": "x", "sufijo": "main", "estado": "no_corresponde"}],
+        "fotos_descartadas": [{"pid": 5, "file_id": "x", "sufijo": "t1", "estado": "no_corresponde"}],
         "destrabes": [{"tanque": "Cisterna", "item": "Tapa de inspección", "motivo": "foto faltante",
                        "fecha": "30/09/2026", "hora": "15:10"}],
         "photos": ["gral1", "gral2", "gral3"],
@@ -91,7 +92,7 @@ class TestMail(unittest.TestCase):
         # extract_reports.py busca text/plain en el primer nivel de partes
         self.assertEqual(plano.get_content_type(), "text/plain")
         texto = plano.get_payload(decode=True).decode()
-        self.assertIn("Reparaciones CISTERNA: TMTCEA 49, TITCEA 40 y TITCC 40", texto)
+        self.assertIn("Reparaciones Cisterna: TMTCEA 49, TITCEA 40 y TITCC 40", texto)
         self.assertEqual(related.get_content_type(), "multipart/related")
         partes = related.get_payload()
         self.assertEqual(partes[0].get_content_type(), "text/html")
@@ -182,17 +183,17 @@ class TestContenido(unittest.TestCase):
         datos = reporte()
         for clave in ("destrabes", "fotos_descartadas"):
             del datos[clave]
-        datos["fotos_reparaciones"]["main"] = datos["fotos_reparaciones"]["main"][:1]
-        datos["fotos_reparaciones"]["main"][0]["analisis"]["requiere_revoque"] = False
-        datos["items_reparacion"]["main"] = {
+        datos["fotos_reparaciones"]["t1"] = datos["fotos_reparaciones"]["t1"][:1]
+        datos["fotos_reparaciones"]["t1"][0]["analisis"]["requiere_revoque"] = False
+        datos["items_reparacion"]["t1"] = {
             "items": {"tapa_marco": {"cantidad": 1, "variantes": [], "codigos": ["TMTCEA 49"]}},
             "estado": {"tapa_marco": {"requeridas": 1, "distintas": 1, "fotos": 1, "verificado": True, "ok": True}}}
         html, _ = armar_informe(datos, descargar)
         self.assertIn("Sin alertas", html)
 
     def test_reporte_viejo_sin_items(self):
-        datos = {"service": "Presupuestos", "selected_category": "CISTERNA", "repairs": "cambiar flotante",
-                 "fotos_reparaciones": {"main": ["acceso1"]}, "photos": []}
+        datos = {"service": "Presupuestos", "tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None}],
+                 "repairs_t1": "cambiar flotante", "fotos_reparaciones": {"t1": ["acceso1"]}, "photos": []}
         html, imagenes = armar_informe(datos, descargar)
         self.assertEqual(len(imagenes), 1)
         self.assertIn("Otras reparaciones", html)

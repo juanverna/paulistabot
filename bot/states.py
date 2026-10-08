@@ -1,13 +1,21 @@
 (CODE, SERVICE, ORDER, ADDRESS, START_TIME, END_TIME, FUMIGATION, FUM_OBS,
- FUM_PHOTOS, CONTACT, TANK_TYPE, MEASURE_MAIN, TAPAS_INSPECCION_MAIN,
- TAPAS_ACCESO_MAIN, SEALING_MAIN, REPAIR_MAIN, SUGGESTIONS_MAIN, ASK_SECOND,
- MEASURE_ALT1, TAPAS_INSPECCION_ALT1, TAPAS_ACCESO_ALT1, SEALING_ALT1,
- REPAIR_ALT1, SUGGESTIONS_ALT1, ASK_THIRD, MEASURE_ALT2, TAPAS_INSPECCION_ALT2,
- TAPAS_ACCESO_ALT2, SEALING_ALT2, REPAIR_ALT2, SUGGESTIONS_ALT2, PHOTOS,
- AVISOS_CODE, AVISOS_ADDRESS, AVISOS_PHOTOS, SCAN_QR, FINAL_SUMMARY,
- REPAIR_PHOTOS, CONTACT_PHONE) = range(39)
+ FUM_PHOTOS, CONTACT, TANK_TYPE, MEASURE, TAPAS_INSPECCION, TAPAS_ACCESO, SEALING, REPAIR,
+ SUGGESTIONS, PHOTOS, AVISOS_CODE, AVISOS_ADDRESS, AVISOS_PHOTOS, SCAN_QR, FINAL_SUMMARY,
+ REPAIR_PHOTOS, CONTACT_PHONE, CUERPOS, TANK_CUERPO, OTRO_TANQUE) = range(28)
 
-# Mapeo estado → clave en user_data (para limpiar al hacer "atrás")
+# Pasos de cada tanque (se repiten por cada tanque; el tanque es user_data["tanque_actual"]).
+# Estado → campo del tanque (ver bot/services/tanques_reporte.py).
+CAMPO_DEL_PASO = {
+    MEASURE:          "measure",
+    TAPAS_INSPECCION: "tapas_inspeccion",
+    TAPAS_ACCESO:     "tapas_acceso",
+    SEALING:          "sealing",
+    REPAIR:           "repairs",
+    SUGGESTIONS:      "suggestions",
+}
+
+# Mapeo estado → clave en user_data (para limpiar al hacer "atrás"). Los pasos de cada tanque
+# usan CAMPO_DEL_PASO con el tanque actual.
 STATE_KEYS = {
     CODE:                  "code",
     ORDER:                 "order",
@@ -16,28 +24,13 @@ STATE_KEYS = {
     END_TIME:              "end_time",
     FUMIGATION:            "fumigated_units",
     FUM_OBS:               "fum_obs",
-    MEASURE_MAIN:          "measure_main",
-    TAPAS_INSPECCION_MAIN: "tapas_inspeccion_main",
-    TAPAS_ACCESO_MAIN:     "tapas_acceso_main",
-    SEALING_MAIN:          "sealing_main",
-    SUGGESTIONS_MAIN:      "suggestions",
-    REPAIR_MAIN:           "repairs",
-    MEASURE_ALT1:          "measure_alt1",
-    TAPAS_INSPECCION_ALT1: "tapas_inspeccion_alt1",
-    TAPAS_ACCESO_ALT1:     "tapas_acceso_alt1",
-    SEALING_ALT1:          "sealing_alt1",
-    SUGGESTIONS_ALT1:      "suggestions_alt1",
-    REPAIR_ALT1:           "repair_alt1",
-    MEASURE_ALT2:          "measure_alt2",
-    TAPAS_INSPECCION_ALT2: "tapas_inspeccion_alt2",
-    TAPAS_ACCESO_ALT2:     "tapas_acceso_alt2",
-    SEALING_ALT2:          "sealing_alt2",
-    SUGGESTIONS_ALT2:      "suggestions_alt2",
-    REPAIR_ALT2:           "repair_alt2",
     CONTACT:               "contact_nombre",
     CONTACT_PHONE:         "contact_telefono",
     AVISOS_ADDRESS:        "avisos_address",
+    CUERPOS:               "cuerpos",
     SCAN_QR:               None,
     FINAL_SUMMARY:         None,
     REPAIR_PHOTOS:         None,
+    TANK_CUERPO:           None,
+    OTRO_TANQUE:           None,
 }

@@ -27,29 +27,18 @@ import unicodedata
 from telegram import Update, ParseMode
 from telegram.ext import CallbackContext, ConversationHandler
 
-from bot.states import (REPAIR_PHOTOS, SUGGESTIONS_MAIN, SUGGESTIONS_ALT1, SUGGESTIONS_ALT2)
+from bot.states import REPAIR_PHOTOS
 from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
                                  teclado_atras)
 from bot.services import destrabe, revision_fotos, vision_service
+from bot.services import tanques_reporte as tq
 from bot.services.items_reparacion import (detectar_items, lista_para_operario, etiqueta,
                                            problemas_de_reparaciones)
 
 logger = logging.getLogger(__name__)
 
-# sufijo → (clave de reparaciones en user_data, clave del nombre del tanque)
-TANQUES = {
-    "main": ("repairs",     "selected_category"),
-    "alt1": ("repair_alt1", "alternative_1"),
-    "alt2": ("repair_alt2", "alternative_2"),
-}
-
-# Paso siguiente en el flujo manual: sugerencias del mismo tanque
-SIGUIENTE_MANUAL = {
-    "main": (SUGGESTIONS_MAIN, "selected_category"),
-    "alt1": (SUGGESTIONS_ALT1, "alternative_1"),
-    "alt2": (SUGGESTIONS_ALT2, "alternative_2"),
-}
+# "sufijo" es el id del tanque (bot/services/tanques_reporte.py: "t1", "t2"...)
 
 AYUDA_CODIGO = "🔑 Si no tenés otra foto, pedile al encargado el código de hoy y escribilo acá."
 
@@ -85,11 +74,15 @@ def necesita_fotos(reparaciones) -> bool:
 
 
 def _nombre_tanque(context: CallbackContext, sufijo: str) -> str:
-    return context.user_data.get(TANQUES[sufijo][1], "").capitalize()
+    return tq.nombre(context.user_data, sufijo)
+
+
+def _tipo_tanque(context: CallbackContext, sufijo: str) -> str:
+    return tq.tipo(context.user_data, sufijo)
 
 
 def _reparacion(context: CallbackContext, sufijo: str) -> str:
-    return context.user_data.get(TANQUES[sufijo][0], "") or ""
+    return context.user_data.get(tq.clave("repairs", sufijo), "") or ""
 
 
 def _reparacion_en_palabras(context: CallbackContext, sufijo: str) -> str:
@@ -139,7 +132,7 @@ def pedir_fotos(update: Update, context: CallbackContext, sufijo: str, modo: str
     # Códigos mal escritos, de otro tanque (ej: TITREA en la cisterna) o texto que no es ningún
     # ítem conocido: no se deja pasar, hay que corregirlo
     corregir = problemas_de_reparaciones(_reparacion(context, sufijo),
-                                         context.user_data.get(TANQUES[sufijo][1]))
+                                         _tipo_tanque(context, sufijo))
     if corregir:
         context.user_data["rep_fotos"]["corregir_codigos"] = True
         _send(update, context, corregir)
@@ -156,15 +149,15 @@ def _corregir_codigos(update: Update, context: CallbackContext, ctx: dict, text:
         update.message.reply_text("Primero escribí de nuevo las reparaciones con el código correcto.")
         return REPAIR_PHOTOS
     if not necesita_fotos(text):  # "No", "ninguna"...: no hay reparaciones en este tanque
-        context.user_data[TANQUES[sufijo][0]] = text
+        context.user_data[tq.clave("repairs", sufijo)] = text
         # Los ítems eran del texto rechazado: si quedan, el informe pide su foto
         context.user_data.get("items_reparacion", {}).pop(sufijo, None)
         return _continuar(update, context)
-    corregir = problemas_de_reparaciones(text, context.user_data.get(TANQUES[sufijo][1]))
+    corregir = problemas_de_reparaciones(text, _tipo_tanque(context, sufijo))
     if corregir:
         _send(update, context, corregir)
         return REPAIR_PHOTOS
-    context.user_data[TANQUES[sufijo][0]] = text
+    context.user_data[tq.clave("repairs", sufijo)] = text
     if not necesita_fotos(text):
         return _continuar(update, context)
     return pedir_fotos(update, context, sufijo, ctx.get("modo", "manual"))
@@ -180,7 +173,7 @@ def reanudar_manual(update: Update, context: CallbackContext, sufijo: str) -> No
 
 def _continuar(update: Update, context: CallbackContext) -> int:
     ctx = context.user_data.pop("rep_fotos", {})
-    sufijo = ctx.get("sufijo", "main")
+    sufijo = ctx.get("sufijo") or context.user_data.get("tanque_actual")
     hechos = context.user_data.setdefault("fotos_reparaciones_hechas", [])
     if sufijo not in hechos:
         hechos.append(sufijo)
@@ -189,11 +182,9 @@ def _continuar(update: Update, context: CallbackContext) -> int:
     fin = terminar_edicion(update, context)
     if fin is not None:
         return fin
-    siguiente, clave_nombre = SIGUIENTE_MANUAL[sufijo]
-    nombre = context.user_data.get(clave_nombre, "").capitalize()
-    _send(update, context, f"Indique sugerencias p/ la próx limpieza para {nombre}:", atras=True)
-    context.user_data["current_state"] = siguiente
-    return siguiente
+    from bot.handlers.campos_tanque import preguntar_sugerencias
+    context.user_data["tanque_actual"] = sufijo
+    return preguntar_sugerencias(update, context)
 
 
 def _trabar(update: Update, context: CallbackContext, ctx: dict, faltantes: dict, corregidas: list) -> int:
@@ -384,7 +375,7 @@ def handle_repair_photos_atras(update: Update, context: CallbackContext) -> int:
         query.edit_message_reply_markup(reply_markup=None)
     except Exception:  # el mensaje ya no tenía botones: no importa
         pass
-    sufijo = context.user_data.get("rep_fotos", {}).get("sufijo", "main")
+    sufijo = context.user_data.get("rep_fotos", {}).get("sufijo") or context.user_data.get("tanque_actual")
     return _atras(update, context, sufijo)
 
 

@@ -93,6 +93,18 @@ def medidas_tanque_m(texto: str) -> list:
     return [n / 100 if n > _MAX_M else n for n in numeros[:3]]
 
 
+def medida_del_tanque(report: dict, subtanque: str) -> str:
+    """
+    Para extract_reports.py: "Medida <tanque>" del mail (sin importar mayúsculas), ej. "Medida
+    Reserva 2 (fondo)". En reportes viejos, "Medida principal" era la del primer tanque.
+    """
+    buscada = f"medida {subtanque}".lower()
+    for k, v in report.items():
+        if k.lower() == buscada:
+            return v
+    return report.get("Medida principal", "")
+
+
 NOMBRE_CODIGO = {"TIT": "Tapa de inspección", "TAT": "Tapa de acceso", "TMT": "Tapa y marco de acceso",
                  "MAT": "Marco solo"}
 _RE_ITEM_CODIGO = re.compile(r"^(TIT|TAT|TMT|MAT)[CRH](EA|C) (.+)$")

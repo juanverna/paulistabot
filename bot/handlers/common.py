@@ -11,12 +11,28 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Stack de estados (navegación hacia atrás)
 # =============================================================================
+# Cada paso se apila junto con el tanque en el que estaba (user_data["tanque_actual"]): "atrás"
+# desde la medida de la Reserva 2 vuelve a las sugerencias de la Cisterna, en la Cisterna.
 def push_state(context: CallbackContext, state: int) -> None:
-    context.user_data.setdefault("state_stack", []).append(state)
+    ud = context.user_data
+    stack = ud.setdefault("state_stack", [])
+    tanques = ud.setdefault("stack_tanques", [])
+    tanques.extend([None] * (len(stack) - len(tanques)))
+    stack.append(state)
+    tanques.append(ud.get("tanque_actual"))
+
 
 def pop_state(context: CallbackContext):
-    stack = context.user_data.get("state_stack", [])
-    return stack.pop() if stack else None
+    ud = context.user_data
+    stack = ud.get("state_stack", [])
+    if not stack:
+        return None
+    tanques = ud.get("stack_tanques", [])
+    if len(tanques) == len(stack):
+        tanque = tanques.pop()
+        if tanque:
+            ud["tanque_actual"] = tanque
+    return stack.pop()
 
 
 # =============================================================================
@@ -89,19 +105,15 @@ def back_handler(update: Update, context: CallbackContext) -> int:
     if editando is not None and len(context.user_data.get("state_stack", [])) <= editando:
         return terminar_edicion(update, context)
     current = context.user_data.get("current_state")
-    if current in STATE_KEYS and STATE_KEYS[current]:
+    if current in CAMPO_DEL_PASO and context.user_data.get("tanque_actual"):
+        from bot.services.tanques_reporte import clave
+        context.user_data.pop(clave(CAMPO_DEL_PASO[current], context.user_data["tanque_actual"]), None)
+    elif current in STATE_KEYS and STATE_KEYS[current]:
         context.user_data.pop(STATE_KEYS[current], None)
     prev = pop_state(context) or CODE
     context.user_data["current_state"] = prev
     re_ask(prev, update, context)
     return prev
-
-
-def _pasos_con_botones() -> dict:
-    """{estado: (sufijo, campo)} de medida, tapas, sellado y reparaciones de cada tanque."""
-    from bot.handlers.campos_tanque import PASOS
-    return {paso[campo][0]: (sufijo, campo) for sufijo, paso in PASOS.items()
-            for campo in ("medida", "insp", "acceso", "sellado", "reparaciones")}
 
 
 # =============================================================================
@@ -121,20 +133,11 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
             parse_mode=ParseMode.HTML,
         )
 
-    def si_no_keyboard():
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("Si", callback_data="si"),
-             InlineKeyboardButton("No", callback_data="no")],
-            [InlineKeyboardButton("ATRAS", callback_data="back")],
-        ])
-
     def back_keyboard(buttons):
         return InlineKeyboardMarkup(buttons + [[InlineKeyboardButton("ATRAS", callback_data="back")]])
 
-    selected = context.user_data.get("selected_category", "").capitalize()
-    alt1     = context.user_data.get("alternative_1", "").capitalize()
-    alt2     = context.user_data.get("alternative_2", "").capitalize()
     service  = context.user_data.get("service")
+    tanque   = context.user_data.get("tanque_actual")
 
     if state == CODE:
         send("¡Hola! Inserte su código (solo números):")
@@ -160,39 +163,24 @@ def re_ask(state: int, update: Update, context: CallbackContext) -> None:
         send("¿Qué unidades contienen insectos?")
     elif state == FUM_OBS:
         send("Marque las observaciones para la próxima visita:")
-    elif state == TANK_TYPE:
-        kb = back_keyboard([
-            [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
-             InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
-             InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
-        ])
-        send("Seleccione el tipo de tanque:", kb)
-    elif state in _pasos_con_botones():
-        # Medida, tapas, sellado y reparaciones: la misma pregunta que la primera vez
+    elif state in (CUERPOS, TANK_TYPE, TANK_CUERPO, OTRO_TANQUE):
+        # Preguntas de los tanques. Al volver a elegir un tanque, el que se había empezado sin
+        # cargarle nada se descarta
         from bot.handlers import campos_tanque
-        sufijo, campo = _pasos_con_botones()[state]
-        if campo == "medida":
-            campos_tanque.preguntar_medida(update, context, sufijo)
-        elif campo == "reparaciones":
-            campos_tanque.preguntar_reparaciones(update, context, sufijo)
-        else:
-            campos_tanque.preguntar_texto(update, context, sufijo, campo)
-    elif state == SUGGESTIONS_MAIN:
-        send(f"Indique sugerencias p/ la próx limpieza para {selected}:")
-    elif state == ASK_SECOND:
-        send(f"¿Quiere comentar algo sobre {alt1}?", si_no_keyboard())
-    elif state == SUGGESTIONS_ALT1:
-        send(f"Indique sugerencias p/ la próx limpieza para {alt1}:")
-    elif state == ASK_THIRD:
-        send(f"¿Quiere comentar algo sobre {alt2}?", si_no_keyboard())
-    elif state == SUGGESTIONS_ALT2:
-        send(f"Indique sugerencias p/ la próx limpieza para {alt2}:")
+        from bot.services import tanques_reporte
+        if state in (TANK_TYPE, TANK_CUERPO):
+            tanques_reporte.descartar_vacios(context.user_data)
+        {CUERPOS: campos_tanque.preguntar_cuerpos, TANK_TYPE: campos_tanque.preguntar_tipo_tanque,
+         TANK_CUERPO: campos_tanque.preguntar_cuerpo_tanque,
+         OTRO_TANQUE: campos_tanque.preguntar_otro_tanque}[state](update, context)
+    elif state in CAMPO_DEL_PASO:
+        # Pasos de cada tanque: la misma pregunta que la primera vez, del tanque actual
+        from bot.handlers import campos_tanque
+        campos_tanque.preguntar_paso(update, context, state)
     elif state == REPAIR_PHOTOS:
-        # Se vuelve acá con "atrás" desde sugerencias: el tope del stack es REPAIR_MAIN/ALT1/ALT2
+        # Se vuelve acá con "atrás" desde sugerencias
         from bot.handlers.fotos_reparaciones import reanudar_manual
-        stack  = context.user_data.get("state_stack", [])
-        sufijo = {REPAIR_ALT1: "alt1", REPAIR_ALT2: "alt2"}.get(stack[-1] if stack else None, "main")
-        reanudar_manual(update, context, sufijo)
+        reanudar_manual(update, context, tanque)
     elif state == CONTACT:
         from bot.handlers import campos_tanque
         campos_tanque.preguntar_contacto(update, context)

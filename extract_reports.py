@@ -16,7 +16,7 @@ from googleapiclient.discovery import build
 
 # Revoque ("TCEA F COMP", "TRC LI PARC 1.50x1.50") y medidas del tanque en metros: las mismas
 # reglas que usa el bot
-from bot.services.campos import es_revoque, medidas_tanque_m
+from bot.services.campos import es_revoque, medidas_tanque_m, medida_del_tanque
 
 # ----------------------------------
 # 0) CONFIGURACIÓN — REEMPLAZA ESTOS VALORES
@@ -320,12 +320,14 @@ Reparaciones CISTERNA: Presupuestar TITCEA30 y revoque lateral derecho
     {"subtanque":"CISTERNA","descripción":"revoque lateral derecho"}
 ]''' + """
 
-Ejemplo 4 (formato del bot: ítems separados por coma, cada código va tal cual):
-Reparaciones CISTERNA: TITCEA 30x30, TCEA F COMP, TCC LI PARC 1.50x1.50
+Ejemplo 4 (formato del bot: ítems separados por coma, cada código va tal cual; el subtanque es
+todo lo que sigue a "Reparaciones", con número y cuerpo si los tiene):
+Reparaciones Cisterna: TITCEA 30x30, TCEA F COMP
+Reparaciones Reserva 2 (fondo): TRC LI PARC 1.50x1.50
 """ + '''→ [
-    {"subtanque":"CISTERNA","descripción":"TITCEA 30x30"},
-    {"subtanque":"CISTERNA","descripción":"TCEA F COMP"},
-    {"subtanque":"CISTERNA","descripción":"TCC LI PARC 1.50x1.50"}
+    {"subtanque":"Cisterna","descripción":"TITCEA 30x30"},
+    {"subtanque":"Cisterna","descripción":"TCEA F COMP"},
+    {"subtanque":"Reserva 2 (fondo)","descripción":"TRC LI PARC 1.50x1.50"}
 ]''' + """
 
 Ahora convierte estos campos:
@@ -359,10 +361,11 @@ def update_presupuesto_online(items: list, reports: list):
    updates   = []
    only_rev  = all(es_revoque(itm['descripción']) for itm in items)
    for idx, (itm, report) in enumerate(zip(items, reports)):
-       sub = itm['subtanque'].upper(); raw = itm['descripción'].lower().strip(); row = start_row + idx
+       # subtanque es el nombre del tanque en el mail ("Reserva 2 (fondo)"); los precios van por tipo
+       subtanque = itm['subtanque'].strip(); raw = itm['descripción'].lower().strip(); row = start_row + idx
+       sub = subtanque.upper().split()[0] if subtanque else ''
        if es_revoque(raw):
-           field = 'Medida principal' if sub == 'CISTERNA' else f"Medida {sub.capitalize()}"
-           medidas = medidas_tanque_m(report.get(field, ''))
+           medidas = medidas_tanque_m(medida_del_tanque(report, subtanque))
            if len(medidas) >= 3:
                alto_m, ancho_m, prof_m = medidas
                sheet.update('O5', [[alto_m]])

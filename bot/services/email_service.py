@@ -1,4 +1,5 @@
 import logging
+import re
 import smtplib
 import imghdr
 from io import BytesIO
@@ -58,30 +59,19 @@ def _build_body(user_data: dict) -> str:
         ]
 
         if service in ("Limpieza y Reparacion de Tanques", "Presupuestos"):
-            selected = user_data.get("selected_category", "")
-            alt1     = user_data.get("alternative_1", "")
-            alt2     = user_data.get("alternative_2", "")
-            ordered_fields += [
-                ("selected_category",    "Tipo de tanque"),
-                ("measure_main",         "Medida principal"),
-                ("tapas_inspeccion_main","Tapas inspección"),
-                ("tapas_acceso_main",    "Tapas acceso"),
-                ("sealing_main",         f"Sellado {selected}"),
-                ("repairs",              f"Reparaciones {selected}"),
-                ("suggestions",          f"Sugerencias {selected}"),
-                ("measure_alt1",         f"Medida {alt1}"),
-                ("tapas_inspeccion_alt1",f"Tapas inspección {alt1}"),
-                ("tapas_acceso_alt1",    f"Tapas acceso {alt1}"),
-                ("sealing_alt1",         f"Sellado {alt1}"),
-                ("repair_alt1",          f"Reparaciones {alt1}"),
-                ("suggestions_alt1",     f"Sugerencias {alt1}"),
-                ("measure_alt2",         f"Medida {alt2}"),
-                ("tapas_inspeccion_alt2",f"Tapas inspección {alt2}"),
-                ("tapas_acceso_alt2",    f"Tapas acceso {alt2}"),
-                ("sealing_alt2",         f"Sellado {alt2}"),
-                ("repair_alt2",          f"Reparaciones {alt2}"),
-                ("suggestions_alt2",     f"Sugerencias {alt2}"),
-            ]
+            # Un bloque por tanque, con su nombre: "Reparaciones Reserva 2 (fondo): TREA LI COMP".
+            # extract_reports.py toma "Reparaciones <tanque>" y busca "Medida <tanque>".
+            from bot.services import tanques_reporte as tq
+            if user_data.get("cuerpos", 1) > 1:
+                ordered_fields.append(("cuerpos", "Cuerpos del edificio"))
+            tanques = tq.lista(user_data)
+            if tanques:
+                user_data = dict(user_data, _tanques=", ".join(tq.nombre(user_data, t["id"]) for t in tanques))
+                ordered_fields.append(("_tanques", "Tanques"))
+            for t in tanques:
+                nombre = tq.nombre(user_data, t["id"])
+                ordered_fields += [(tq.clave(campo, t["id"]), f"{etiqueta} {nombre}")
+                                   for campo, etiqueta in tq.CAMPOS.items()]
 
         if service == "Fumigaciones":
             ordered_fields += [
@@ -147,15 +137,16 @@ def _detalle_revision(fotos: list) -> str:
 
 
 def _tank_name(user_data: dict, sufijo: str) -> str:
-    key = {"main": "selected_category", "alt1": "alternative_1", "alt2": "alternative_2"}[sufijo]
-    return user_data.get(key, "").capitalize()
+    from bot.services.tanques_reporte import nombre
+    return nombre(user_data, sufijo)
 
 
 def _photo_attachments(user_data: dict) -> list:
     """(file_id, nombre base) de cada foto: primero las de reparaciones por tanque, después las generales."""
     items = []
     for sufijo, fotos in user_data.get("fotos_reparaciones", {}).items():
-        tanque = _tank_name(user_data, sufijo).lower() or sufijo
+        # "Reserva 2 (fondo)" -> "reserva_2_fondo" (sin espacios ni paréntesis en el nombre del archivo)
+        tanque = "_".join(re.findall(r"[a-z0-9]+", _tank_name(user_data, sufijo).lower())) or sufijo
         numero = {}
         for f in fotos:
             grupo = (f.get("grupo") or "foto") if isinstance(f, dict) else "foto"

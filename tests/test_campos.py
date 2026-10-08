@@ -6,10 +6,11 @@ entorno.preparar()
 
 from bot.services import campos
 from bot.services.items_reparacion import detectar_items, problemas_de_reparaciones
-from bot.states import (MEASURE_MAIN, TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN,
-                        REPAIR_MAIN, REPAIR_PHOTOS, SUGGESTIONS_MAIN, MEASURE_ALT1,
-                        TAPAS_INSPECCION_ALT1, CONTACT, CONTACT_PHONE, PHOTOS)
+from bot.states import (MEASURE, TAPAS_INSPECCION, TAPAS_ACCESO, SEALING, REPAIR, REPAIR_PHOTOS,
+                        SUGGESTIONS, CONTACT, CONTACT_PHONE, PHOTOS, CUERPOS, TANK_TYPE, TANK_CUERPO,
+                        OTRO_TANQUE, FINAL_SUMMARY)
 from bot.handlers import campos_tanque as ct
+from bot.handlers.common import atras_boton
 
 
 def boton(data: str) -> MagicMock:
@@ -21,9 +22,9 @@ def boton(data: str) -> MagicMock:
 
 
 def _datos(**extra) -> dict:
-    datos = {"selected_category": "CISTERNA", "alternative_1": "RESERVA",
-             "alternative_2": "INTERMEDIARIO", "service": "Limpieza y Reparacion de Tanques",
-             "state_stack": []}
+    datos = {"tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None},
+                         {"id": "t2", "tipo": "RESERVA", "cuerpo": None}],
+             "tanque_actual": "t1", "service": "Limpieza y Reparacion de Tanques", "state_stack": []}
     datos.update(extra)
     return datos
 
@@ -157,37 +158,39 @@ class TestPasosDelTanque(unittest.TestCase):
 
     def test_medida_valida_pasa_a_tapas_en_texto(self):
         ctx = entorno.contexto(_datos())
-        estado = ct.recibir_medida("main")(entorno.update_texto("180 200 150"), ctx)
-        self.assertEqual(estado, TAPAS_INSPECCION_MAIN)
-        self.assertEqual(ctx.user_data["measure_main"], "1.80, 2.00, 1.50")
+        estado = ct.recibir_medida(entorno.update_texto("180 200 150"), ctx)
+        self.assertEqual(estado, TAPAS_INSPECCION)
+        self.assertEqual(ctx.user_data["measure_t1"], "1.80, 2.00, 1.50")
         self.assertIn("Indique TAPAS INSPECCIÓN (30 40 50 60 80):", _enviados(ctx))
 
     def test_medida_invalida_se_vuelve_a_pedir(self):
         ctx = entorno.contexto(_datos())
         upd = entorno.update_texto("grande")
-        self.assertEqual(ct.recibir_medida("main")(upd, ctx), MEASURE_MAIN)
-        self.assertNotIn("measure_main", ctx.user_data)
+        self.assertEqual(ct.recibir_medida(upd, ctx), MEASURE)
+        self.assertNotIn("measure_t1", ctx.user_data)
         self.assertIn("3 medidas", entorno.mensajes_enviados(ctx, upd))
 
     def test_litros_pregunta_el_material(self):
         ctx = entorno.contexto(_datos())
-        self.assertEqual(ct.recibir_medida("alt1")(entorno.update_texto("1000 litros"), ctx), MEASURE_ALT1)
-        self.assertEqual(ct.boton_material("alt1")(boton("md:alt1:plastico"), ctx), TAPAS_INSPECCION_ALT1)
-        self.assertEqual(ctx.user_data["measure_alt1"], "1000 lts (plástico)")
+        ctx.user_data["tanque_actual"] = "t2"
+        self.assertEqual(ct.recibir_medida(entorno.update_texto("1000 litros"), ctx), MEASURE)
+        self.assertEqual(ct.boton_material(boton("md:t1:plastico"), ctx), MEASURE)  # botón de otro tanque
+        self.assertEqual(ct.boton_material(boton("md:t2:plastico"), ctx), TAPAS_INSPECCION)
+        self.assertEqual(ctx.user_data["measure_t2"], "1000 lts (plástico)")
 
     def test_tapas_y_sellado_como_antes(self):
         ctx = entorno.contexto(_datos())
-        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("60"), ctx), TAPAS_ACCESO_MAIN)
-        self.assertEqual(ct.recibir_texto("main", "acceso")(entorno.update_texto("56,5"), ctx), SEALING_MAIN)
-        self.assertEqual(ct.recibir_texto("main", "sellado")(entorno.update_texto("masilla"), ctx), REPAIR_MAIN)
-        self.assertEqual(ctx.user_data["tapas_inspeccion_main"], "60")
-        self.assertEqual(ctx.user_data["tapas_acceso_main"], "56.5")  # la coma decimal se normaliza
-        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+        self.assertEqual(ct.recibir_texto("tapas_inspeccion")(entorno.update_texto("60"), ctx), TAPAS_ACCESO)
+        self.assertEqual(ct.recibir_texto("tapas_acceso")(entorno.update_texto("56,5"), ctx), SEALING)
+        self.assertEqual(ct.recibir_texto("sealing")(entorno.update_texto("masilla"), ctx), REPAIR)
+        self.assertEqual(ctx.user_data["tapas_inspeccion_t1"], "60")
+        self.assertEqual(ctx.user_data["tapas_acceso_t1"], "56.5")  # la coma decimal se normaliza
+        self.assertEqual(ctx.user_data["sealing_t1"], "masilla")
         enviados = _enviados(ctx)
         self.assertIn("Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):", enviados)
         self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b> (EJ: masilla, burlete):", enviados)
         self.assertIn("Reparaciones de <b>Cisterna</b>", enviados)
-        self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION_MAIN, TAPAS_ACCESO_MAIN, SEALING_MAIN])
+        self.assertEqual(ctx.user_data["state_stack"], [TAPAS_INSPECCION, TAPAS_ACCESO, SEALING])
 
     def test_tapas_solo_con_las_medidas_de_la_ayuda(self):
         ok = {("insp", "30 60"): "30, 60", ("insp", "30, 30"): "30, 30", ("insp", "No tiene"): "No tiene",
@@ -210,16 +213,16 @@ class TestPasosDelTanque(unittest.TestCase):
     def test_tapa_invalida_se_vuelve_a_pedir(self):
         ctx = entorno.contexto(_datos())
         upd = entorno.update_texto("4789")
-        self.assertEqual(ct.recibir_texto("main", "acceso")(upd, ctx), TAPAS_ACCESO_MAIN)
-        self.assertNotIn("tapas_acceso_main", ctx.user_data)
+        self.assertEqual(ct.recibir_texto("tapas_acceso")(upd, ctx), TAPAS_ACCESO)
+        self.assertNotIn("tapas_acceso_t1", ctx.user_data)
         self.assertIn("4789 no es una medida válida", entorno.mensajes_enviados(ctx, upd))
 
     def test_todas_las_preguntas_tienen_atras(self):
         ctx = entorno.contexto(_datos())
-        ct.preguntar_medida(entorno.update_texto(None), ctx, "main")
-        ct.preguntar_texto(entorno.update_texto(None), ctx, "main", "insp")
-        ct.preguntar_texto(entorno.update_texto(None), ctx, "main", "sellado")
-        ct.preguntar_reparaciones(entorno.update_texto(None), ctx, "main")
+        ct.preguntar_medida(entorno.update_texto(None), ctx)
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "tapas_inspeccion")
+        ct.preguntar_texto(entorno.update_texto(None), ctx, "sealing")
+        ct.preguntar_reparaciones(entorno.update_texto(None), ctx)
         ct.preguntar_contacto(entorno.update_texto(None), ctx)
         ct.preguntar_telefono(entorno.update_texto(None), ctx)
         for llamada in ctx.bot.send_message.call_args_list:
@@ -229,25 +232,25 @@ class TestPasosDelTanque(unittest.TestCase):
 
     def test_boton_atras_generico(self):
         from bot.handlers.common import atras_boton
-        ctx = entorno.contexto(_datos(state_stack=[MEASURE_MAIN], current_state=TAPAS_INSPECCION_MAIN))
-        self.assertEqual(atras_boton(boton("back"), ctx), MEASURE_MAIN)
+        ctx = entorno.contexto(_datos(state_stack=[MEASURE], current_state=TAPAS_INSPECCION))
+        self.assertEqual(atras_boton(boton("back"), ctx), MEASURE)
         self.assertIn("Medida del tanque", _enviados(ctx))
 
     def test_atras_desde_tapas_vuelve_a_la_medida(self):
-        ctx = entorno.contexto(_datos(state_stack=[MEASURE_MAIN], current_state=TAPAS_INSPECCION_MAIN,
-                                      measure_main="1.80, 2.00, 1.50"))
-        self.assertEqual(ct.recibir_texto("main", "insp")(entorno.update_texto("atrás"), ctx), MEASURE_MAIN)
+        ctx = entorno.contexto(_datos(state_stack=[MEASURE], current_state=TAPAS_INSPECCION,
+                                      measure_t1="1.80, 2.00, 1.50"))
+        self.assertEqual(ct.recibir_texto("tapas_inspeccion")(entorno.update_texto("atrás"), ctx), MEASURE)
         self.assertIn("Medida del tanque", _enviados(ctx))
 
 
 class TestMenuDeReparaciones(unittest.TestCase):
 
     def _ctx(self):
-        return entorno.contexto(_datos(current_state=REPAIR_MAIN, state_stack=[SEALING_MAIN]))
+        return entorno.contexto(_datos(current_state=REPAIR, state_stack=[SEALING]))
 
     def test_carga_completa_y_pasa_a_las_fotos(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
+        rep = ct.boton_reparaciones
         pasos = ("g:tit", "m:60x60", "v:EA",                  # tapa de inspección
                  "g:tat", "t:oct", "m:53.5x56.5", "v:C",      # tapa de acceso octogonal
                  "g:tat", "t:pun", "v:EA",                    # punta recortada: una sola medida
@@ -257,44 +260,44 @@ class TestMenuDeReparaciones(unittest.TestCase):
                  "g:flo", "g:aut", "g:aut", "borrar",
                  "g:tat", "volver")                           # se arrepintió
         for paso in pasos:
-            self.assertEqual(rep(boton(f"rp:main:{paso}"), ctx), REPAIR_MAIN, paso)
-        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["repairs"],
+            self.assertEqual(rep(boton(f"rp:t1:{paso}"), ctx), REPAIR, paso)
+        self.assertEqual(rep(boton("rp:t1:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(ctx.user_data["repairs_t1"],
                          "TITCEA 60x60, TATCC octogonal con parantes 53.5x56.5, "
                          "TATCEA punta recortada con parantes 54, TMTCEA 48x48, MATCC 52, "
                          "TCEA LI COMP, flotante, automático")
-        self.assertEqual(ctx.user_data["state_stack"], [SEALING_MAIN, REPAIR_MAIN])
+        self.assertEqual(ctx.user_data["state_stack"], [SEALING, REPAIR])
         self.assertIn("Mandá una foto de cada reparación", _enviados(ctx))
         self.assertNotIn("reparaciones_en_curso", ctx.user_data)
 
     def test_sin_reparaciones_va_a_sugerencias(self):
         ctx = self._ctx()
-        ctx.user_data["fotos_reparaciones"] = {"main": ["vieja"]}
-        rep = ct.boton_reparaciones("main")
-        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_MAIN)  # sin nada cargado no avanza
-        self.assertEqual(rep(boton("rp:main:no"), ctx), SUGGESTIONS_MAIN)
-        self.assertEqual(ctx.user_data["repairs"], "No")
-        self.assertNotIn("main", ctx.user_data["fotos_reparaciones"])
+        ctx.user_data["fotos_reparaciones"] = {"t1": ["vieja"]}
+        rep = ct.boton_reparaciones
+        self.assertEqual(rep(boton("rp:t1:listo"), ctx), REPAIR)  # sin nada cargado no avanza
+        self.assertEqual(rep(boton("rp:t1:no"), ctx), SUGGESTIONS)
+        self.assertEqual(ctx.user_data["repairs_t1"], "No")
+        self.assertNotIn("t1", ctx.user_data["fotos_reparaciones"])
 
     def test_medida_de_otro_tipo_no_se_toma(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
-        rep(boton("rp:main:g:tat"), ctx)
-        rep(boton("rp:main:t:com"), ctx)
-        rep(boton("rp:main:m:69"), ctx)  # 69 es de evita marco, no de las comunes
+        rep = ct.boton_reparaciones
+        rep(boton("rp:t1:g:tat"), ctx)
+        rep(boton("rp:t1:t:com"), ctx)
+        rep(boton("rp:t1:m:69"), ctx)  # 69 es de evita marco, no de las comunes
         self.assertIsNone(ctx.user_data["reparaciones_en_curso"]["medida"])
 
     def test_revoque_con_parche(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
+        rep = ct.boton_reparaciones
         for paso in ("g:rev", "cara:LD", "cuba:C", "ext:parche"):
-            self.assertEqual(rep(boton(f"rp:main:{paso}"), ctx), REPAIR_MAIN, paso)
-        texto = ct.texto_reparaciones("main")
+            self.assertEqual(rep(boton(f"rp:t1:{paso}"), ctx), REPAIR, paso)
+        texto = ct.texto_reparaciones
         upd = entorno.update_texto("grande")
-        self.assertEqual(texto(upd, ctx), REPAIR_MAIN)  # medidas inválidas: se vuelven a pedir
+        self.assertEqual(texto(upd, ctx), REPAIR)  # medidas inválidas: se vuelven a pedir
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
         self.assertIn("2 medidas del parche", entorno.mensajes_enviados(ctx, upd))
-        self.assertEqual(texto(entorno.update_texto("1,5 x 1,5"), ctx), REPAIR_MAIN)
+        self.assertEqual(texto(entorno.update_texto("1,5 x 1,5"), ctx), REPAIR)
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TCC LD PARC 1.50x1.50"])
         menu = ctx.bot.send_message.call_args.kwargs["text"]  # vuelve al menú, con lo cargado en palabras
         self.assertIn("✅ Agregado: Revoque lateral derecho (ciego): parche de 1.50 x 1.50 m", menu)
@@ -302,9 +305,9 @@ class TestMenuDeReparaciones(unittest.TestCase):
 
     def test_revoque_pide_entrada_de_agua_si_hay_una_sola_cuba(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
-        rep(boton("rp:main:g:rev"), ctx)
-        upd = boton("rp:main:cara:F")
+        rep = ct.boton_reparaciones
+        rep(boton("rp:t1:g:rev"), ctx)
+        upd = boton("rp:t1:cara:F")
         rep(upd, ctx)
         texto = upd.callback_query.edit_message_text.call_args.args[0]
         self.assertIn("una sola cuba", texto)
@@ -312,10 +315,10 @@ class TestMenuDeReparaciones(unittest.TestCase):
 
     def test_pantalla_del_parche_es_clara_y_sin_la_lista(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
+        rep = ct.boton_reparaciones
         for paso in ("g:tit", "m:30x30", "v:EA", "g:rev", "cara:LI", "cuba:EA"):
-            rep(boton(f"rp:main:{paso}"), ctx)
-        upd = boton("rp:main:ext:parche")
+            rep(boton(f"rp:t1:{paso}"), ctx)
+        upd = boton("rp:t1:ext:parche")
         rep(upd, ctx)
         texto = upd.callback_query.edit_message_text.call_args.args[0]
         self.assertIn("Revoque lateral izquierdo (entrada de agua)", texto)
@@ -326,10 +329,10 @@ class TestMenuDeReparaciones(unittest.TestCase):
 
     def test_menu_muestra_lo_cargado_en_palabras(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
+        rep = ct.boton_reparaciones
         for paso in ("g:tit", "m:30x30", "v:EA", "g:tat", "t:oct", "m:54x54", "v:C"):
-            rep(boton(f"rp:main:{paso}"), ctx)
-        upd = boton("rp:main:borrar")
+            rep(boton(f"rp:t1:{paso}"), ctx)
+        upd = boton("rp:t1:borrar")
         rep(upd, ctx)
         texto = upd.callback_query.edit_message_text.call_args.args[0]
         self.assertIn("↩️ Borrada: Tapa de acceso octogonal con parantes 54x54 (ciego)", texto)
@@ -357,34 +360,34 @@ class TestMenuDeReparaciones(unittest.TestCase):
 
     def test_revoque_saltear_pasos_no_agrega_nada(self):
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
-        rep(boton("rp:main:g:rev"), ctx)
-        rep(boton("rp:main:ext:completo"), ctx)  # sin cara ni cuba
+        rep = ct.boton_reparaciones
+        rep(boton("rp:t1:g:rev"), ctx)
+        rep(boton("rp:t1:ext:completo"), ctx)  # sin cara ni cuba
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], [])
 
     def test_boton_de_otro_tanque_no_se_toma(self):
         ctx = self._ctx()
-        upd = boton("rp:alt1:g:flo")
-        self.assertEqual(ct.boton_reparaciones("main")(upd, ctx), REPAIR_MAIN)
+        upd = boton("rp:t2:g:flo")
+        self.assertEqual(ct.boton_reparaciones(upd, ctx), REPAIR)
         upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
         self.assertNotIn("reparaciones_en_curso", ctx.user_data)
 
     def test_las_reparaciones_no_se_escriben(self):
         ctx = self._ctx()
         upd = entorno.update_texto("cambiar tapa de acceso")
-        self.assertEqual(ct.texto_reparaciones("main")(upd, ctx), REPAIR_MAIN)
-        self.assertNotIn("repairs", ctx.user_data)
+        self.assertEqual(ct.texto_reparaciones(upd, ctx), REPAIR)
+        self.assertNotIn("repairs_t1", ctx.user_data)
         self.assertIn("se cargan con los botones", _enviados(ctx))
 
     def test_volver_de_las_fotos_conserva_lo_cargado(self):
         ctx = self._ctx()
-        ctx.user_data["repairs"] = "TITCEA 60x60, flotante"
-        ct.preguntar_reparaciones(entorno.update_texto(None), ctx, "main")
+        ctx.user_data["repairs_t1"] = "TITCEA 60x60, flotante"
+        ct.preguntar_reparaciones(entorno.update_texto(None), ctx)
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 60x60", "flotante"])
 
     def test_botones_del_menu_con_emoji_y_uno_por_fila(self):
         ctx = self._ctx()
-        _, botones = ct._rep_pantalla(ctx, "main")
+        _, botones = ct._rep_pantalla(ctx)
         textos = [fila[0].text for fila in botones.inline_keyboard[:8]]
         self.assertEqual(textos, ["🚫 Sin reparaciones",  # arriba de todo
                                   "🔍 Tapa de inspección", "🚪 Tapa de acceso", "🔲 Tapa y marco de acceso",
@@ -393,27 +396,27 @@ class TestMenuDeReparaciones(unittest.TestCase):
 
     def test_sin_reparaciones_no_aparece_con_algo_cargado(self):
         ctx = self._ctx()
-        ct.boton_reparaciones("main")(boton("rp:main:g:flo"), ctx)
-        _, botones = ct._rep_pantalla(ctx, "main")
+        ct.boton_reparaciones(boton("rp:t1:g:flo"), ctx)
+        _, botones = ct._rep_pantalla(ctx)
         datos = [b.callback_data for fila in botones.inline_keyboard for b in fila]
-        self.assertNotIn("rp:main:no", datos)
+        self.assertNotIn("rp:t1:no", datos)
         self.assertEqual(botones.inline_keyboard[0][0].text, "🔍 Tapa de inspección")
-        self.assertEqual(ct.boton_reparaciones("main")(boton("rp:main:no"), ctx), REPAIR_MAIN)  # botón viejo
+        self.assertEqual(ct.boton_reparaciones(boton("rp:t1:no"), ctx), REPAIR)  # botón viejo
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["flotante"])
 
     def test_atras_en_el_pedido_de_fotos_vuelve_al_menu(self):
         from bot.handlers.fotos_reparaciones import handle_repair_photos_atras
         ctx = self._ctx()
-        rep = ct.boton_reparaciones("main")
-        rep(boton("rp:main:g:flo"), ctx)
-        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(handle_repair_photos_atras(boton("back"), ctx), REPAIR_MAIN)
+        rep = ct.boton_reparaciones
+        rep(boton("rp:t1:g:flo"), ctx)
+        self.assertEqual(rep(boton("rp:t1:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(handle_repair_photos_atras(boton("back"), ctx), REPAIR)
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["flotante"])  # conserva lo cargado
         self.assertNotIn("rep_fotos", ctx.user_data)
 
     def test_atras_vuelve_al_sellado(self):
         ctx = self._ctx()
-        self.assertEqual(ct.boton_reparaciones("main")(boton("back"), ctx), SEALING_MAIN)
+        self.assertEqual(ct.boton_reparaciones(boton("back"), ctx), SEALING)
         self.assertIn("Indique cómo selló el tanque de <b>Cisterna</b>", _enviados(ctx))
 
 
@@ -462,7 +465,7 @@ class TestConversacion(unittest.TestCase):
         handler = build_conversation_handler()
         update = MagicMock(spec=Update)
         fallback = handler.fallbacks[0]  # botones vencidos (el otro es ATRAS)
-        for data in ("rp:main:g:tit", "md:main:plastico", "ct:sin", "tp:main:insp:m:60x60"):
+        for data in ("rp:t1:g:tit", "md:main:plastico", "ct:sin", "tp:main:insp:m:60x60"):
             update.callback_query.data = data
             for h in handler.states[TANK_TYPE]:
                 if isinstance(h, CallbackQueryHandler):
@@ -482,22 +485,130 @@ class TestElegirTanque(unittest.TestCase):
             self.assertEqual(qr_service.scan_qr(upd, ctx), START_TIME)
         self.assertIn("¿A qué hora empezaste el trabajo?", _enviados(ctx))
 
-    def test_despues_del_tanque_va_a_la_medida(self):
-        from bot.handlers.tanques import handle_tank_type
+    def test_despues_de_la_hora_pregunta_los_cuerpos(self):
+        from bot.handlers.shared import guardar_hora_fin
         ctx = entorno.contexto({"state_stack": [], "service": "Limpieza y Reparacion de Tanques",
-                                "start_time": "08:00", "end_time": "10:00"})
-        self.assertEqual(handle_tank_type(boton("RESERVA"), ctx), MEASURE_MAIN)
-        self.assertEqual(ctx.user_data["selected_category"], "RESERVA")
-        self.assertEqual(ctx.user_data["modo_ingreso"], "MANUAL")
-        self.assertNotIn("NOTA DE VOZ", _enviados(ctx))
+                                "start_time": "08:00"})
+        self.assertEqual(guardar_hora_fin(entorno.update_texto("10:00"), ctx, "10:00"), CUERPOS)
+        self.assertIn("¿Cuántos cuerpos tiene el edificio?", _enviados(ctx))
 
-    def test_boton_viejo_de_voz_no_es_un_tanque(self):
-        from bot.handlers.tanques import handle_tank_type
-        from bot.states import TANK_TYPE
-        ctx = entorno.contexto({"state_stack": []})
-        upd = boton("input_voice")
-        self.assertEqual(handle_tank_type(upd, ctx), TANK_TYPE)
-        self.assertNotIn("selected_category", ctx.user_data)
+    def test_boton_viejo_no_es_un_tanque(self):
+        ctx = entorno.contexto({"state_stack": [], "current_state": TANK_TYPE})
+        for data in ("input_voice", "RESERVA", "tq:PILETA"):
+            upd = boton(data)
+            self.assertEqual(ct.boton_tipo_tanque(upd, ctx), TANK_TYPE, data)
+            upd.callback_query.answer.assert_called_with("Ese paso ya terminó.")
+        self.assertEqual(ctx.user_data.get("tanques", []), [])
+
+
+class TestVariosTanques(unittest.TestCase):
+    """Edificios de más de un cuerpo y con más de un tanque del mismo tipo."""
+
+    def setUp(self):
+        self.ctx = entorno.contexto({"state_stack": [], "service": "Limpieza y Reparacion de Tanques",
+                                     "start_time": "08:00", "end_time": "10:00", "current_state": CUERPOS})
+
+    def _toca(self, data, handler):
+        return handler(boton(data), self.ctx)
+
+    def _escribe(self, texto, handler):
+        return handler(entorno.update_texto(texto), self.ctx)
+
+    def _cargar_tanque(self, tipo, cuerpo=None, reparaciones=("g:flo",), medida="1.80 2 1.50"):
+        """Elige el tipo (y el cuerpo), carga los pasos y llega a "¿hay otro tanque?"."""
+        self.assertEqual(self._toca(f"tq:{tipo}", ct.boton_tipo_tanque), TANK_CUERPO if cuerpo else MEASURE)
+        if cuerpo:
+            self.assertEqual(self._toca(f"cp:{cuerpo}", ct.boton_cuerpo_tanque), MEASURE)
+        tid = self.ctx.user_data["tanque_actual"]
+        self._escribe(medida, ct.recibir_medida)
+        self._escribe("60", ct.recibir_texto("tapas_inspeccion"))
+        self._escribe("No tiene", ct.recibir_texto("tapas_acceso"))
+        self.assertEqual(self._escribe("masilla", ct.recibir_texto("sealing")), REPAIR)
+        for paso in reparaciones:
+            self._toca(f"rp:{tid}:{paso}", ct.boton_reparaciones)
+        self._toca(f"rp:{tid}:no" if not reparaciones else f"rp:{tid}:listo", ct.boton_reparaciones)
+        if reparaciones:  # pide las fotos: se saltean acá (las prueba test_fotos_reparaciones)
+            from bot.handlers import fotos_reparaciones as fr
+            fr._continuar(entorno.update_texto(None), self.ctx)
+        self.assertEqual(self._escribe("nada", ct.recibir_sugerencias), OTRO_TANQUE)
+        return tid
+
+    def test_un_cuerpo_cisterna_y_dos_reservas(self):
+        from bot.services import tanques_reporte as tq
+        self.assertEqual(self._toca("cu:1", ct.boton_cuerpos), TANK_TYPE)
+        t1 = self._cargar_tanque("CISTERNA")
+        self.assertEqual(self._toca("ot:si", ct.boton_otro_tanque), TANK_TYPE)
+        t2 = self._cargar_tanque("RESERVA", reparaciones=("g:rev", "cara:LI", "cuba:EA", "ext:completo"))
+        self._toca("ot:si", ct.boton_otro_tanque)
+        t3 = self._cargar_tanque("RESERVA", reparaciones=())
+        self.assertEqual(self._toca("ot:no", ct.boton_otro_tanque), CONTACT)
+        ud = self.ctx.user_data
+        self.assertEqual([tq.nombre(ud, t) for t in (t1, t2, t3)], ["Cisterna", "Reserva 1", "Reserva 2"])
+        self.assertEqual(ud[f"repairs_{t2}"], "TREA LI COMP")  # el código usa el tipo del tanque
+        self.assertEqual(ud[f"repairs_{t3}"], "No")
+        self.assertEqual(ud[f"measure_{t3}"], "1.80, 2.00, 1.50")
+
+    def test_dos_cuerpos_cisterna_compartida_y_una_reserva_en_cada_uno(self):
+        from bot.services import tanques_reporte as tq
+        from bot.services.email_service import _build_body
+        self.assertEqual(self._toca("cu:2", ct.boton_cuerpos), TANK_TYPE)
+        self._cargar_tanque("CISTERNA", "frente", reparaciones=("g:rev", "cara:P", "cuba:EA", "ext:completo"))
+        self._toca("ot:si", ct.boton_otro_tanque)
+        self._cargar_tanque("RESERVA", "frente")
+        self._toca("ot:si", ct.boton_otro_tanque)
+        self._cargar_tanque("RESERVA", "fondo", reparaciones=("g:tat", "t:com", "m:47x47", "v:C"))
+        self._toca("ot:no", ct.boton_otro_tanque)
+        ud = self.ctx.user_data
+        nombres = [tq.nombre(ud, t["id"]) for t in tq.lista(ud)]
+        self.assertEqual(nombres, ["Cisterna (frente)", "Reserva 1 (frente)", "Reserva 2 (fondo)"])
+        body = _build_body(ud)
+        self.assertIn("Cuerpos del edificio: 2", body)
+        self.assertIn("Reparaciones Cisterna (frente): TCEA P COMP", body)
+        self.assertIn("Reparaciones Reserva 1 (frente): flotante", body)
+        self.assertIn("Reparaciones Reserva 2 (fondo): TATRC 47x47", body)
+
+    def test_dos_cisternas(self):
+        from bot.services import tanques_reporte as tq
+        self._toca("cu:1", ct.boton_cuerpos)
+        self._cargar_tanque("CISTERNA")
+        self._toca("ot:si", ct.boton_otro_tanque)
+        self._cargar_tanque("CISTERNA")
+        ud = self.ctx.user_data
+        self.assertEqual([tq.nombre(ud, t["id"]) for t in tq.lista(ud)], ["Cisterna 1", "Cisterna 2"])
+
+    def test_atras_desde_la_medida_del_segundo_tanque_lo_descarta(self):
+        from bot.services import tanques_reporte as tq
+        self._toca("cu:2", ct.boton_cuerpos)
+        t1 = self._cargar_tanque("CISTERNA", "frente")
+        self._toca("ot:si", ct.boton_otro_tanque)
+        self._toca("tq:RESERVA", ct.boton_tipo_tanque)
+        self._toca("cp:fondo", ct.boton_cuerpo_tanque)
+        self.assertEqual(len(tq.lista(self.ctx.user_data)), 2)
+        # ATRAS desde la medida de la reserva: vuelve al cuerpo, y la reserva vacía se descarta
+        self.assertEqual(self._escribe("atrás", ct.recibir_medida), TANK_CUERPO)
+        self.assertEqual([t["id"] for t in tq.lista(self.ctx.user_data)], [t1])
+        self.assertEqual(self._toca("back", atras_boton),
+                         TANK_TYPE)
+        self.assertEqual(self._toca("back", atras_boton),
+                         OTRO_TANQUE)
+        # ATRAS otra vez: a las sugerencias de la cisterna, en la cisterna
+        self.assertEqual(self._toca("back", atras_boton),
+                         SUGGESTIONS)
+        self.assertEqual(self.ctx.user_data["tanque_actual"], t1)
+        self.assertIn("sugerencias p/ la próx limpieza para <b>Cisterna</b> (frente)", _enviados(self.ctx))
+        self.assertNotIn("este tanque de ?", _enviados(self.ctx))
+
+    def test_un_cuerpo_no_pregunta_el_cuerpo(self):
+        self._toca("cu:1", ct.boton_cuerpos)
+        self.assertEqual(self._toca("tq:RESERVA", ct.boton_tipo_tanque), MEASURE)
+        self.assertNotIn("¿De qué cuerpo", _enviados(self.ctx))
+
+    def test_cuerpos_con_los_nombres_del_dueno(self):
+        self._toca("cu:3", ct.boton_cuerpos)
+        self._toca("tq:RESERVA", ct.boton_tipo_tanque)
+        markup = self.ctx.bot.send_message.call_args.kwargs["reply_markup"]
+        textos = [b.text for fila in markup.inline_keyboard for b in fila]
+        self.assertEqual(textos, ["Frente", "Fondo", "Izquierda", "Derecha", "⬅️ ATRAS"])
 
 
 class TestModificarAlgo(unittest.TestCase):
@@ -505,9 +616,10 @@ class TestModificarAlgo(unittest.TestCase):
     def _ctx(self):
         from bot.states import FINAL_SUMMARY, PHOTOS as FOTOS
         return entorno.contexto(_datos(
-            current_state=FINAL_SUMMARY, state_stack=[MEASURE_MAIN, SEALING_MAIN, FOTOS],
-            measure_main="1.80, 2.00, 1.50", sealing_main="masilla", repairs="TITCEA 60x60",
-            suggestions="nada", contact="Daniel 1135456067", start_time="08:00", end_time="10:00",
+            current_state=FINAL_SUMMARY, state_stack=[MEASURE, SEALING, FOTOS],
+            tanques=[{"id": "t1", "tipo": "CISTERNA", "cuerpo": None}],
+            measure_t1="1.80, 2.00, 1.50", sealing_t1="masilla", repairs_t1="TITCEA 60x60",
+            suggestions_t1="nada", contact="Daniel 1135456067", start_time="08:00", end_time="10:00",
             photos=["a", "b", "c"]))
 
     def _boton(self, data, ctx):
@@ -518,55 +630,55 @@ class TestModificarAlgo(unittest.TestCase):
         from bot.handlers.final_summary import _menu
         _, botones = _menu(self._ctx().user_data, "menu")
         datos = [b.callback_data for fila in botones.inline_keyboard for b in fila]
-        self.assertIn("ed:t:main", datos)
-        self.assertNotIn("ed:t:alt1", datos)  # Reserva no se cargó
+        self.assertIn("ed:t:t1", datos)
+        self.assertNotIn("ed:t:t2", datos)  # Reserva no se cargó
 
     def test_modificar_la_medida_vuelve_al_resumen(self):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
         self.assertEqual(self._boton("final_edit", ctx), FINAL_SUMMARY)
-        self.assertEqual(self._boton("ed:t:main", ctx), FINAL_SUMMARY)
-        self.assertEqual(self._boton("ed:f:main:medida", ctx), MEASURE_MAIN)
-        self.assertEqual(ct.recibir_medida("main")(entorno.update_texto("grande"), ctx), MEASURE_MAIN)  # sigue validando
-        self.assertEqual(ct.recibir_medida("main")(entorno.update_texto("150 150 150"), ctx), FINAL_SUMMARY)
-        self.assertEqual(ctx.user_data["measure_main"], "1.50, 1.50, 1.50")
+        self.assertEqual(self._boton("ed:t:t1", ctx), FINAL_SUMMARY)
+        self.assertEqual(self._boton("ed:f:t1:measure", ctx), MEASURE)
+        self.assertEqual(ct.recibir_medida(entorno.update_texto("grande"), ctx), MEASURE)  # sigue validando
+        self.assertEqual(ct.recibir_medida(entorno.update_texto("150 150 150"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["measure_t1"], "1.50, 1.50, 1.50")
         self.assertNotIn("editando", ctx.user_data)
         self.assertIn("RESUMEN COMPLETO", _enviados(ctx))
 
     def test_modificar_reparaciones_usa_el_menu_y_las_fotos(self):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
-        self.assertEqual(self._boton("ed:f:main:reparaciones", ctx), REPAIR_MAIN)
-        rep = ct.boton_reparaciones("main")
+        self.assertEqual(self._boton("ed:f:t1:repairs", ctx), REPAIR)
+        rep = ct.boton_reparaciones
         self.assertEqual(ctx.user_data["reparaciones_en_curso"]["lista"], ["TITCEA 60x60"])  # arranca con lo cargado
-        rep(boton("rp:main:g:flo"), ctx)
-        self.assertEqual(rep(boton("rp:main:listo"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["repairs"], "TITCEA 60x60, flotante")
+        rep(boton("rp:t1:g:flo"), ctx)
+        self.assertEqual(rep(boton("rp:t1:listo"), ctx), REPAIR_PHOTOS)
+        self.assertEqual(ctx.user_data["repairs_t1"], "TITCEA 60x60, flotante")
 
     def test_modificar_reparaciones_a_ninguna_vuelve_al_resumen(self):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
-        self._boton("ed:f:main:reparaciones", ctx)  # arranca con "TITCEA 60x60" cargada
-        rep = ct.boton_reparaciones("main")
-        self.assertEqual(rep(boton("rp:main:no"), ctx), REPAIR_MAIN)  # no borra lo cargado de golpe
-        rep(boton("rp:main:borrar"), ctx)
-        self.assertEqual(rep(boton("rp:main:no"), ctx), FINAL_SUMMARY)
-        self.assertEqual(ctx.user_data["repairs"], "No")
+        self._boton("ed:f:t1:repairs", ctx)  # arranca con "TITCEA 60x60" cargada
+        rep = ct.boton_reparaciones
+        self.assertEqual(rep(boton("rp:t1:no"), ctx), REPAIR)  # no borra lo cargado de golpe
+        rep(boton("rp:t1:borrar"), ctx)
+        self.assertEqual(rep(boton("rp:t1:no"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["repairs_t1"], "No")
 
     def test_atras_en_la_primera_pregunta_vuelve_al_resumen_sin_borrar(self):
         from bot.states import FINAL_SUMMARY
         ctx = self._ctx()
-        self._boton("ed:f:main:sellado", ctx)
-        self.assertEqual(ct.recibir_texto("main", "sellado")(entorno.update_texto("atras"), ctx), FINAL_SUMMARY)
-        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+        self._boton("ed:f:t1:sealing", ctx)
+        self.assertEqual(ct.recibir_texto("sealing")(entorno.update_texto("atras"), ctx), FINAL_SUMMARY)
+        self.assertEqual(ctx.user_data["sealing_t1"], "masilla")
 
     def test_modificar_sugerencias_y_contacto(self):
         from bot.states import FINAL_SUMMARY
-        from bot.handlers.tanques import get_suggestions_main
+        get_suggestions_main = ct.recibir_sugerencias
         ctx = self._ctx()
-        self.assertEqual(self._boton("ed:f:main:sugerencias", ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(self._boton("ed:f:t1:suggestions", ctx), SUGGESTIONS)
         self.assertEqual(get_suggestions_main(entorno.update_texto("limpiar antes"), ctx), FINAL_SUMMARY)
-        self.assertEqual(ctx.user_data["suggestions"], "limpiar antes")
+        self.assertEqual(ctx.user_data["suggestions_t1"], "limpiar antes")
         self.assertEqual(self._boton("ed:c", ctx), CONTACT)
         self.assertEqual(ct.recibir_nombre(entorno.update_texto("Ana"), ctx), CONTACT_PHONE)
         self.assertEqual(ct.recibir_telefono(entorno.update_texto("2214567890"), ctx), FINAL_SUMMARY)
@@ -588,7 +700,7 @@ class TestModificarAlgo(unittest.TestCase):
         ctx = self._ctx()
         upd = entorno.update_texto("cambiar sellado a burlete")
         self.assertEqual(handle_final_text(upd, ctx), FINAL_SUMMARY)
-        self.assertEqual(ctx.user_data["sealing_main"], "masilla")
+        self.assertEqual(ctx.user_data["sealing_t1"], "masilla")
 
 
 if __name__ == "__main__":

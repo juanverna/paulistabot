@@ -13,11 +13,12 @@ def _datos():
     return {
         "service": "Limpieza y Reparacion de Tanques", "order": "1234567", "code": "42",
         "address": "Av. Siempreviva 742", "contact": "Daniel 1135456067",
-        "selected_category": "CISTERNA", "repairs": "TATCEA 56 y tapa de inspección",
-        "items_reparacion": {"main": {"items": {
+        "tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None}],
+        "repairs_t1": "TATCEA 56 y tapa de inspección",
+        "items_reparacion": {"t1": {"items": {
             "tapa_acceso": {"cantidad": 1, "variantes": ["EA"], "codigos": ["TATCEA 56"]},
             "tapa_inspeccion": {"cantidad": 1, "variantes": [], "codigos": []}}, "estado": {}}},
-        "fotos_reparaciones": {"main": [
+        "fotos_reparaciones": {"t1": [
             {"file_id": "f1", "estado": "validada", "grupo_ia": "tapa_inspeccion", "grupo": "tapa_acceso",
              "corregida": True, "analisis": {"elemento_detectado": "tapa_inspeccion", "tipo_tapa_seguro": True,
                                              "tapa_faltante": False, "estado": "malo", "calidad_foto": "buena",
@@ -25,7 +26,7 @@ def _datos():
                                              "danos_visibles": ["óxido", "perforación"], "comentario": "x"}},
             {"file_id": "f2", "estado": "sin_validar", "grupo": "tapa_inspeccion", "analisis": None},
         ]},
-        "fotos_descartadas": [{"file_id": "f3", "sufijo": "main", "estado": "no_corresponde",
+        "fotos_descartadas": [{"file_id": "f3", "sufijo": "t1", "estado": "no_corresponde",
                                "grupo_ia": None, "analisis": {"elemento_detectado": "piso"}}],
     }
 
@@ -37,7 +38,7 @@ class TestDataset(unittest.TestCase):
         self.assertEqual(len(filas), 3)
         fila = dict(zip(dataset_fotos.COLUMNAS, filas[0]))
         self.assertEqual(fila["orden"], "1234567")
-        self.assertEqual(fila["tanque"], "CISTERNA")
+        self.assertEqual(fila["tanque"], "Cisterna")
         self.assertEqual(fila["items_declarados"], "tapa_acceso x1 [TATCEA 56]; tapa_inspeccion x1")
         self.assertEqual((fila["grupo_ia"], fila["grupo_final"], fila["corregida_por_operario"]),
                          ("tapa_inspeccion", "tapa_acceso", "sí"))

@@ -6,13 +6,7 @@ from bot.handlers.shared    import (get_code, service_selection, get_order, get_
                                      get_start_time, get_end_time,
                                      handle_hora_boton, handle_atras_boton)
 from bot.handlers.fumigacion import fumigation_data, get_fum_obs, handle_fum_photos
-from bot.handlers.tanques   import (handle_tank_type,
-                                     get_suggestions_main,
-                                     handle_ask_second,
-                                     get_suggestions_alt1,
-                                     handle_ask_third,
-                                     get_suggestions_alt2,
-                                     handle_tank_photos)
+from bot.handlers.tanques   import handle_tank_photos
 from bot.handlers import campos_tanque as ct
 from bot.handlers.avisos        import get_avisos_address, handle_avisos_photos
 from bot.handlers.fotos_reparaciones import (handle_repair_photos, handle_repair_photo_button,
@@ -22,20 +16,6 @@ from bot.services.qr_service    import scan_qr
 
 BACK = MessageHandler(Filters.regex("(?i)^atr[aá]s$"), back_handler)
 TEXT = Filters.text & ~Filters.command
-
-
-def _pasos_tanque(sufijo: str) -> dict:
-    """Medida (validada), tapas y sellado (texto) y reparaciones (menú) de un tanque. Ver campos_tanque.py."""
-    p = ct.PASOS[sufijo]
-    return {
-        p["medida"][0]:  [CallbackQueryHandler(ct.boton_material(sufijo), pattern="^md:"),
-                          MessageHandler(TEXT, ct.recibir_medida(sufijo))],
-        p["insp"][0]:    [MessageHandler(TEXT, ct.recibir_texto(sufijo, "insp"))],
-        p["acceso"][0]:  [MessageHandler(TEXT, ct.recibir_texto(sufijo, "acceso"))],
-        p["sellado"][0]: [MessageHandler(TEXT, ct.recibir_texto(sufijo, "sellado"))],
-        p["reparaciones"][0]: [CallbackQueryHandler(ct.boton_reparaciones(sufijo), pattern="^(rp:|back$)"),
-                               MessageHandler(TEXT, ct.texto_reparaciones(sufijo))],
-    }
 
 
 def build_conversation_handler() -> ConversationHandler:
@@ -63,24 +43,21 @@ def build_conversation_handler() -> ConversationHandler:
             FUMIGATION: [BACK, MessageHandler(TEXT, fumigation_data)],
             FUM_OBS:    [BACK, MessageHandler(TEXT, get_fum_obs)],
 
-            TANK_TYPE: [
-                # Botones de pasos anteriores (fotos, hora, tapas...) no son una elección de tanque
-                CallbackQueryHandler(handle_tank_type, pattern="^(?!(rf|hora|tp|se|md|ct|rp|ed):)"),
-                BACK,
-            ],
+            # Tanques, de a uno (campos_tanque.py). ATRAS lo maneja el fallback (atras_boton)
+            CUERPOS:     [BACK, CallbackQueryHandler(ct.boton_cuerpos, pattern="^cu:")],
+            TANK_TYPE:   [BACK, CallbackQueryHandler(ct.boton_tipo_tanque, pattern="^tq:")],
+            TANK_CUERPO: [BACK, CallbackQueryHandler(ct.boton_cuerpo_tanque, pattern="^cp:")],
+            OTRO_TANQUE: [BACK, CallbackQueryHandler(ct.boton_otro_tanque, pattern="^ot:")],
 
-            **_pasos_tanque("main"),
-            SUGGESTIONS_MAIN:      [MessageHandler(TEXT, get_suggestions_main)],
-
-            ASK_SECOND: [CallbackQueryHandler(handle_ask_second, pattern="^(si|no|back)$"), BACK],
-
-            **_pasos_tanque("alt1"),
-            SUGGESTIONS_ALT1:      [MessageHandler(TEXT, get_suggestions_alt1)],
-
-            ASK_THIRD: [CallbackQueryHandler(handle_ask_third, pattern="^(si|no|back)$"), BACK],
-
-            **_pasos_tanque("alt2"),
-            SUGGESTIONS_ALT2:      [MessageHandler(TEXT, get_suggestions_alt2)],
+            # Pasos de cada tanque (el tanque es user_data["tanque_actual"])
+            MEASURE:          [CallbackQueryHandler(ct.boton_material, pattern="^md:"),
+                               MessageHandler(TEXT, ct.recibir_medida)],
+            TAPAS_INSPECCION: [MessageHandler(TEXT, ct.recibir_texto("tapas_inspeccion"))],
+            TAPAS_ACCESO:     [MessageHandler(TEXT, ct.recibir_texto("tapas_acceso"))],
+            SEALING:          [MessageHandler(TEXT, ct.recibir_texto("sealing"))],
+            REPAIR:           [CallbackQueryHandler(ct.boton_reparaciones, pattern="^(rp:|back$)"),
+                               MessageHandler(TEXT, ct.texto_reparaciones)],
+            SUGGESTIONS:      [MessageHandler(TEXT, ct.recibir_sugerencias)],
 
             # Fotos de las reparaciones de cada tanque ("atrás" lo maneja el handler)
             REPAIR_PHOTOS: [
@@ -111,9 +88,10 @@ def build_conversation_handler() -> ConversationHandler:
                 MessageHandler(TEXT, handle_final_text),
             ],
         },
-        # Botón de una foto, de la hora, de reparaciones, material o contacto tocado cuando ese
-        # paso ya terminó ("tp" y "se": tapas y sellado con botones de una versión anterior)
-        fallbacks=[CallbackQueryHandler(handle_boton_vencido, pattern="^(rf|hora|tp|se|md|ct|rp|ed):"),
+        # Botón de un paso que ya terminó (foto, hora, reparaciones, material, edición, tanques).
+        # "tp", "se" y "ct": tapas, sellado y contacto con botones de versiones anteriores
+        fallbacks=[CallbackQueryHandler(handle_boton_vencido,
+                                        pattern="^(rf|hora|tp|se|md|ct|rp|ed|cu|tq|cp|ot):"),
                    # ATRAS de las preguntas cuyo paso no lo maneja él mismo (medida, tapas, contacto...)
                    CallbackQueryHandler(atras_boton, pattern="^back$")],
     )

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from tests import entorno
 entorno.preparar()
 
-from bot.states import START_TIME, END_TIME, MEASURE_MAIN, TANK_TYPE, FUMIGATION
+from bot.states import START_TIME, END_TIME, CUERPOS, FUMIGATION
 from bot.handlers import hora
 from bot.handlers.shared import pedir_hora, handle_hora_boton, get_start_time
 
@@ -65,8 +65,9 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(self.ctx.user_data["start_time"], "08:30")
         upd.callback_query.edit_message_text.assert_called_with("✅ Hora de inicio: 08:30")
         self.assertIn("¿A qué hora terminaste el trabajo?", self._ultimo()["text"])
-        # Fin: después de la hora (que va primero, apenas se lee el QR) se elige el tanque
-        self.assertEqual(handle_hora_boton(boton("hora:fin:m:13:05"), self.ctx), TANK_TYPE)
+        # Fin: después de la hora (que va primero, apenas se lee el QR) van los tanques, empezando
+        # por cuántos cuerpos tiene el edificio
+        self.assertEqual(handle_hora_boton(boton("hora:fin:m:13:05"), self.ctx), CUERPOS)
         self.assertEqual(self.ctx.user_data["end_time"], "13:05")
         self.assertEqual(self.ctx.user_data["state_stack"], [START_TIME, END_TIME])
 
@@ -95,7 +96,7 @@ class TestFlujo(unittest.TestCase):
 
     def test_despues_de_la_hora_tanque_o_fumigacion(self):
         handle_hora_boton(boton("hora:inicio:m:08:00"), self.ctx)
-        self.assertEqual(handle_hora_boton(boton("hora:fin:m:12:00"), self.ctx), TANK_TYPE)
+        self.assertEqual(handle_hora_boton(boton("hora:fin:m:12:00"), self.ctx), CUERPOS)
         self.ctx.user_data["service"] = "Fumigaciones"
         self.ctx.user_data["current_state"] = END_TIME
         self.assertEqual(handle_hora_boton(boton("hora:fin:m:12:00"), self.ctx), FUMIGATION)

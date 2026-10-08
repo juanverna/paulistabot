@@ -5,17 +5,31 @@ from unittest.mock import patch
 from tests import entorno
 entorno.preparar()
 
-from bot.states import (REPAIR_MAIN, REPAIR_ALT1, REPAIR_PHOTOS, SUGGESTIONS_MAIN,
-                        SUGGESTIONS_ALT1, CONTACT, PHOTOS)
+from bot.states import REPAIR, REPAIR_PHOTOS, SUGGESTIONS, CONTACT, PHOTOS
 from bot.handlers import fotos_reparaciones as fr
-from bot.handlers.tanques import get_repair_main, get_repair_alt1, get_suggestions_main
+from bot.handlers.tanques import reparaciones_escritas
 
 
 def _datos_base(**extra):
-    datos = {"selected_category": "CISTERNA", "alternative_1": "RESERVA",
-             "alternative_2": "INTERMEDIARIO", "state_stack": []}
+    datos = {"tanques": [{"id": "t1", "tipo": "CISTERNA", "cuerpo": None},
+                         {"id": "t2", "tipo": "RESERVA", "cuerpo": None},
+                         {"id": "t3", "tipo": "INTERMEDIARIO", "cuerpo": None}],
+             "tanque_actual": "t1", "state_stack": []}
     datos.update(extra)
     return datos
+
+
+def get_repair_main(update, ctx):
+    """Reparaciones escritas de la cisterna (t1)."""
+    ctx.user_data["tanque_actual"] = "t1"
+    return reparaciones_escritas(update, ctx)
+
+
+def get_repair_alt1(update, ctx):
+    """Reparaciones escritas de la reserva (t2)."""
+    ctx.user_data["tanque_actual"] = "t2"
+    return reparaciones_escritas(update, ctx)
+from bot.handlers.campos_tanque import recibir_sugerencias as get_suggestions_main
 
 
 class TestNecesitaFotos(unittest.TestCase):
@@ -44,13 +58,13 @@ class TestFlujoManual(unittest.TestCase):
 
     def test_sin_reparaciones_sigue_a_sugerencias(self):
         ctx, estado = self._hasta_fotos("ninguna")
-        self.assertEqual(estado, SUGGESTIONS_MAIN)
+        self.assertEqual(estado, SUGGESTIONS)
         self.assertNotIn("rep_fotos", ctx.user_data)
 
     def test_con_reparaciones_pide_fotos(self):
         ctx, estado = self._hasta_fotos()
         self.assertEqual(estado, REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["repairs"], "cambiar tapa de acceso")
+        self.assertEqual(ctx.user_data["repairs_t1"], "cambiar tapa de acceso")
         texto = ctx.bot.send_message.call_args.kwargs["text"]
         self.assertIn("Mandá una foto de cada reparación de <b>Cisterna</b>", texto)
         self.assertIn("• Tapa de acceso", texto)
@@ -59,9 +73,9 @@ class TestFlujoManual(unittest.TestCase):
         ctx, _ = self._hasta_fotos()
         self.assertEqual(fr.handle_repair_photos(entorno.update_foto("f1"), ctx), REPAIR_PHOTOS)
         self.assertEqual(fr.handle_repair_photos(entorno.update_foto("f2"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS_MAIN)
-        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["f1", "f2"])
-        self.assertEqual(ctx.user_data["state_stack"], [REPAIR_MAIN, REPAIR_PHOTOS])
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS)
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["t1"]), ["f1", "f2"])
+        self.assertEqual(ctx.user_data["state_stack"], [REPAIR, REPAIR_PHOTOS])
         self.assertNotIn("destrabes", ctx.user_data)
 
     def test_album_responde_una_vez(self):
@@ -71,13 +85,13 @@ class TestFlujoManual(unittest.TestCase):
         fr.handle_repair_photos(u2, ctx)
         self.assertEqual(u1.message.reply_text.call_count, 1)
         self.assertEqual(u2.message.reply_text.call_count, 0)
-        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["f1", "f2"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["t1"]), ["f1", "f2"])
 
     def test_documento_imagen_se_acepta_y_otro_no(self):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_documento("d1", "image/jpeg"), ctx)
         fr.handle_repair_photos(entorno.update_documento("d2", "application/pdf"), ctx)
-        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["main"]), ["d1"])
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["t1"]), ["d1"])
 
     def test_listo_sin_fotos_traba(self):
         ctx, _ = self._hasta_fotos()
@@ -104,7 +118,7 @@ class TestFlujoManual(unittest.TestCase):
         fr.handle_repair_photos(entorno.update_foto("f1"), ctx)
         # Sigue trabado hasta el próximo "Listo" (ahí se mira si la foto sirve; con la IA apagada, sí)
         self.assertTrue(ctx.user_data["rep_fotos"]["trabado"])
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS)
         self.assertNotIn("destrabes", ctx.user_data)
 
     @patch.dict(os.environ, {"ADMIN_DAILY_CODE": "4821"})
@@ -112,7 +126,7 @@ class TestFlujoManual(unittest.TestCase):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_texto("Listo"), ctx)
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("1111"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("4821"), ctx), SUGGESTIONS)
         [reg] = ctx.user_data["destrabes"]
         self.assertEqual((reg["tanque"], reg["item"], reg["motivo"]),
                          ("Cisterna", "Tapa de acceso", "foto faltante"))
@@ -126,24 +140,24 @@ class TestFlujoManual(unittest.TestCase):
     def test_atras_vuelve_a_reparaciones_y_descarta_fotos(self):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_foto("f1"), ctx)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("atrás"), ctx), REPAIR_MAIN)
-        self.assertNotIn("main", ctx.user_data["fotos_reparaciones"])
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("atrás"), ctx), REPAIR)
+        self.assertNotIn("t1", ctx.user_data["fotos_reparaciones"])
 
     def test_atras_desde_sugerencias_vuelve_a_fotos(self):
         ctx, _ = self._hasta_fotos()
         fr.handle_repair_photos(entorno.update_foto("f1"), ctx)
         fr.handle_repair_photos(entorno.update_texto("Listo"), ctx)
         self.assertEqual(get_suggestions_main(entorno.update_texto("atras"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(ctx.user_data["rep_fotos"]["sufijo"], "main")
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(ctx.user_data["rep_fotos"]["sufijo"], "t1")
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("Listo"), ctx), SUGGESTIONS)
 
     def test_tanque_alternativo(self):
         ctx = entorno.contexto(_datos_base())
         self.assertEqual(get_repair_alt1(entorno.update_texto("revocar"), ctx), REPAIR_PHOTOS)
         fr.handle_repair_photos(entorno.update_foto("r1"), ctx)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("listo"), ctx), SUGGESTIONS_ALT1)
-        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["alt1"]), ["r1"])
-        self.assertEqual(ctx.user_data["state_stack"], [REPAIR_ALT1, REPAIR_PHOTOS])
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("listo"), ctx), SUGGESTIONS)
+        self.assertEqual(entorno.ids(ctx.user_data["fotos_reparaciones"]["t2"]), ["r1"])
+        self.assertEqual(ctx.user_data["state_stack"], [REPAIR, REPAIR_PHOTOS])
 
 
 class TestCodigoDeOtroTanque(unittest.TestCase):
@@ -161,23 +175,23 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         upd = entorno.update_foto("f1")
         fr.handle_repair_photos(upd, self.ctx)
         self.assertIn("Primero corregí el código", upd.message.reply_text.call_args.args[0])
-        self.assertEqual(self.ctx.user_data.get("fotos_reparaciones", {}).get("main", []), [])
+        self.assertEqual(self.ctx.user_data.get("fotos_reparaciones", {}).get("t1", []), [])
         upd = entorno.update_texto("Listo")
         self.assertEqual(fr.handle_repair_photos(upd, self.ctx), REPAIR_PHOTOS)
-        self.assertEqual(self.ctx.user_data["repairs"], "TITREA40 TMTCEA49")
+        self.assertEqual(self.ctx.user_data["repairs_t1"], "TITREA40 TMTCEA49")
 
     def test_no_despues_de_un_rechazo(self):
         # Caso real: "Ningana" (rechazado antes del arreglo) y después "No": tiene que seguir
         ctx = entorno.contexto(_datos_base())
         self.assertEqual(get_repair_main(entorno.update_texto("pintar la puerta"), ctx), REPAIR_PHOTOS)
-        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("No"), ctx), SUGGESTIONS_MAIN)
-        self.assertEqual(ctx.user_data["repairs"], "No")
+        self.assertEqual(fr.handle_repair_photos(entorno.update_texto("No"), ctx), SUGGESTIONS)
+        self.assertEqual(ctx.user_data["repairs_t1"], "No")
         # Los ítems del texto rechazado no quedan: el informe mostraba "Otras reparaciones: Falta foto"
-        self.assertNotIn("main", ctx.user_data.get("items_reparacion", {}))
+        self.assertNotIn("t1", ctx.user_data.get("items_reparacion", {}))
 
     def test_ningana_no_pide_fotos(self):
         ctx = entorno.contexto(_datos_base())
-        self.assertEqual(get_repair_main(entorno.update_texto("Ningana"), ctx), SUGGESTIONS_MAIN)
+        self.assertEqual(get_repair_main(entorno.update_texto("Ningana"), ctx), SUGGESTIONS)
 
     def test_codigo_mal_escrito_no_deja_seguir(self):
         # Caso real: "taticea30"
@@ -185,7 +199,7 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         self.assertEqual(get_repair_main(entorno.update_texto("taticea30"), ctx), REPAIR_PHOTOS)
         self.assertIn("no es un código válido", ctx.bot.send_message.call_args.kwargs["text"])
         fr.handle_repair_photos(entorno.update_texto("TATCEA30"), ctx)
-        self.assertEqual(ctx.user_data["repairs"], "TATCEA30")
+        self.assertEqual(ctx.user_data["repairs_t1"], "TATCEA30")
         self.assertIn("• Tapa de acceso", ctx.bot.send_message.call_args.kwargs["text"])
 
     def test_sigue_mal_y_despues_bien(self):
@@ -193,11 +207,11 @@ class TestCodigoDeOtroTanque(unittest.TestCase):
         self.assertIn("TITRC40 es de <b>Reserva</b>", self._ultimo())
         self.assertEqual(fr.handle_repair_photos(entorno.update_texto("TITCEA40 TMTCEA49"), self.ctx),
                          REPAIR_PHOTOS)
-        self.assertEqual(self.ctx.user_data["repairs"], "TITCEA40 TMTCEA49")
+        self.assertEqual(self.ctx.user_data["repairs_t1"], "TITCEA40 TMTCEA49")
         self.assertIn("Mandá una foto de cada reparación", self._ultimo())
         self.assertNotIn("corregir_codigos", self.ctx.user_data["rep_fotos"])
         fr.handle_repair_photos(entorno.update_foto("f1"), self.ctx)
-        self.assertEqual(entorno.ids(self.ctx.user_data["fotos_reparaciones"]["main"]), ["f1"])
+        self.assertEqual(entorno.ids(self.ctx.user_data["fotos_reparaciones"]["t1"]), ["f1"])
 
 
 if __name__ == "__main__":

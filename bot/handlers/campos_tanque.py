@@ -1,19 +1,29 @@
 """
 campos_tanque.py
 ----------------
-Carga manual de cada tanque con formato fijo donde importa (ver bot/services/campos.py):
-medida validada, tapas y sellado en texto libre (como siempre), reparaciones con un menú del
-catálogo del dueño, y el contacto en dos pasos (nombre y teléfono).
+Carga manual de los tanques del reporte, de a uno (bot/services/tanques_reporte.py), con formato
+fijo donde importa (bot/services/campos.py):
 
-Botones (el sufijo va en el botón: uno de un paso que ya terminó no se toma):
-  "rp:<sufijo>:g:<grupo>"        reparación (tapa de inspección, de acceso, marco, revoque...)
-  "rp:<sufijo>:t:<tipo>"         tipo de tapa de acceso
-  "rp:<sufijo>:m:<medida>"       medida
-  "rp:<sufijo>:v:<EA|C>"         entrada de agua o ciego
-  "rp:<sufijo>:cara:<cara>", "rp:<sufijo>:cuba:<EA|C>", "rp:<sufijo>:ext:<completo|parche>"
+  cuántos cuerpos tiene el edificio -> tipo de tanque -> (si hay más de un cuerpo) de qué cuerpo
+  -> medida (validada) -> tapas de inspección y de acceso (solo medidas válidas) -> sellado
+  -> reparaciones (menú del catálogo del dueño) -> fotos de las reparaciones -> sugerencias
+  -> ¿hay otro tanque? (sí: otra vez desde el tipo; no: contacto, en dos pasos)
+
+El tanque que se está cargando es user_data["tanque_actual"].
+
+Botones (el tanque va en el botón: uno de un tanque o paso que ya terminó no se toma):
+  "cu:<1|2|3>"                   cuántos cuerpos tiene el edificio
+  "tq:<CISTERNA|RESERVA|INTERMEDIARIO>"   tipo del tanque nuevo
+  "cp:<frente|fondo|izquierda|derecha>"   cuerpo del tanque nuevo
+  "ot:<si|no>"                   ¿hay otro tanque?
+  "md:<tanque>:<plastico|cilindrico|acero>" material de un tanque en litros
+  "rp:<tanque>:g:<grupo>"        reparación (tapa de inspección, de acceso, marco, revoque...)
+  "rp:<tanque>:t:<tipo>"         tipo de tapa de acceso
+  "rp:<tanque>:m:<medida>"       medida
+  "rp:<tanque>:v:<EA|C>"         entrada de agua o ciego
+  "rp:<tanque>:cara:<cara>", "rp:<tanque>:cuba:<EA|C>", "rp:<tanque>:ext:<completo|parche>"
                                  revoque: cara, cuba y si es completo o un parche (medidas escritas)
-  "rp:<sufijo>:<volver|borrar|listo|no>"
-  "md:<sufijo>:<plastico|cilindrico|acero>" material de un tanque en litros
+  "rp:<tanque>:<volver|borrar|listo|no>"
 """
 
 import html
@@ -27,25 +37,19 @@ from bot.utils.helpers import apply_bold_keywords
 from bot.handlers.common import (push_state, back_handler, check_special_commands, terminar_edicion,
                                  teclado_atras)
 from bot.services import campos
-
-PASOS = {
-    "main": {"tanque": "selected_category", "medida": (MEASURE_MAIN, "measure_main"),
-             "insp": (TAPAS_INSPECCION_MAIN, "tapas_inspeccion_main"),
-             "acceso": (TAPAS_ACCESO_MAIN, "tapas_acceso_main"),
-             "sellado": (SEALING_MAIN, "sealing_main"), "reparaciones": (REPAIR_MAIN, "repairs")},
-    "alt1": {"tanque": "alternative_1", "medida": (MEASURE_ALT1, "measure_alt1"),
-             "insp": (TAPAS_INSPECCION_ALT1, "tapas_inspeccion_alt1"),
-             "acceso": (TAPAS_ACCESO_ALT1, "tapas_acceso_alt1"),
-             "sellado": (SEALING_ALT1, "sealing_alt1"), "reparaciones": (REPAIR_ALT1, "repair_alt1")},
-    "alt2": {"tanque": "alternative_2", "medida": (MEASURE_ALT2, "measure_alt2"),
-             "insp": (TAPAS_INSPECCION_ALT2, "tapas_inspeccion_alt2"),
-             "acceso": (TAPAS_ACCESO_ALT2, "tapas_acceso_alt2"),
-             "sellado": (SEALING_ALT2, "sealing_alt2"), "reparaciones": (REPAIR_ALT2, "repair_alt2")},
-}
+from bot.services import tanques_reporte as tq
 
 
-def _tanque(context: CallbackContext, sufijo: str) -> str:
-    return context.user_data.get(PASOS[sufijo]["tanque"], "")
+def _actual(context: CallbackContext) -> str:
+    return context.user_data.get("tanque_actual", "")
+
+
+def _nombre(context: CallbackContext, tanque_id: str = None) -> str:
+    return tq.nombre(context.user_data, tanque_id or _actual(context))
+
+
+def _clave(context: CallbackContext, campo: str, tanque_id: str = None) -> str:
+    return tq.clave(campo, tanque_id or _actual(context))
 
 
 def _enviar(update: Update, context: CallbackContext, texto: str, markup=None) -> None:
@@ -87,125 +91,246 @@ def _volver(update: Update, context: CallbackContext) -> int:
     return back_handler(update, context)
 
 
+def _boton(update: Update, prefijo: str, validos, estado_esperado: int, context: CallbackContext):
+    """El valor de un botón "<prefijo>:<valor>" del paso actual, o None (y avisa) si no corresponde."""
+    query = update.callback_query
+    partes = query.data.split(":", 1)
+    if (len(partes) != 2 or partes[0] != prefijo or partes[1] not in validos
+            or context.user_data.get("current_state") != estado_esperado):
+        _boton_vencido(query)
+        return None
+    query.answer()
+    return partes[1]
+
+
+# =============================================================================
+# Cuerpos, tipo y cuerpo de cada tanque, "¿hay otro tanque?"
+# =============================================================================
+def preguntar_cuerpos(update: Update, context: CallbackContext) -> int:
+    botones = [[InlineKeyboardButton("1 cuerpo", callback_data="cu:1"),
+                InlineKeyboardButton("2 cuerpos", callback_data="cu:2"),
+                InlineKeyboardButton("3 o más", callback_data="cu:3")]]
+    _enviar(update, context, "🏢 ¿Cuántos cuerpos tiene el edificio?\n"
+                             "(2 cuerpos = dos edificios en la misma dirección, por ejemplo separados "
+                             "por un pozo de aire y luz)", teclado_atras(botones))
+    return _ir(context, CUERPOS)
+
+
+def boton_cuerpos(update: Update, context: CallbackContext) -> int:
+    valor = _boton(update, "cu", ("1", "2", "3"), CUERPOS, context)
+    if valor is None:
+        return context.user_data.get("current_state")
+    texto = {"1": "1 cuerpo", "2": "2 cuerpos", "3": "3 o más cuerpos"}[valor]
+    _editar(update.callback_query, f"🏢 Edificio de {texto}")
+    context.user_data["cuerpos"] = int(valor)
+    push_state(context, CUERPOS)
+    return preguntar_tipo_tanque(update, context)
+
+
+def preguntar_tipo_tanque(update: Update, context: CallbackContext) -> int:
+    hay = len(tq.lista(context.user_data))
+    pregunta = "Seleccione el tipo de tanque:" if not hay else "¿De qué tipo es el otro tanque?"
+    botones = [[InlineKeyboardButton(t, callback_data=f"tq:{t}") for t in tq.TIPOS]]
+    _enviar(update, context, pregunta, teclado_atras(botones))
+    return _ir(context, TANK_TYPE)
+
+
+def boton_tipo_tanque(update: Update, context: CallbackContext) -> int:
+    tipo = _boton(update, "tq", tq.TIPOS, TANK_TYPE, context)
+    if tipo is None:
+        return context.user_data.get("current_state")
+    _editar(update.callback_query, f"Tipo de tanque: {tipo.capitalize()}")
+    context.user_data["modo_ingreso"] = "MANUAL"
+    push_state(context, TANK_TYPE)
+    if context.user_data.get("cuerpos", 1) > 1:
+        context.user_data["tanque_nuevo_tipo"] = tipo
+        return preguntar_cuerpo_tanque(update, context)
+    return _empezar_tanque(update, context, tipo, None)
+
+
+def preguntar_cuerpo_tanque(update: Update, context: CallbackContext) -> int:
+    tipo = context.user_data.get("tanque_nuevo_tipo", "")
+    botones = [[InlineKeyboardButton(n.capitalize(), callback_data=f"cp:{c}") for c, n in tq.CUERPOS.items()]]
+    _enviar(update, context, f"🏢 ¿De qué cuerpo es este tanque de {tipo.capitalize()}?", teclado_atras(botones))
+    return _ir(context, TANK_CUERPO)
+
+
+def boton_cuerpo_tanque(update: Update, context: CallbackContext) -> int:
+    cuerpo = _boton(update, "cp", tuple(tq.CUERPOS), TANK_CUERPO, context)
+    if cuerpo is None:
+        return context.user_data.get("current_state")
+    _editar(update.callback_query, f"🏢 Cuerpo: {tq.CUERPOS[cuerpo]}")
+    push_state(context, TANK_CUERPO)
+    # El tipo queda guardado: si vuelve con "atrás" a esta pregunta, se vuelve a mostrar
+    return _empezar_tanque(update, context, context.user_data.get("tanque_nuevo_tipo", ""), cuerpo)
+
+
+def _empezar_tanque(update: Update, context: CallbackContext, tipo: str, cuerpo) -> int:
+    context.user_data["tanque_actual"] = tq.nuevo(context.user_data, tipo, cuerpo)
+    return preguntar_medida(update, context)
+
+
+def preguntar_otro_tanque(update: Update, context: CallbackContext) -> int:
+    nombres = ", ".join(tq.nombre(context.user_data, t["id"]) for t in tq.lista(context.user_data))
+    botones = [[InlineKeyboardButton("➕ Sí, cargar otro", callback_data="ot:si"),
+                InlineKeyboardButton("No, eso es todo", callback_data="ot:no")]]
+    _enviar(update, context, f"Tanques cargados: <b>{html.escape(nombres)}</b>\n\n"
+                             "¿Hay otro tanque para cargar? (otra cisterna, reserva o intermediario, "
+                             "también de otro cuerpo)", teclado_atras(botones))
+    return _ir(context, OTRO_TANQUE)
+
+
+def boton_otro_tanque(update: Update, context: CallbackContext) -> int:
+    valor = _boton(update, "ot", ("si", "no"), OTRO_TANQUE, context)
+    if valor is None:
+        return context.user_data.get("current_state")
+    _editar(update.callback_query, "➕ Otro tanque" if valor == "si" else "✅ No hay más tanques")
+    push_state(context, OTRO_TANQUE)
+    if valor == "si":
+        return preguntar_tipo_tanque(update, context)
+    return preguntar_contacto(update, context)
+
+
+def preguntar_paso(update: Update, context: CallbackContext, estado: int) -> int:
+    """Vuelve a hacer la pregunta de un paso del tanque actual (al ir "atrás" o al modificar)."""
+    campo = CAMPO_DEL_PASO[estado]
+    if campo == "measure":
+        return preguntar_medida(update, context)
+    if campo == "repairs":
+        return preguntar_reparaciones(update, context)
+    if campo == "suggestions":
+        return preguntar_sugerencias(update, context)
+    return preguntar_texto(update, context, campo)
+
+
 # =============================================================================
 # Medida
 # =============================================================================
-def preguntar_medida(update: Update, context: CallbackContext, sufijo: str) -> int:
-    _enviar(update, context, f"📏 Medida del tanque de {_tanque(context, sufijo).capitalize()}: "
+def preguntar_medida(update: Update, context: CallbackContext) -> int:
+    _enviar(update, context, f"📏 Medida del tanque de {_nombre(context)}: "
                              "alto, ancho y profundo (ej: 1.80 2 1.50 o 180 200 150).", teclado_atras())
-    return _ir(context, PASOS[sufijo]["medida"][0])
+    return _ir(context, MEASURE)
 
 
-def recibir_medida(sufijo: str):
-    estado, clave = PASOS[sufijo]["medida"]
-
-    def handler(update: Update, context: CallbackContext) -> int:
-        siguiente = _texto_comun(update, context)
-        if siguiente is not None:
-            return siguiente
-        valor, problema = campos.normalizar_medida(update.message.text)
-        if problema:
-            update.message.reply_text(f"⚠️ {problema}\n\n{campos.AYUDA_MEDIDA}")
-            return estado
-        if valor.startswith("LITROS:"):
-            litros = valor.split(":", 1)[1]
-            context.user_data["litros_pendiente"] = litros
-            botones = [[InlineKeyboardButton(nombre.capitalize(), callback_data=f"md:{sufijo}:{clave_m}")
-                        for clave_m, nombre in campos.MATERIALES.items()]]
-            update.message.reply_text(f"Tanque de {litros} litros. ¿De qué material es?",
-                                      reply_markup=teclado_atras(botones))
-            return estado
-        return _guardar_medida(update, context, sufijo, valor)
-
-    handler.__name__ = f"recibir_medida_{sufijo}"
-    return handler
+def recibir_medida(update: Update, context: CallbackContext) -> int:
+    siguiente = _texto_comun(update, context)
+    if siguiente is not None:
+        return siguiente
+    valor, problema = campos.normalizar_medida(update.message.text)
+    if problema:
+        update.message.reply_text(f"⚠️ {problema}\n\n{campos.AYUDA_MEDIDA}")
+        return MEASURE
+    if valor.startswith("LITROS:"):
+        litros = valor.split(":", 1)[1]
+        context.user_data["litros_pendiente"] = litros
+        botones = [[InlineKeyboardButton(nombre.capitalize(), callback_data=f"md:{_actual(context)}:{clave_m}")
+                    for clave_m, nombre in campos.MATERIALES.items()]]
+        update.message.reply_text(f"Tanque de {litros} litros. ¿De qué material es?",
+                                  reply_markup=teclado_atras(botones))
+        return MEASURE
+    return _guardar_medida(update, context, valor)
 
 
-def boton_material(sufijo: str):
-    estado = PASOS[sufijo]["medida"][0]
-
-    def handler(update: Update, context: CallbackContext) -> int:
-        query = update.callback_query
-        _, de, material = (query.data.split(":") + ["", ""])[:3]
-        litros = context.user_data.get("litros_pendiente")
-        if de != sufijo or material not in campos.MATERIALES or not litros:
-            _boton_vencido(query)
-            return estado
-        query.answer()
-        valor = f"{litros} lts ({campos.MATERIALES[material]})"
-        query.edit_message_text(f"✅ Medida: {valor}")
-        context.user_data.pop("litros_pendiente", None)
-        return _guardar_medida(update, context, sufijo, valor)
-
-    handler.__name__ = f"boton_material_{sufijo}"
-    return handler
+def boton_material(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    _, de, material = (query.data.split(":") + ["", ""])[:3]
+    litros = context.user_data.get("litros_pendiente")
+    if de != _actual(context) or material not in campos.MATERIALES or not litros:
+        _boton_vencido(query)
+        return MEASURE
+    query.answer()
+    valor = f"{litros} lts ({campos.MATERIALES[material]})"
+    query.edit_message_text(f"✅ Medida: {valor}")
+    context.user_data.pop("litros_pendiente", None)
+    return _guardar_medida(update, context, valor)
 
 
-def _guardar_medida(update: Update, context: CallbackContext, sufijo: str, valor: str) -> int:
-    estado, clave = PASOS[sufijo]["medida"]
-    context.user_data[clave] = valor
-    push_state(context, estado)
+def _guardar_medida(update: Update, context: CallbackContext, valor: str) -> int:
+    context.user_data[_clave(context, "measure")] = valor
+    push_state(context, MEASURE)
     if update.message:
         update.message.reply_text(f"✅ Medida: {valor}")
     fin = terminar_edicion(update, context)
     if fin is not None:
         return fin
-    return preguntar_texto(update, context, sufijo, "insp")
+    return preguntar_texto(update, context, "tapas_inspeccion")
 
 
 # =============================================================================
 # Tapas de inspección y de acceso (texto, solo las medidas de la ayuda) y sellado (texto libre)
 # =============================================================================
-def _pregunta_texto(context: CallbackContext, sufijo: str, campo: str) -> str:
-    if campo == "insp":
+ESTADO_TEXTO = {"tapas_inspeccion": TAPAS_INSPECCION, "tapas_acceso": TAPAS_ACCESO, "sealing": SEALING}
+_MEDIDAS_TAPA = {"tapas_inspeccion": "insp", "tapas_acceso": "acceso"}  # campo -> clave en campos.py
+
+
+def _pregunta_texto(context: CallbackContext, campo: str) -> str:
+    if campo == "tapas_inspeccion":
         return "Indique TAPAS INSPECCIÓN (30 40 50 60 80):"
-    if campo == "acceso":
+    if campo == "tapas_acceso":
         return "Indique TAPAS ACCESO (4789/50125/49.5 56 56.5 58 54 51.5 62 65):"
-    tanque = _tanque(context, sufijo).capitalize()
-    if sufijo == "main":
-        return f"Indique cómo selló el tanque de {tanque} (EJ: masilla, burlete):"
-    return f"Indique cómo selló el tanque de {tanque}:"
+    return f"Indique cómo selló el tanque de {_nombre(context)} (EJ: masilla, burlete):"
 
 
-def preguntar_texto(update: Update, context: CallbackContext, sufijo: str, campo: str) -> int:
-    _enviar(update, context, _pregunta_texto(context, sufijo, campo), teclado_atras())
-    return _ir(context, PASOS[sufijo][campo][0])
+def preguntar_texto(update: Update, context: CallbackContext, campo: str) -> int:
+    _enviar(update, context, _pregunta_texto(context, campo), teclado_atras())
+    return _ir(context, ESTADO_TEXTO[campo])
 
 
-def recibir_texto(sufijo: str, campo: str):
-    estado, clave = PASOS[sufijo][campo]
-    siguiente_campo = {"insp": "acceso", "acceso": "sellado"}.get(campo)
+def recibir_texto(campo: str):
+    estado = ESTADO_TEXTO[campo]
+    siguiente_campo = {"tapas_inspeccion": "tapas_acceso", "tapas_acceso": "sealing"}.get(campo)
 
     def handler(update: Update, context: CallbackContext) -> int:
         siguiente = _texto_comun(update, context)
         if siguiente is not None:
             return siguiente
         valor = update.message.text
-        if campo in campos.MEDIDAS_TAPAS:  # tapas: solo las medidas de la ayuda
-            valor, problema = campos.normalizar_tapas(campo, valor)
+        if campo in _MEDIDAS_TAPA:  # tapas: solo las medidas de la ayuda
+            valor, problema = campos.normalizar_tapas(_MEDIDAS_TAPA[campo], valor)
             if problema:
                 update.message.reply_text(f"⚠️ {problema}")
                 return estado
-        context.user_data[clave] = valor
+        context.user_data[_clave(context, campo)] = valor
         push_state(context, estado)
         fin = terminar_edicion(update, context)
         if fin is not None:
             return fin
         if siguiente_campo:
-            return preguntar_texto(update, context, sufijo, siguiente_campo)
-        return preguntar_reparaciones(update, context, sufijo)
+            return preguntar_texto(update, context, siguiente_campo)
+        return preguntar_reparaciones(update, context)
 
-    handler.__name__ = f"recibir_{campo}_{sufijo}"
+    handler.__name__ = f"recibir_{campo}"
     return handler
+
+
+# =============================================================================
+# Sugerencias (texto libre); después, "¿hay otro tanque?"
+# =============================================================================
+def preguntar_sugerencias(update: Update, context: CallbackContext) -> int:
+    _enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {_nombre(context)}:", teclado_atras())
+    return _ir(context, SUGGESTIONS)
+
+
+def recibir_sugerencias(update: Update, context: CallbackContext) -> int:
+    siguiente = _texto_comun(update, context)
+    if siguiente is not None:
+        return siguiente
+    context.user_data[_clave(context, "suggestions")] = update.message.text
+    push_state(context, SUGGESTIONS)
+    fin = terminar_edicion(update, context)
+    if fin is not None:
+        return fin
+    return preguntar_otro_tanque(update, context)
 
 
 # =============================================================================
 # Reparaciones: menú con el catálogo del dueño (bot/services/campos.py)
 # =============================================================================
-def _rep_en_curso(context: CallbackContext, sufijo: str) -> dict:
+def _rep_en_curso(context: CallbackContext) -> dict:
+    tanque_id = _actual(context)
     actual = context.user_data.get("reparaciones_en_curso")
-    if not actual or actual.get("sufijo") != sufijo:
-        actual = {"sufijo": sufijo, "lista": [], "grupo": None, "tipo": None, "medida": None,
+    if not actual or actual.get("tanque") != tanque_id:
+        actual = {"tanque": tanque_id, "lista": [], "grupo": None, "tipo": None, "medida": None,
                   "cara": None, "cuba": None, "parche": False}
         context.user_data["reparaciones_en_curso"] = actual
     return actual
@@ -223,15 +348,15 @@ def _rep_tipo(curso: dict):
     return next(iter(tipos)) if len(tipos) == 1 else None
 
 
-def _rep_pantalla(context: CallbackContext, sufijo: str):
+def _rep_pantalla(context: CallbackContext):
     """
     (texto, botones) de la pantalla actual del menú. Cada pantalla hace una sola pregunta, en
     negrita, con una línea arriba que dice dónde está. Lo cargado se muestra solo en la pantalla
     principal (en palabras, no en código), para no mezclarlo con la pregunta.
     """
-    curso = _rep_en_curso(context, sufijo)
-    base = f"rp:{sufijo}:"
-    tanque = _tanque(context, sufijo).capitalize()
+    curso = _rep_en_curso(context)
+    base = f"rp:{_actual(context)}:"
+    tanque = _nombre(context)
     volver = [InlineKeyboardButton("⬅️ Volver al menú", callback_data=f"{base}volver")]
     grupo = curso["grupo"]
 
@@ -311,130 +436,115 @@ def _rep_agregar(curso: dict, item: str) -> None:
     _rep_reiniciar_eleccion(curso)
 
 
-def preguntar_reparaciones(update: Update, context: CallbackContext, sufijo: str) -> int:
-    estado, clave = PASOS[sufijo]["reparaciones"]
+def preguntar_reparaciones(update: Update, context: CallbackContext) -> int:
     context.user_data.pop("reparaciones_en_curso", None)
-    # Si vuelve con "atrás" desde las fotos, arranca con lo que ya había cargado
-    anterior = context.user_data.get(clave) or ""
+    # Si vuelve con "atrás" desde las fotos (o modifica), arranca con lo que ya había cargado
+    anterior = context.user_data.get(_clave(context, "repairs")) or ""
     if anterior and anterior != campos.SIN_REPARACIONES:
-        _rep_en_curso(context, sufijo)["lista"] = anterior.split(", ")
-    _enviar(update, context, *_rep_pantalla(context, sufijo))
-    return _ir(context, estado)
+        _rep_en_curso(context)["lista"] = anterior.split(", ")
+    _enviar(update, context, *_rep_pantalla(context))
+    return _ir(context, REPAIR)
 
 
-def _rep_terminar(update: Update, context: CallbackContext, sufijo: str, lista: list) -> int:
-    from bot.handlers.fotos_reparaciones import pedir_fotos, SIGUIENTE_MANUAL
-    estado, clave = PASOS[sufijo]["reparaciones"]
-    valor = ", ".join(lista) if lista else campos.SIN_REPARACIONES
-    context.user_data[clave] = valor
+def _rep_terminar(update: Update, context: CallbackContext, lista: list) -> int:
+    from bot.handlers.fotos_reparaciones import pedir_fotos
+    tanque_id = _actual(context)
+    context.user_data[_clave(context, "repairs")] = ", ".join(lista) if lista else campos.SIN_REPARACIONES
     context.user_data.pop("reparaciones_en_curso", None)
-    push_state(context, estado)
+    push_state(context, REPAIR)
     detalle = ("\n" + "\n".join(f"• {html.escape(campos.legible(i))}" for i in lista)) if lista else " ninguna"
-    _editar(update.callback_query, f"✅ Reparaciones de {_tanque(context, sufijo).capitalize()}:{detalle}")
+    _editar(update.callback_query, f"✅ Reparaciones de {_nombre(context)}:{detalle}")
     if lista:
-        return pedir_fotos(update, context, sufijo, "manual")
+        return pedir_fotos(update, context, tanque_id, "manual")
     # Sin reparaciones: no hay fotos que pedir, ni ítems de una carga anterior
-    context.user_data.get("fotos_reparaciones", {}).pop(sufijo, None)
-    context.user_data.get("items_reparacion", {}).pop(sufijo, None)
+    context.user_data.get("fotos_reparaciones", {}).pop(tanque_id, None)
+    context.user_data.get("items_reparacion", {}).pop(tanque_id, None)
     fin = terminar_edicion(update, context)
     if fin is not None:
         return fin
-    siguiente = SIGUIENTE_MANUAL[sufijo][0]
-    _enviar(update, context, f"Indique sugerencias p/ la próx limpieza para {_tanque(context, sufijo).capitalize()}:",
-            teclado_atras())
-    return _ir(context, siguiente)
+    return preguntar_sugerencias(update, context)
 
 
-def boton_reparaciones(sufijo: str):
-    estado = PASOS[sufijo]["reparaciones"][0]
+def boton_reparaciones(update: Update, context: CallbackContext) -> int:
+    estado = REPAIR
+    query = update.callback_query
+    if query.data == "back":
+        context.user_data.pop("reparaciones_en_curso", None)
+        return _volver(update, context)
+    partes = query.data.split(":")
+    if len(partes) < 3 or partes[0] != "rp" or partes[1] != _actual(context):
+        _boton_vencido(query)
+        return estado
+    accion, valor = partes[2], (partes[3] if len(partes) > 3 else None)
+    curso = _rep_en_curso(context)
+    if accion == "listo" and not curso["lista"]:
+        query.answer("No cargaste ninguna reparación. Si no hay, tocá «Sin reparaciones».", show_alert=True)
+        return estado
+    if accion == "no" and curso["lista"]:  # botón viejo: no se borra lo cargado
+        query.answer("Ya cargaste reparaciones. Si no va ninguna, borralas con «Borrar última».",
+                     show_alert=True)
+        return estado
+    query.answer()
+    curso["aviso"] = None
+    catalogo = campos.CATALOGO_REPARACIONES
+    tanque = tq.tipo(context.user_data, _actual(context))
+    grupo, tipo = curso["grupo"], _rep_tipo(curso)
 
-    def handler(update: Update, context: CallbackContext) -> int:
-        query = update.callback_query
-        if query.data == "back":
-            context.user_data.pop("reparaciones_en_curso", None)
-            return _volver(update, context)
-        partes = query.data.split(":")
-        if len(partes) < 3 or partes[0] != "rp" or partes[1] != sufijo:
-            _boton_vencido(query)
-            return estado
-        accion, valor = partes[2], (partes[3] if len(partes) > 3 else None)
-        curso = _rep_en_curso(context, sufijo)
-        if accion == "listo" and not curso["lista"]:
-            query.answer("No cargaste ninguna reparación. Si no hay, tocá «Sin reparaciones».", show_alert=True)
-            return estado
-        if accion == "no" and curso["lista"]:  # botón viejo: no se borra lo cargado
-            query.answer("Ya cargaste reparaciones. Si no va ninguna, borralas con «Borrar última».",
-                         show_alert=True)
-            return estado
-        query.answer()
-        curso["aviso"] = None
-        catalogo = campos.CATALOGO_REPARACIONES
-        tanque = _tanque(context, sufijo)
-        grupo, tipo = curso["grupo"], _rep_tipo(curso)
-
-        if accion == "g" and valor in catalogo:
-            if catalogo[valor][1] is None and valor != "rev":  # flotante, automático: se agregan directo
-                _rep_agregar(curso, campos.reparacion(valor))
-            else:
-                _rep_reiniciar_eleccion(curso)
-                curso["grupo"] = valor
-        elif accion == "t" and grupo and valor in catalogo[grupo][2]:
-            curso["tipo"] = valor
-            medidas = catalogo[grupo][2][valor][2]
-            if len(medidas) == 1:  # una sola medida (punta recortada 54): no hay que elegirla
-                curso["medida"] = medidas[0]
-        elif accion == "m" and grupo and tipo and valor in catalogo[grupo][2][tipo][2]:
-            curso["tipo"], curso["medida"] = tipo, valor
-        elif accion == "v" and valor in campos.VARIANTES and curso["medida"]:
-            _rep_agregar(curso, campos.reparacion(grupo, tanque, valor, tipo, curso["medida"]))
-        elif accion == "cara" and grupo == "rev" and valor in campos.CARAS_REVOQUE:
-            curso["cara"] = valor
-        elif accion == "cuba" and grupo == "rev" and curso["cara"] and valor in campos.CUBAS:
-            curso["cuba"] = valor
-        elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "completo":
-            _rep_agregar(curso, campos.reparacion("rev", tanque, curso["cuba"], cara=curso["cara"]))
-        elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "parche":
-            curso["parche"] = True  # las medidas se escriben (texto_reparaciones)
-        elif accion == "volver":
+    if accion == "g" and valor in catalogo:
+        if catalogo[valor][1] is None and valor != "rev":  # flotante, automático: se agregan directo
+            _rep_agregar(curso, campos.reparacion(valor))
+        else:
             _rep_reiniciar_eleccion(curso)
-        elif accion == "borrar" and curso["lista"]:
-            curso["aviso"] = f"↩️ Borrada: {campos.legible(curso['lista'].pop())}"
-        elif accion == "listo":
-            return _rep_terminar(update, context, sufijo, curso["lista"])
-        elif accion == "no":
-            return _rep_terminar(update, context, sufijo, [])
-        _editar(query, *_rep_pantalla(context, sufijo))
-        return estado
+            curso["grupo"] = valor
+    elif accion == "t" and grupo and valor in catalogo[grupo][2]:
+        curso["tipo"] = valor
+        medidas = catalogo[grupo][2][valor][2]
+        if len(medidas) == 1:  # una sola medida (punta recortada 54): no hay que elegirla
+            curso["medida"] = medidas[0]
+    elif accion == "m" and grupo and tipo and valor in catalogo[grupo][2][tipo][2]:
+        curso["tipo"], curso["medida"] = tipo, valor
+    elif accion == "v" and valor in campos.VARIANTES and curso["medida"]:
+        _rep_agregar(curso, campos.reparacion(grupo, tanque, valor, tipo, curso["medida"]))
+    elif accion == "cara" and grupo == "rev" and valor in campos.CARAS_REVOQUE:
+        curso["cara"] = valor
+    elif accion == "cuba" and grupo == "rev" and curso["cara"] and valor in campos.CUBAS:
+        curso["cuba"] = valor
+    elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "completo":
+        _rep_agregar(curso, campos.reparacion("rev", tanque, curso["cuba"], cara=curso["cara"]))
+    elif accion == "ext" and grupo == "rev" and curso["cuba"] and valor == "parche":
+        curso["parche"] = True  # las medidas se escriben (texto_reparaciones)
+    elif accion == "volver":
+        _rep_reiniciar_eleccion(curso)
+    elif accion == "borrar" and curso["lista"]:
+        curso["aviso"] = f"↩️ Borrada: {campos.legible(curso['lista'].pop())}"
+    elif accion == "listo":
+        return _rep_terminar(update, context, curso["lista"])
+    elif accion == "no":
+        return _rep_terminar(update, context, [])
+    _editar(query, *_rep_pantalla(context))
+    return estado
 
-    handler.__name__ = f"boton_reparaciones_{sufijo}"
-    return handler
 
-
-def texto_reparaciones(sufijo: str):
-    estado = PASOS[sufijo]["reparaciones"][0]
-
-    def handler(update: Update, context: CallbackContext) -> int:
-        siguiente = _texto_comun(update, context)
-        if siguiente is not None:
-            context.user_data.pop("reparaciones_en_curso", None)
-            return siguiente
-        curso = _rep_en_curso(context, sufijo)
-        if curso["parche"]:  # lo único que se escribe: las medidas de un parche de revoque
-            parche, problema = campos.normalizar_parche(update.message.text)
-            if problema:
-                update.message.reply_text(f"⚠️ {problema}")
-                return estado
-            _rep_agregar(curso, campos.reparacion("rev", _tanque(context, sufijo), curso["cuba"],
-                                                  cara=curso["cara"], parche=parche))
-            _enviar(update, context, *_rep_pantalla(context, sufijo))
+def texto_reparaciones(update: Update, context: CallbackContext) -> int:
+    estado = REPAIR
+    siguiente = _texto_comun(update, context)
+    if siguiente is not None:
+        context.user_data.pop("reparaciones_en_curso", None)
+        return siguiente
+    curso = _rep_en_curso(context)
+    if curso["parche"]:  # lo único que se escribe: las medidas de un parche de revoque
+        parche, problema = campos.normalizar_parche(update.message.text)
+        if problema:
+            update.message.reply_text(f"⚠️ {problema}")
             return estado
-        # Las reparaciones no se escriben: se vuelve a mostrar el menú (sin perder lo cargado)
-        texto, botones = _rep_pantalla(context, sufijo)
-        _enviar(update, context, "👇 Las reparaciones se cargan con los botones.\n\n" + texto, botones)
+        _rep_agregar(curso, campos.reparacion("rev", tq.tipo(context.user_data, _actual(context)),
+                                              curso["cuba"], cara=curso["cara"], parche=parche))
+        _enviar(update, context, *_rep_pantalla(context))
         return estado
-
-    handler.__name__ = f"texto_reparaciones_{sufijo}"
-    return handler
+    # Las reparaciones no se escriben: se vuelve a mostrar el menú (sin perder lo cargado)
+    texto, botones = _rep_pantalla(context)
+    _enviar(update, context, "👇 Las reparaciones se cargan con los botones.\n\n" + texto, botones)
+    return estado
 
 
 # =============================================================================

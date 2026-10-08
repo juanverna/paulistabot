@@ -14,7 +14,11 @@ bash scripts/correr.sh              # corre el bot
 
 ## Fotos de reparaciones y destrabe
 
-En Limpieza y Presupuestos, el operario elige las reparaciones de cada tanque con un menú de
+En Limpieza y Presupuestos, después de la hora el bot pregunta cuántos cuerpos tiene el edificio
+y el operario carga los tanques de a uno, todos los que haya (puede haber 2 reservas o 2 cisternas),
+diciendo de qué cuerpo es cada uno (frente, fondo, izquierda o derecha) si hay más de uno. En el
+mail cada tanque tiene sus líneas con su nombre: "Reparaciones Reserva 2 (fondo): ..."
+(`bot/services/tanques_reporte.py`). El operario elige las reparaciones de cada tanque con un menú de
 botones (catálogo en `bot/services/campos.py`; no se escriben) y el bot le pide las fotos de esas
 reparaciones. Puede mandar varias y termina con "Listo". Con "Sin reparaciones" no se piden fotos.
 Las reparaciones se guardan en código: tapas y marcos con el del CSV de artículos

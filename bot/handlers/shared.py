@@ -200,15 +200,9 @@ def guardar_hora_fin(update: Update, context: CallbackContext, valor: str) -> in
         _responder(update, context, "¿Qué unidades contienen insectos?", teclado_atras())
         context.user_data["current_state"] = FUMIGATION
         return FUMIGATION
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("CISTERNA",      callback_data="CISTERNA"),
-         InlineKeyboardButton("RESERVA",       callback_data="RESERVA"),
-         InlineKeyboardButton("INTERMEDIARIO", callback_data="INTERMEDIARIO")],
-        [InlineKeyboardButton("ATRAS",         callback_data="back")],
-    ])
-    _responder(update, context, "Seleccione el tipo de tanque:", keyboard)
-    context.user_data["current_state"] = TANK_TYPE
-    return TANK_TYPE
+    # Tanques: primero cuántos cuerpos tiene el edificio, después cada tanque (campos_tanque.py)
+    from bot.handlers.campos_tanque import preguntar_cuerpos
+    return preguntar_cuerpos(update, context)
 
 
 def handle_hora_boton(update: Update, context: CallbackContext) -> int:

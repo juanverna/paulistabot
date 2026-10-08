@@ -52,7 +52,7 @@ def filas(user_data: dict) -> list:
     """Una fila (lista de COLUMNAS) por cada foto de reparación, incluidas las descartadas."""
     from bot.services import vision_service
     from bot.services.destrabe import HORA_ARGENTINA
-    from bot.handlers.fotos_reparaciones import TANQUES
+    from bot.services import tanques_reporte as tq
     from datetime import datetime
 
     fecha = datetime.now(HORA_ARGENTINA).strftime("%Y-%m-%d %H:%M")
@@ -65,9 +65,8 @@ def filas(user_data: dict) -> list:
 
     resultado = []
     for sufijo, foto, descartada in fotos:
-        if sufijo not in TANQUES:
+        if not tq.buscar(user_data, sufijo):
             continue
-        clave_rep, clave_tanque = TANQUES[sufijo]
         items = items_por_tanque.get(sufijo, {}).get("items", {})
         declarados = "; ".join(
             f"{g} x{i['cantidad']}" + (f" [{', '.join(i['codigos'])}]" if i.get("codigos") else "")
@@ -75,7 +74,7 @@ def filas(user_data: dict) -> list:
         a = foto.get("analisis") or {}
         resultado.append([
             fecha, orden, user_data.get("code", ""), user_data.get("service", ""),
-            user_data.get(clave_tanque, ""), user_data.get(clave_rep, ""), declarados,
+            tq.nombre(user_data, sufijo), user_data.get(tq.clave("repairs", sufijo), ""), declarados,
             foto.get("file_id", ""), foto.get("estado", ""), _si_no(descartada),
             foto.get("grupo_ia") or "", "" if descartada else (foto.get("grupo") or ""),
             _si_no(foto.get("corregida", False)), a.get("elemento_detectado", ""),
